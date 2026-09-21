@@ -15,6 +15,10 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.5.6 notes
+- **Hangar GLB paint zones**: single-material airframes (A320/737/747/787/…) recolor by **vertex geometry region** (wings / engines / tail / nose / belly / …), not the old fuselage-only tint. Procedural path unchanged.
+- Cache-bust `?v=0.5.6`
+
 ### v0.5.5 notes
 - **747**: clean CC-BY hangar GLB from **God's Eye View** (`airplane.glb` → `b747.glb`; credit zairiq-123). Plain light gray; Two-Tone paint overrides via `prepareGlbForSkinning`. FetchCFD Korean Air GLB stays removed.
 - Cache-bust `?v=0.5.5`
@@ -47,7 +51,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.5.5 (selector)
+## Models v0.5.6 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -162,4 +166,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.5.5 — clean CC-BY 747 (God's Eye View) · Two-Tone · more paint zones
+© SkinMyBird v0.5.6 — GLB vertex paint zones · clean CC-BY 747 · Two-Tone

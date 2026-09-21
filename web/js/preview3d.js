@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.5.5 — real airliner GLBs + procedural helo/balloon.
+ * SkinMyBird 3D hangar preview v0.5.6 — real airliner GLBs + procedural helo/balloon.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -381,6 +381,14 @@ function cloneMaterialsDeep(root) {
   });
 }
 
+/** Own BufferGeometry per hangar instance so zoneIds / vertex colors never mutate the GLB cache. */
+function cloneGeometriesDeep(root) {
+  root.traverse((child) => {
+    if (!child.isMesh || !child.geometry) return;
+    child.geometry = child.geometry.clone();
+  });
+}
+
 function classifyMeshRole(name, box, craftBox) {
   const n = String(name || "").toLowerCase();
   if (/engine|nacelle|motor|fan|pylon/.test(n)) return "engines";
@@ -410,6 +418,264 @@ function classifyMeshRole(name, box, craftBox) {
   // Tail: aft (low X if nose=+X)
   if (mCenter.x < cCenter.x - cSize.x * 0.25) return "tail";
   return "fuselage";
+}
+
+/** Paint-zone ids stored in geometry.userData.zoneIds (Uint8Array). */
+const ZONE_ID = {
+  fuselage: 0,
+  nose: 1,
+  belly: 2,
+  wings: 3,
+  winglet: 4,
+  engines: 5,
+  tail: 6,
+  stabilizer: 7,
+  doors: 8,
+  windowband: 9,
+  accent: 10,
+};
+const ZONE_NAMES = [
+  "fuselage",
+  "nose",
+  "belly",
+  "wings",
+  "winglet",
+  "engines",
+  "tail",
+  "stabilizer",
+  "doors",
+  "windowband",
+  "accent",
+];
+
+/**
+ * After hangar fit: +X longest (fuselage), +Y up, +Z span.
+ * High-Y verts mark the vertical fin → aft; noseSign flips so nose is +X.
+ */
+function detectGlbNoseSign(samples) {
+  if (!samples.length) return 1;
+  const ys = samples.map((s) => s[1]).sort((a, b) => a - b);
+  const yThresh = ys[Math.floor(ys.length * 0.92)] ?? 0;
+  const high = samples.filter((s) => s[1] >= yThresh);
+  if (!high.length) return 1;
+  const avgX = high.reduce((a, s) => a + s[0], 0) / high.length;
+  return avgX < 0 ? 1 : -1;
+}
+
+/**
+ * Build craft-local zone context: wing plane, nacelle seeds from low-Y outboard verts.
+ */
+function buildGlbZoneContext(samples, craftBox, noseSign) {
+  const min = craftBox.min;
+  const max = craftBox.max;
+  const sx = Math.max(max.x - min.x, 1e-6);
+  const sy = Math.max(max.y - min.y, 1e-6);
+  const sz = Math.max(max.z - min.z, 1e-6);
+  const halfZ = sz * 0.5;
+
+  const wingish = samples
+    .filter((s) => Math.abs(s[2]) > halfZ * 0.35)
+    .map((s) => s[1])
+    .sort((a, b) => a - b);
+  const wingY = wingish.length
+    ? wingish[Math.floor(wingish.length * 0.5)]
+    : min.y + sy * 0.35;
+
+  // Nacelle seeds: cluster lowest outboard verts (twins = 1/side; quads = 2/side)
+  const yCut = min.y + sy * 0.22;
+  const seeds = [];
+  const avg3 = (arr) => [
+    arr.reduce((a, s) => a + s[0], 0) / arr.length,
+    arr.reduce((a, s) => a + s[1], 0) / arr.length,
+    arr.reduce((a, s) => a + s[2], 0) / arr.length,
+  ];
+  for (const side of [-1, 1]) {
+    let cand = samples.filter(
+      (s) =>
+        s[1] <= yCut &&
+        s[2] * side > 0 &&
+        Math.abs(s[2]) >= halfZ * 0.18 &&
+        Math.abs(s[2]) <= halfZ * 0.55
+    );
+    if (cand.length < 6) continue;
+    cand = cand.slice().sort((a, b) => a[1] - b[1]);
+    cand = cand.slice(0, Math.max(6, Math.ceil(cand.length * 0.6)));
+    const zs = cand.map((s) => Math.abs(s[2])).sort((a, b) => a - b);
+    const zMin = zs[0];
+    const zMax = zs[zs.length - 1];
+    if (zMax - zMin > halfZ * 0.14) {
+      const mid = (zMin + zMax) * 0.5;
+      for (const part of [
+        cand.filter((s) => Math.abs(s[2]) < mid),
+        cand.filter((s) => Math.abs(s[2]) >= mid),
+      ]) {
+        if (part.length >= 4) seeds.push(avg3(part));
+      }
+    } else {
+      seeds.push(avg3(cand));
+    }
+  }
+
+  const engineR = Math.max(sy * 0.14, halfZ * 0.06, 0.4);
+  return { min, max, sx, sy, sz, halfZ, wingY, noseSign, seeds, engineR };
+}
+
+function classifyVertexZone(x, y, z, ctx) {
+  const xx = x * ctx.noseSign;
+  const xmin = ctx.noseSign === 1 ? ctx.min.x : -ctx.max.x;
+  const u = (xx - xmin) / ctx.sx; // 0 = aft, 1 = nose
+  const v = (y - ctx.min.y) / ctx.sy;
+  const w = Math.abs(z) / Math.max(ctx.halfZ, 1e-6);
+  const absZ = Math.abs(z);
+  const { sy, halfZ, wingY, seeds, engineR } = ctx;
+
+  for (let i = 0; i < seeds.length; i++) {
+    const s = seeds[i];
+    const dx = x - s[0];
+    const dy = y - s[1];
+    const dz = z - s[2];
+    if (dx * dx + dy * dy + dz * dz < engineR * engineR) return ZONE_ID.engines;
+  }
+
+  if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return ZONE_ID.winglet;
+  if (u < 0.22 && v > 0.45 && w < 0.40) return ZONE_ID.tail;
+  if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75)
+    return ZONE_ID.stabilizer;
+  if (u > 0.9 && w < 0.35) return ZONE_ID.nose;
+
+  if (w > 0.18 && absZ > halfZ * 0.1 && u > 0.26 && u < 0.84) {
+    const nearWingPlane = Math.abs(y - wingY) < sy * 0.2;
+    if (nearWingPlane && v > 0.08 && v < 0.6) return ZONE_ID.wings;
+    if (w > 0.3 && v > 0.1 && v < 0.55) return ZONE_ID.wings;
+  }
+
+  if (w < 0.2 && u > 0.12 && u < 0.92) {
+    if (v < 0.24) return ZONE_ID.belly;
+    if (v > 0.38 && v < 0.55) return ZONE_ID.windowband;
+    if (v > 0.3 && v < 0.38) return ZONE_ID.accent;
+  }
+  if (w > 0.1 && w < 0.24 && v > 0.28 && v < 0.52 && u > 0.28 && u < 0.78)
+    return ZONE_ID.doors;
+  if (u > 0.86 && w < 0.28) return ZONE_ID.nose;
+  return ZONE_ID.fuselage;
+}
+
+/**
+ * Sample craft-space positions, assign per-vertex zone ids once at GLB mount.
+ * Stored on geometry.userData.zoneIds — used by applyPaint vertex colors.
+ */
+function assignGlbVertexZones(craft) {
+  craft.updateMatrixWorld(true);
+  const craftBox = new THREE.Box3().setFromObject(craft);
+  const craftInv = craft.matrixWorld.clone().invert();
+  const samples = [];
+  const tmp = new THREE.Vector3();
+  const meshes = [];
+
+  craft.traverse((child) => {
+    if (!child.isMesh || !child.geometry) return;
+    if (child.userData && child.userData.skinHiddenLivery) return;
+    if (child.visible === false) return;
+    // Skip projected text/flag decals
+    if (child.name && /decal|textDecal|flag/i.test(child.name)) return;
+    const pos = child.geometry.getAttribute("position");
+    if (!pos || !pos.count) return;
+    meshes.push(child);
+    const step = Math.max(1, Math.floor(pos.count / 2500));
+    for (let i = 0; i < pos.count; i += step) {
+      tmp.fromBufferAttribute(pos, i).applyMatrix4(child.matrixWorld);
+      tmp.applyMatrix4(craftInv);
+      samples.push([tmp.x, tmp.y, tmp.z]);
+    }
+  });
+
+  const noseSign = detectGlbNoseSign(samples);
+  // craftBox is world-aligned; convert to craft-local by applying craftInv corners
+  const localBox = craftBox.clone();
+  localBox.min.applyMatrix4(craftInv);
+  localBox.max.applyMatrix4(craftInv);
+  // After inverse, min/max may swap per-axis
+  const lb = new THREE.Box3(
+    new THREE.Vector3(
+      Math.min(localBox.min.x, localBox.max.x),
+      Math.min(localBox.min.y, localBox.max.y),
+      Math.min(localBox.min.z, localBox.max.z)
+    ),
+    new THREE.Vector3(
+      Math.max(localBox.min.x, localBox.max.x),
+      Math.max(localBox.min.y, localBox.max.y),
+      Math.max(localBox.min.z, localBox.max.z)
+    )
+  );
+  const ctx = buildGlbZoneContext(samples, lb, noseSign);
+
+  meshes.forEach((child) => {
+    const pos = child.geometry.getAttribute("position");
+    const zoneIds = new Uint8Array(pos.count);
+    const toCraft = new THREE.Matrix4()
+      .copy(craftInv)
+      .multiply(child.matrixWorld);
+    for (let i = 0; i < pos.count; i++) {
+      tmp.fromBufferAttribute(pos, i).applyMatrix4(toCraft);
+      zoneIds[i] = classifyVertexZone(tmp.x, tmp.y, tmp.z, ctx);
+    }
+    child.geometry.userData.zoneIds = zoneIds;
+    child.userData.paintZones = true;
+  });
+
+  return ctx;
+}
+
+/**
+ * Apply state.colors onto GLB meshes via vertex colors × zoneIds.
+ */
+function applyGlbVertexPaint(craft, colorsByZone) {
+  if (!craft) return;
+  const tmpC = new THREE.Color();
+  craft.traverse((child) => {
+    if (!child.isMesh || !child.geometry) return;
+    const zoneIds = child.geometry.userData && child.geometry.userData.zoneIds;
+    if (!zoneIds) return;
+    const pos = child.geometry.getAttribute("position");
+    if (!pos) return;
+
+    let colorAttr = child.geometry.getAttribute("color");
+    if (!colorAttr || colorAttr.count !== pos.count) {
+      colorAttr = new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3);
+      child.geometry.setAttribute("color", colorAttr);
+    }
+    const arr = colorAttr.array;
+    for (let i = 0; i < pos.count; i++) {
+      const name = ZONE_NAMES[zoneIds[i]] || "fuselage";
+      const c = colorsByZone[name] || colorsByZone.fuselage;
+      tmpC.copy(c);
+      const o = i * 3;
+      arr[o] = tmpC.r;
+      arr[o + 1] = tmpC.g;
+      arr[o + 2] = tmpC.b;
+    }
+    colorAttr.needsUpdate = true;
+
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    mats.forEach((m) => {
+      if (!m) return;
+      if (m.map) {
+        try {
+          m.map.dispose();
+        } catch (_) {}
+        m.map = null;
+      }
+      if (m.emissiveMap) {
+        try {
+          m.emissiveMap.dispose();
+        } catch (_) {}
+        m.emissiveMap = null;
+      }
+      m.vertexColors = true;
+      if (m.color) m.color.set(0xffffff);
+      m.needsUpdate = true;
+    });
+  });
 }
 
 const FONT_STACKS = {
@@ -2475,6 +2741,7 @@ export class Preview3D {
     craft.name = "aircraft";
 
     const model = gltf.scene.clone(true);
+    cloneGeometriesDeep(model);
     cloneMaterialsDeep(model);
     fitAircraftToHangar(model, GLB_TARGET_SPAN);
     // Neutralize baked albedo / brand mats → blank airframe for zone paint
@@ -2482,7 +2749,7 @@ export class Preview3D {
     craft.add(model);
     try { window.__SMB_CRAFT = craft; window.__SMB_PREVIEW = this; } catch (_) {}
 
-    // Index materials by role for live recolor
+    // Index materials by role (multi-mesh fallback) + prepare for vertex zones
     const craftBox = new THREE.Box3().setFromObject(craft);
     this.glbMaterials = [];
     model.traverse((child) => {
@@ -2501,22 +2768,21 @@ export class Preview3D {
           m.map = null;
         }
         m.color.set(0xffffff);
-        this.glbMaterials.push({ mat: m, role });
+        this.glbMaterials.push({ mat: m, role, mesh: child });
       });
     });
-
-    // Single-material models: fuselage primary + text decal overlay
-    const uniqueMats = new Set(this.glbMaterials.map((g) => g.mat));
-    if (uniqueMats.size <= 1) {
-      this.glbMaterials.forEach((g) => {
-        g.role = "fuselage";
-      });
-    }
 
     // Sit slightly above hangar floor grid BEFORE decals so raycasts/world matches final pose
     craft.position.y = 0.02;
     this.root.add(craft);
     craft.updateMatrixWorld(true);
+
+    // Single/few-material GLBs: color by geometry region (vertex zones), not shared mat role
+    try {
+      assignGlbVertexZones(craft);
+    } catch (zoneErr) {
+      console.warn("GLB vertex zone assign failed:", zoneErr);
+    }
 
     let decal = { tex: null, regTex: null };
     try {
@@ -2601,21 +2867,29 @@ export class Preview3D {
         windowband: hexToThree(state.colors.windowband || state.colors.fuselage || "#f2f4f7"),
         accent: hexToThree(state.colors.accent || state.colors.fuselage || "#f2f4f7"),
       };
-      const unique = new Set(this.glbMaterials.map((g) => g.mat));
-      if (unique.size <= 1) {
-        // Single material: fuselage as primary tint
-        this.glbMaterials.forEach(({ mat }) => {
-          mat.color.copy(colors.fuselage);
-          mat.needsUpdate = true;
+      const craft = this.root.getObjectByName("aircraft");
+      // Prefer per-vertex zone paint (works for 1-mesh / 1-material airframes)
+      let usedVertexZones = false;
+      if (craft) {
+        let hasZones = false;
+        craft.traverse((ch) => {
+          if (ch.isMesh && ch.geometry && ch.geometry.userData && ch.geometry.userData.zoneIds)
+            hasZones = true;
         });
-      } else {
+        if (hasZones) {
+          applyGlbVertexPaint(craft, colors);
+          usedVertexZones = true;
+        }
+      }
+      if (!usedVertexZones) {
+        // Multi-mesh fallback: per-mesh material role from classifyMeshRole
         this.glbMaterials.forEach(({ mat, role }) => {
+          mat.vertexColors = false;
           mat.color.copy(colors[role] || colors.fuselage);
           mat.needsUpdate = true;
         });
       }
       // Rebuild mesh-projected decals (size/font/placement/text length)
-      const craft = this.root.getObjectByName("aircraft");
       if (craft) {
         removeNamedGroup(craft, "textDecals");
         if (this.decalTex) {

@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.5.5 — commercial UI + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.5.6 — commercial UI + 3D hangar preview (Three.js).
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.5";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.6";
 
 const $ = (id) => document.getElementById(id);
 

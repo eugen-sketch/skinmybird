@@ -89,7 +89,7 @@ Card stil Asobo (siluetă airliner / helicopter / balloon pe fundal studio desch
 ## PC access note (2026-09-21)
 Executor subagent was **box-scoped** (no `machineId` / ListMachines / CopyFromBox). Profile updates below come from a **real PC scan of Eugen's MSFS packages** relayed by the parent (confirmed facts). Desktop sync of `profiles/` is left to the parent (`CopyFromBox`).
 
-## Color zones v0.5.5 (UI → texture roles)
+## Color zones v0.5.6 (UI → texture roles)
 
 Hangar / editor paint zones (grouped Body / Flying surfaces / Details). Defaults are two colors only; extra zones inherit primary (`#f2f4f7`) or secondary (`#1b2430`) until the user changes them. Team stripe is **off** by default.
 
@@ -109,7 +109,7 @@ Hangar / editor paint zones (grouped Body / Flying surfaces / Details). Defaults
 
 Dedicated UV rects for nose/belly/winglet/stabilizer/doors/windowband are **not** measured yet on Asobo / third-party packages. Export stubs therefore tint the nearest existing stem.
 
-## Hangar GLB mapping v0.5.5
+## Hangar GLB mapping v0.5.6
 
 | Family | File | Notes |
 |--------|------|-------|
@@ -123,5 +123,7 @@ Dedicated UV rects for nose/belly/winglet/stabilizer/doors/windowband are **not*
 | H135 / balloon | procedural | no third-party GLB |
 
 amvlab GLBs are logo-free; `prepareGlbForSkinning` still strips maps / neutralizes materials as a safety net.
+
+**v0.5.6:** Hangar GLBs are typically 1 mesh / 1 material. `assignGlbVertexZones` stores per-vertex zone ids from craft-local positions (after `fitAircraftToHangar`); `applyPaint` builds `BufferAttribute color` so Wings/Engines/Tail/Nose/Belly swatches recolor regions without separate materials.
 
 Could not find a clearly commercial-licensed **exact Cessna 172** GLB in CC0/CC-BY downloadable form within this pass; the Small Airplane asset is used with an on-screen **Preview stand-in** label.
