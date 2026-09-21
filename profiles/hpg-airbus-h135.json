@@ -2,8 +2,10 @@
   "id": "hpg-airbus-h135",
   "displayName": "HPG Airbus H135",
   "category": "elicopter",
-  "simObjectType": "Rotorcraft",
+  "simObjectType": "Airplanes",
   "base_container": "..\\hpg-airbus-h135",
+  "package_path_hint": "D:\\\\MSFS2020\\\\Community\\\\hpg-airbus-h135",
+  "airplane_folder": null,
   "ui_manufacturer": "Airbus Helicopters",
   "ui_type": "H135",
   "ui_typerole": "Helicopter",
@@ -13,18 +15,28 @@
   "paint_mode": "whole_albedo",
   "tex_size": 2048,
   "silhouette": "helicopter",
-  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "thumbnail": {
+    "style": "asobo_card",
+    "size": [
+      1618,
+      582
+    ]
+  },
   "textures": [
-    { "stem": "H135_FUSELAGE_ALBD", "role": "fuselage" },
-    { "stem": "H135_TAIL_ALBD", "role": "tail" },
-    { "stem": "H135_ROTOR_ALBD", "role": "wings" },
-    { "stem": "H135_DOORS_ALBD", "role": "engines" }
+    {
+      "stem": "H135_ID1_DIFFUSE",
+      "role": "fuselage"
+    }
   ],
   "uv_rects": null,
   "texture_fallbacks": [
+    "..\\..\\hpg-airbus-h135\\texture",
     "..\\..\\..\\..\\texture",
-    "..\\texture",
-    "..\\..\\hpg-airbus-h135\\texture"
+    "..\\texture"
   ],
-  "notes": "HPG H135 — UV necunoscute. Whole-albedo recolor + logo centrat pe fuselaj. SimObjects/Rotorcraft. Verifică stem-urile pe PC după instalarea HPG."
+  "notes": "CRITICAL: HPG H135 uses SimObjects/Airplanes (NOT Rotorcraft). Main exterior albedo is H135_ID1_DIFFUSE (community liveries). base_container and airplane_folder must match the actual folder under SimObjects\\\\Airplanes inside the package — VERIFY on PC (name varies by HPG build). Additional H135_ID* maps may exist; PC scan required.",
+  "verification": {
+    "source": "flightsim.to H135 liveries (Bristow layout) + HPG forums",
+    "pc_scan": false
+  }
 }

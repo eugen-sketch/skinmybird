@@ -881,6 +881,11 @@ def export_package(
         photo_path = candidate if candidate.exists() else None
 
     images = build_images_for_profile(prof, cfg, photo_path)
+    if not images:
+        raise ValueError(
+            f"Profile {prof.get('id')} has no textures[] — cannot export. "
+            "Fill stems from MSFS package scan (see ASSUMPTIONS.md / Scan-MSFS-Textures.ps1)."
+        )
 
     texconv = None if force_png else find_texconv()
     used_dds = False

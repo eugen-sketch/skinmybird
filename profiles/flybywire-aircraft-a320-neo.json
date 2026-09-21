@@ -3,7 +3,9 @@
   "displayName": "FlyByWire A320neo",
   "category": "avion",
   "simObjectType": "Airplanes",
-  "base_container": "..\\flybywire-aircraft-a320-neo",
+  "base_container": "..\\FlyByWire_A320_NEO",
+  "package_path_hint": "D:\\\\MSFS2020\\\\Community\\\\flybywire-aircraft-a320-neo",
+  "airplane_folder": "FlyByWire_A320_NEO",
   "ui_manufacturer": "Airbus",
   "ui_type": "A320neo (FBW)",
   "ui_typerole": "Commercial Airliner",
@@ -13,18 +15,46 @@
   "paint_mode": "whole_albedo",
   "tex_size": 2048,
   "silhouette": "airliner",
-  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "thumbnail": {
+    "style": "asobo_card",
+    "size": [
+      1618,
+      582
+    ]
+  },
   "textures": [
-    { "stem": "A32NX_AIRFRAME_FUSELAGE_ALBD", "role": "fuselage" },
-    { "stem": "A32NX_AIRFRAME_WINGS_ALBD", "role": "wings" },
-    { "stem": "A32NX_AIRFRAME_ENGINES_ALBD", "role": "engines" },
-    { "stem": "A32NX_AIRFRAME_TAIL_ALBD", "role": "tail" }
+    {
+      "stem": "A320NEO_AIRFRAME_FUSELAGE_ALBD",
+      "role": "fuselage"
+    },
+    {
+      "stem": "A320NEO_AIRFRAME_WINGS_ALBD",
+      "role": "wings"
+    },
+    {
+      "stem": "A320NEO_AIRFRAME_ENGINES_ALBD",
+      "role": "engines"
+    },
+    {
+      "stem": "A320NEO_AIRFRAME_LIVERY_ALBD",
+      "role": "livery"
+    },
+    {
+      "stem": "A320NEO_AIRFRAME_LIVERY_TEXTS_ALBD",
+      "role": "texts"
+    }
   ],
   "uv_rects": null,
   "texture_fallbacks": [
-    "..\\..\\..\\..\\texture",
-    "..\\texture",
-    "..\\..\\flybywire-aircraft-a320-neo\\texture"
+    "..\\..\\FlyByWire_A320_NEO\\TEXTURE",
+    "..\\..\\..\\..\\texture\\DetailMap",
+    "..\\..\\..\\..\\texture\\Glass",
+    "..\\..\\..\\..\\texture\\Interiors",
+    "..\\..\\..\\..\\texture"
   ],
-  "notes": "FBW A32NX — stem-uri approximate; verifică texture.cfg local. Whole-albedo + logo."
+  "notes": "VERIFIED from flybywiresim/aircraft (_FlyByWire_A320_NEO-LIVERY). Same Asobo A320NEO_AIRFRAME_* stems (no separate TAIL). base_container=..\\FlyByWire_A320_NEO. Package folder flybywire-aircraft-a320-neo. paint_mode whole_albedo until FBW UV measured (can reuse Asobo LIVERY_TEXTS later).",
+  "verification": {
+    "source": "github:flybywiresim/aircraft",
+    "pc_scan": false
+  }
 }

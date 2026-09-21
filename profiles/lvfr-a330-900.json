@@ -4,6 +4,8 @@
   "category": "avion",
   "simObjectType": "Airplanes",
   "base_container": "..\\lvfr-a330-900",
+  "package_path_hint": "Official\\\\Steam\\\\lvfr-a330-900",
+  "airplane_folder": null,
   "ui_manufacturer": "Airbus",
   "ui_type": "A330-900",
   "ui_typerole": "Commercial Airliner",
@@ -13,18 +15,24 @@
   "paint_mode": "whole_albedo",
   "tex_size": 2048,
   "silhouette": "airliner",
-  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
-  "textures": [
-    { "stem": "FUSELAGE_ALBD", "role": "fuselage" },
-    { "stem": "TAIL_ALBD", "role": "tail" },
-    { "stem": "ENGINES_ALBD", "role": "engines" },
-    { "stem": "WINGS_ALBD", "role": "wings" }
-  ],
+  "thumbnail": {
+    "style": "asobo_card",
+    "size": [
+      1618,
+      582
+    ]
+  },
+  "textures": [],
   "uv_rects": null,
   "texture_fallbacks": [
     "..\\..\\..\\..\\texture",
     "..\\texture",
     "..\\..\\lvfr-a330-900\\texture"
   ],
-  "notes": "UV necunoscute — whole-albedo stub. Ajustează stem-urile după texture.cfg LVFR pe PC."
+  "notes": "STEMS PENDING PC SCAN of Official Steam lvfr-a330-900. LVFR A319 uses FUSELAGE19/TAIL19 pattern — A321/A330 likely similar but not confirmed. Empty textures[] until Scan-MSFS-Textures.ps1 fills them. base_container may be a short folder name like lvfr-319-cfm was for A319.",
+  "verification": {
+    "source": null,
+    "pc_scan": false,
+    "stems_pending": true
+  }
 }

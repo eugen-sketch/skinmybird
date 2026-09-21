@@ -4,6 +4,8 @@
   "category": "avion",
   "simObjectType": "Airplanes",
   "base_container": "..\\Asobo_B787_10",
+  "package_path_hint": "Official\\\\Steam\\\\asobo-aircraft-b787-10 (or similar); liveries asobo-aircraft-b787-10-livery-*",
+  "airplane_folder": "Asobo_B787_10",
   "ui_manufacturer": "Boeing",
   "ui_type": "787-10 Dreamliner",
   "ui_typerole": "Commercial Airliner",
@@ -13,18 +15,51 @@
   "paint_mode": "whole_albedo",
   "tex_size": 2048,
   "silhouette": "airliner",
-  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "thumbnail": {
+    "style": "asobo_card",
+    "size": [
+      1618,
+      582
+    ]
+  },
   "textures": [
-    { "stem": "B787_FUSELAGE_ALBD", "role": "fuselage" },
-    { "stem": "B787_WINGS_ALBD", "role": "wings" },
-    { "stem": "B787_ENGINES_ALBD", "role": "engines" },
-    { "stem": "B787_TAIL_ALBD", "role": "tail" }
+    {
+      "stem": "787_10_AIRFRAME_FUSELAGE1_ALBD",
+      "role": "fuselage"
+    },
+    {
+      "stem": "787_10_AIRFRAME_FUSELAGE2_ALBD",
+      "role": "fuselage"
+    },
+    {
+      "stem": "787_10_AIRFRAME_TAIL_ALBD",
+      "role": "tail"
+    },
+    {
+      "stem": "787_10_AIRFRAME_WINGS_ALBD",
+      "role": "wings"
+    },
+    {
+      "stem": "787_10_AIRFRAME_ENGINE_ALBD",
+      "role": "engines"
+    },
+    {
+      "stem": "787_10_AIRFRAME_LIVERY1_ALBD",
+      "role": "livery"
+    }
   ],
   "uv_rects": null,
   "texture_fallbacks": [
+    "..\\..\\Asobo_B787_10\\texture",
+    "..\\..\\..\\..\\texture\\DetailMap",
+    "..\\..\\..\\..\\texture\\Glass",
+    "..\\..\\..\\..\\texture\\Interiors",
     "..\\..\\..\\..\\texture",
-    "..\\texture",
-    "..\\..\\Asobo_B787_10\\texture"
+    "..\\texture"
   ],
-  "notes": "UV necunoscute — whole-albedo stub. Verifică numele Official pe PC."
+  "notes": "VERIFIED stems from Project-Mega-Pack/base-livery-templates + community 787 Azur ZIP. Official base folder Asobo_B787_10. Newlight is lighting FX, not the airframe. Confirm Official Steam package folder name on PC (asobo-aircraft-b787-10*).",
+  "verification": {
+    "source": "github:Project-Mega-Pack/base-livery-templates + avsim 787 Azur",
+    "pc_scan": false
+  }
 }

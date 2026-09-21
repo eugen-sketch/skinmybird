@@ -2,8 +2,10 @@
   "id": "hpg-hotair-balloon",
   "displayName": "HPG Hot Air Balloon",
   "category": "balon",
-  "simObjectType": "Misc",
+  "simObjectType": "Airplanes",
   "base_container": "..\\hpg-hotair-balloon",
+  "package_path_hint": "D:\\\\MSFS2020\\\\Community\\\\hpg-hotair-balloon",
+  "airplane_folder": "hpg-hotair-balloon",
   "ui_manufacturer": "HPG",
   "ui_type": "Hot Air Balloon",
   "ui_typerole": "Balloon",
@@ -13,16 +15,26 @@
   "paint_mode": "whole_albedo",
   "tex_size": 2048,
   "silhouette": "balloon",
-  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "thumbnail": {
+    "style": "asobo_card",
+    "size": [
+      1618,
+      582
+    ]
+  },
   "textures": [
-    { "stem": "BALLOON_ENVELOPE_ALBD", "role": "fuselage" },
-    { "stem": "BALLOON_BASKET_ALBD", "role": "engines" }
+    {
+      "stem": "BALLON_ENVELOPE_ALBEDO",
+      "role": "fuselage"
+    }
   ],
   "uv_rects": null,
   "texture_fallbacks": [
-    "..\\..\\..\\..\\texture",
-    "..\\texture",
     "..\\..\\hpg-hotair-balloon\\texture"
   ],
-  "notes": "Whole-albedo pe anvelopă + coș. Verifică stem-urile HPG pe PC. SimObjects/Misc."
+  "notes": "Official HPG guide: base_container → hpg-hotair-balloon; texture.cfg fallback.1=..\\\\..\\\\hpg-hotair-balloon\\\\texture. Envelope stem BALLON_ENVELOPE_ALBEDO is from community paintkit mentions (note spelling BALLON); CONFIRM exact *.PNG.DDS stems + SimObjects type (Airplanes vs Misc) on PC. Emissive layer required for night burner glow.",
+  "verification": {
+    "source": "davux.com HPG Hot Air Balloon User Guide",
+    "pc_scan": false
+  }
 }

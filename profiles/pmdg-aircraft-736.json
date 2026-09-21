@@ -4,6 +4,8 @@
   "category": "avion",
   "simObjectType": "Airplanes",
   "base_container": "..\\PMDG 737-600",
+  "package_path_hint": "C:\\\\Users\\\\eugen\\\\AppData\\\\Roaming\\\\Microsoft Flight Simulator\\\\Packages\\\\Official\\\\Steam\\\\pmdg-aircraft-736",
+  "airplane_folder": "PMDG 737-600",
   "ui_manufacturer": "Boeing",
   "ui_type": "737-600",
   "ui_typerole": "Commercial Airliner",
@@ -13,18 +15,24 @@
   "paint_mode": "whole_albedo",
   "tex_size": 2048,
   "silhouette": "airliner",
-  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
-  "textures": [
-    { "stem": "B737_FUSELAGE_ALBD", "role": "fuselage" },
-    { "stem": "B737_WINGS_ALBD", "role": "wings" },
-    { "stem": "B737_ENGINES_ALBD", "role": "engines" },
-    { "stem": "B737_TAIL_ALBD", "role": "tail" }
-  ],
+  "thumbnail": {
+    "style": "asobo_card",
+    "size": [
+      1618,
+      582
+    ]
+  },
+  "textures": [],
   "uv_rects": null,
   "texture_fallbacks": [
-    "..\\..\\..\\..\\texture",
-    "..\\texture",
-    "..\\..\\PMDG 737-600\\texture"
+    "..\\..\\PMDG 737-600\\texture.vc",
+    "..\\..\\PMDG 737-600\\texture.common",
+    "..\\..\\PMDG 737-600\\texture.600"
   ],
-  "notes": "PMDG — base_container și stem-uri pot diferi pe instalare. Whole-albedo stub; verifică pe PC folderul PMDG."
+  "notes": "base_container and fallbacks from official PMDG 737 Paint Kit HowTo (MSFS). Exterior ALBD stem list NOT verified — previous B737_* guesses removed. Run Scan-MSFS-Textures.ps1 on Official Steam pmdg-aircraft-736 and fill textures[]. Liveries often live under Community pmdg-aircraft-737-liveries.",
+  "verification": {
+    "source": "PMDG_737_Paint_Kit_HowTo.pdf",
+    "pc_scan": false,
+    "stems_pending": true
+  }
 }
