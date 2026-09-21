@@ -3,86 +3,118 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SkinMyBird — Recolorează A320neo</title>
+  <title>SkinMyBird — Editor A320neo</title>
   <link rel="icon" type="image/png" href="icon.png" />
   <link rel="stylesheet" href="css/styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
   <script src="js/app.js" defer></script>
 </head>
 <body>
-  <div class="bg-grid"></div>
+  <div class="bg-grid" aria-hidden="true"></div>
+
   <header class="top">
     <div class="brand">
-      <img src="icon.png" alt="SkinMyBird" class="logo" width="56" height="56" />
+      <img src="icon.png" alt="SkinMyBird — pasăre pilot" class="logo" width="52" height="52" />
       <div>
         <h1>SkinMyBird</h1>
-        <p class="tag">Recolorează A320neo · MSFS 2020 · <span class="price">€9.99</span> one-time</p>
+        <p class="tag">Editor livery A320neo · MSFS 2020 · <span class="price">€9.99</span></p>
       </div>
     </div>
     <div class="header-actions">
-      <button type="button" class="btn ghost" id="btn-preset">Demo: Eugen Orange</button>
-      <a class="btn ghost" href="../README.md" target="_blank" rel="noopener">README</a>
+      <button type="button" class="btn ghost" id="btn-preset" title="Încarcă presetul Eugen Orange">
+        🍊 Eugen Orange
+      </button>
+      <button type="button" class="btn secondary" id="btn-config">Config JSON</button>
+      <button type="button" class="btn primary" id="btn-generate">Descarcă pachet ZIP</button>
     </div>
   </header>
 
-  <main class="layout">
-    <section class="panel controls">
-      <h2>Zone culori</h2>
-      <div class="color-grid">
-        <label>Fuselage <input type="color" id="c-fuselage" value="#FF6A00" /></label>
-        <label>Wings <input type="color" id="c-wings" value="#111111" /></label>
-        <label>Engines <input type="color" id="c-engines" value="#222222" /></label>
-        <label>Tail <input type="color" id="c-tail" value="#FF6A00" /></label>
+  <main class="layout canva">
+    <!-- Left tools (Canva-style) -->
+    <aside class="panel tools" aria-label="Instrumente">
+      <nav class="tool-tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="culori" role="tab">Culori</button>
+        <button type="button" class="tab" data-tab="stickere" role="tab">Stickere</button>
+        <button type="button" class="tab" data-tab="identitate" role="tab">Identitate</button>
+      </nav>
+
+      <div class="tab-panel active" id="tab-culori" role="tabpanel">
+        <h2>Zone pe avion</h2>
+        <div class="color-grid">
+          <label>Fuselaj <input type="color" id="c-fuselage" value="#FF6A00" /></label>
+          <label>Aripi <input type="color" id="c-wings" value="#111111" /></label>
+          <label>Motoare <input type="color" id="c-engines" value="#222222" /></label>
+          <label>Coadă <input type="color" id="c-tail" value="#FF6A00" /></label>
+        </div>
+        <p class="hint-block">Schimbările apar instant în previzualizare.</p>
       </div>
 
-      <h2>Identitate</h2>
-      <div class="field-row">
-        <label>Nume livery <input type="text" id="livery-name" value="Eugen Orange" maxlength="40" /></label>
-        <label>Înmatriculare <input type="text" id="registration" value="YR-EUG" maxlength="10" /></label>
+      <div class="tab-panel" id="tab-stickere" role="tabpanel" hidden>
+        <h2>Stickere</h2>
+        <div class="stickers">
+          <label class="check"><input type="checkbox" id="st-stripe" checked /> Bandă echipă (stripe)</label>
+          <label class="check"><input type="checkbox" id="st-heart" /> Inimă</label>
+          <label class="check"><input type="checkbox" id="st-text" checked /> Text pe fuselaj</label>
+        </div>
+        <label class="field-block">Text sticker
+          <input type="text" id="sticker-text" value="YR-EUG" maxlength="16" placeholder="ex. YR-EUG" />
+        </label>
+        <h2>Poză / decal</h2>
+        <label class="file-drop">
+          <input type="file" id="soacra" accept="image/*" />
+          <span id="soacra-label">Încarcă o poză → decal pe fuselaj</span>
+        </label>
+        <button type="button" class="btn ghost slim" id="btn-clear-photo" hidden>Șterge poza</button>
       </div>
 
-      <h2>Stickere</h2>
-      <div class="stickers">
-        <label class="check"><input type="checkbox" id="st-stripe" checked /> Team stripe</label>
-        <label class="check"><input type="checkbox" id="st-heart" /> Heart</label>
-        <label class="check"><input type="checkbox" id="st-text" checked /> Text înregistrare pe fuselage</label>
+      <div class="tab-panel" id="tab-identitate" role="tabpanel" hidden>
+        <h2>Identitate</h2>
+        <label class="field-block">Nume livery
+          <input type="text" id="livery-name" value="Eugen Orange" maxlength="40" />
+        </label>
+        <label class="field-block">Înmatriculare
+          <input type="text" id="registration" value="YR-EUG" maxlength="10" />
+        </label>
+        <p class="hint-block">Apare în lista MSFS și pe thumbnail.</p>
       </div>
 
-      <h2>Poza soacră <span class="hint">(decal stub)</span></h2>
-      <label class="file-drop">
-        <input type="file" id="soacra" accept="image/*" />
-        <span id="soacra-label">Încarcă o poză → pe fuselage UV (approx)</span>
-      </label>
-
-      <div class="actions">
-        <button type="button" class="btn primary" id="btn-generate">Generate package (ZIP)</button>
-        <button type="button" class="btn secondary" id="btn-config">Descarcă config JSON</button>
+      <div class="tools-foot">
+        <p class="fineprint">
+          ZIP-ul din browser include thumbnail-uri + PNG 2K.
+          Pentru <strong>DDS real</strong> (obligatoriu în joc): rulează
+          <code>python -m exporter.export --preset eugen-orange --zip</code>
+          (folosește wine + texconv pe box).
+        </p>
       </div>
-      <p class="fineprint">
-        Exportul din browser creează un ZIP Community-shaped cu PNG placeholder.
-        Pentru pipeline-ul Python: <code>python -m exporter.export --preset eugen-orange</code>
-      </p>
-    </section>
+    </aside>
 
-    <section class="panel preview">
+    <!-- Center live preview -->
+    <section class="panel preview" aria-label="Previzualizare">
       <div class="preview-head">
-        <h2>Preview 2D</h2>
-        <span class="badge">UV mock · nu 3D</span>
+        <div>
+          <h2>Previzualizare live</h2>
+          <p class="sub">Profil A320neo · actualizare instant</p>
+        </div>
+        <span class="badge">MSFS 2020 Community</span>
       </div>
       <div class="stage">
-        <canvas id="preview" width="900" height="420" aria-label="A320 silhouette preview"></canvas>
+        <canvas id="preview" width="1000" height="480" aria-label="Siluetă A320neo"></canvas>
       </div>
       <div class="swatches" id="swatches"></div>
+      <div class="preview-actions">
+        <button type="button" class="btn primary" id="btn-generate-2">Descarcă pachet ZIP</button>
+        <button type="button" class="btn ghost" id="btn-preset-2">Preset Eugen Orange</button>
+      </div>
       <p class="assume">
-        Asumpții v0: silhouette 2D simplificat; tail pe vertical stabilizer;
-        texturile reale Asobo au UV split (ex. rudder pe fuselage+wings). DDS + paintkit = roadmap.
+        MSFS citește texturi <code>*.PNG.DDS</code> (BC7) + JSON + thumbnail.
+        PNG simplu = fuselaj alb/albastru default. Exporterul Python generează DDS automat.
       </p>
     </section>
   </main>
 
   <footer class="foot">
-    <span>SkinMyBird MVP · Windows-friendly · Community folder export</span>
-    <span>Next: texconv DDS · paintkit real · MSFS 2024</span>
+    <span>SkinMyBird · bird-pilot · €9.99 one-time</span>
+    <span>v0.2 · DDS BC7 · Community package</span>
   </footer>
 </body>
 </html>

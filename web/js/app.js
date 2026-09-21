@@ -1,4 +1,4 @@
-/* SkinMyBird web UI — live 2D A320 silhouette + Community ZIP export (JSZip) */
+/* SkinMyBird web UI — Canva-like editor, live A320neo preview, Community ZIP */
 (function () {
   const $ = (id) => document.getElementById(id);
 
@@ -11,8 +11,9 @@
     },
     name: "Eugen Orange",
     registration: "YR-EUG",
+    stickerText: "YR-EUG",
     stickers: { stripe: true, heart: false, text: true },
-    soacra: null, // HTMLImageElement | null
+    soacra: null,
     soacraName: null,
   };
 
@@ -23,6 +24,7 @@
     tail: "#FF6A00",
     name: "Eugen Orange",
     registration: "YR-EUG",
+    stickerText: "YR-EUG",
   };
 
   function syncInputsFromState() {
@@ -32,6 +34,7 @@
     $("c-tail").value = state.colors.tail;
     $("livery-name").value = state.name;
     $("registration").value = state.registration;
+    $("sticker-text").value = state.stickerText;
     $("st-stripe").checked = state.stickers.stripe;
     $("st-heart").checked = state.stickers.heart;
     $("st-text").checked = state.stickers.text;
@@ -44,16 +47,19 @@
     state.colors.tail = $("c-tail").value;
     state.name = $("livery-name").value.trim() || "Custom";
     state.registration = $("registration").value.trim() || "SMB-001";
+    state.stickerText = $("sticker-text").value.trim() || state.registration;
     state.stickers.stripe = $("st-stripe").checked;
     state.stickers.heart = $("st-heart").checked;
     state.stickers.text = $("st-text").checked;
   }
 
   function slugify(t) {
-    return t
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_|_$/g, "") || "livery";
+    return (
+      t
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_|_$/g, "") || "livery"
+    );
   }
 
   function buildConfig() {
@@ -68,7 +74,11 @@
       stickers: [
         { type: "team_stripe", enabled: state.stickers.stripe },
         { type: "heart", enabled: state.stickers.heart },
-        { type: "custom_text", enabled: state.stickers.text, text: state.registration },
+        {
+          type: "custom_text",
+          enabled: state.stickers.text,
+          text: state.stickerText,
+        },
       ],
       soacraPhoto: state.soacraName,
     };
@@ -77,10 +87,10 @@
   function updateSwatches() {
     const el = $("swatches");
     const entries = [
-      ["Fuselage", state.colors.fuselage],
-      ["Wings", state.colors.wings],
-      ["Engines", state.colors.engines],
-      ["Tail", state.colors.tail],
+      ["Fuselaj", state.colors.fuselage],
+      ["Aripi", state.colors.wings],
+      ["Motoare", state.colors.engines],
+      ["Coadă", state.colors.tail],
     ];
     el.innerHTML = entries
       .map(
@@ -90,156 +100,14 @@
       .join("");
   }
 
-  /** Draw simplified A320 side silhouette with zone fills */
-  function drawPreview() {
-    readInputs();
-    updateSwatches();
-    const canvas = $("preview");
-    const ctx = canvas.getContext("2d");
-    const W = canvas.width;
-    const H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
-
-    // runway glow
-    const g = ctx.createLinearGradient(0, H * 0.7, 0, H);
-    g.addColorStop(0, "rgba(61,214,198,0)");
-    g.addColorStop(1, "rgba(61,214,198,0.08)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-
-    const y = H * 0.52;
-    const scale = 1;
-
-    // Wings (behind fuselage partially)
-    ctx.save();
-    ctx.translate(W * 0.48, y + 10);
-    ctx.fillStyle = state.colors.wings;
-    ctx.beginPath();
-    ctx.moveTo(-40, 0);
-    ctx.lineTo(180, 18);
-    ctx.lineTo(200, 28);
-    ctx.lineTo(-60, 22);
-    ctx.closePath();
-    ctx.fill();
-    // far wing tip shadow
-    ctx.globalAlpha = 0.45;
-    ctx.beginPath();
-    ctx.moveTo(-20, -8);
-    ctx.lineTo(-160, -70);
-    ctx.lineTo(-150, -55);
-    ctx.lineTo(20, 5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    // Engines
-    ctx.fillStyle = state.colors.engines;
-    roundRect(ctx, W * 0.42, y + 18, 70, 36, 14);
-    ctx.fill();
-    roundRect(ctx, W * 0.55, y + 22, 62, 32, 12);
-    ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.15)";
-    roundRect(ctx, W * 0.425, y + 26, 22, 20, 10);
-    ctx.fill();
-
-    // Fuselage body
-    ctx.fillStyle = state.colors.fuselage;
-    ctx.beginPath();
-    // nose → body → tail boom
-    ctx.moveTo(W * 0.12, y);
-    ctx.quadraticCurveTo(W * 0.14, y - 38, W * 0.22, y - 42);
-    ctx.lineTo(W * 0.72, y - 42);
-    ctx.quadraticCurveTo(W * 0.78, y - 40, W * 0.82, y - 10);
-    ctx.lineTo(W * 0.82, y + 18);
-    ctx.quadraticCurveTo(W * 0.78, y + 38, W * 0.72, y + 38);
-    ctx.lineTo(W * 0.22, y + 38);
-    ctx.quadraticCurveTo(W * 0.14, y + 30, W * 0.12, y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Cockpit windows
-    ctx.fillStyle = "rgba(20,30,50,0.85)";
-    roundRect(ctx, W * 0.18, y - 28, 48, 16, 6);
-    ctx.fill();
-    // cabin windows
-    for (let i = 0; i < 14; i++) {
-      const x = W * 0.28 + i * 22;
-      roundRect(ctx, x, y - 18, 12, 10, 3);
-      ctx.fill();
-    }
-
-    // Vertical stabilizer (tail)
-    ctx.fillStyle = state.colors.tail;
-    ctx.beginPath();
-    ctx.moveTo(W * 0.74, y - 40);
-    ctx.lineTo(W * 0.78, y - 130);
-    ctx.lineTo(W * 0.88, y - 130);
-    ctx.lineTo(W * 0.84, y - 40);
-    ctx.closePath();
-    ctx.fill();
-    // horizontal stab
-    ctx.beginPath();
-    ctx.moveTo(W * 0.76, y - 8);
-    ctx.lineTo(W * 0.92, y - 18);
-    ctx.lineTo(W * 0.92, y - 4);
-    ctx.lineTo(W * 0.78, y + 6);
-    ctx.closePath();
-    ctx.fill();
-
-    // Team stripe
-    if (state.stickers.stripe) {
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(W * 0.26, y + 8, W * 0.46, 8);
-      ctx.fillStyle = state.colors.tail;
-      ctx.fillRect(W * 0.26, y + 16, W * 0.46, 6);
-    }
-
-    // Heart
-    if (state.stickers.heart) {
-      drawHeart(ctx, W * 0.4, y - 5, 14, "#dc2840");
-    }
-
-    // Registration text
-    if (state.stickers.text) {
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 20px Segoe UI, sans-serif";
-      ctx.fillText(state.registration, W * 0.5, y - 8);
-    }
-
-    // Soacră photo decal
-    if (state.soacra) {
-      const pw = 48;
-      const ph = 48;
-      ctx.save();
-      roundRect(ctx, W * 0.34, y + 20, pw, ph, 6);
-      ctx.clip();
-      ctx.drawImage(state.soacra, W * 0.34, y + 20, pw, ph);
-      ctx.restore();
-      ctx.strokeStyle = "rgba(255,255,255,0.5)";
-      ctx.lineWidth = 2;
-      roundRect(ctx, W * 0.34, y + 20, pw, ph, 6);
-      ctx.stroke();
-    }
-
-    // Ground shadow
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.beginPath();
-    ctx.ellipse(W * 0.48, H * 0.82, 220 * scale, 14, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Label
-    ctx.fillStyle = "rgba(143,160,191,0.9)";
-    ctx.font = "12px Segoe UI, sans-serif";
-    ctx.fillText(state.name + " · Asobo A320neo variation (mock)", 24, 28);
-  }
-
   function roundRect(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
     ctx.closePath();
   }
 
@@ -254,9 +122,236 @@
     ctx.fill();
   }
 
-  /** Create flat PNG albedo as blob via offscreen canvas */
+  /** Improved A320neo side-profile silhouette */
+  function drawPreview() {
+    readInputs();
+    updateSwatches();
+    const canvas = $("preview");
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // Sky / night ramp
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, "#0e182c");
+    sky.addColorStop(0.55, "#0a1220");
+    sky.addColorStop(1, "#070c14");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // Soft teal glow on tarmac
+    const g = ctx.createRadialGradient(W * 0.5, H * 0.88, 10, W * 0.5, H * 0.9, W * 0.45);
+    g.addColorStop(0, "rgba(61,214,198,0.14)");
+    g.addColorStop(1, "rgba(61,214,198,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    const y = H * 0.55;
+
+    // Ground shadow
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath();
+    ctx.ellipse(W * 0.48, H * 0.82, 260, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Far wing (swept, above)
+    ctx.fillStyle = state.colors.wings;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.4, y - 6);
+    ctx.lineTo(W * 0.18, y - 110);
+    ctx.lineTo(W * 0.22, y - 95);
+    ctx.quadraticCurveTo(W * 0.36, y - 40, W * 0.46, y + 2);
+    ctx.closePath();
+    ctx.fill();
+    // Winglet hint
+    ctx.beginPath();
+    ctx.moveTo(W * 0.18, y - 110);
+    ctx.lineTo(W * 0.155, y - 130);
+    ctx.lineTo(W * 0.175, y - 118);
+    ctx.closePath();
+    ctx.fill();
+
+    // Near wing (below fuselage)
+    ctx.beginPath();
+    ctx.moveTo(W * 0.42, y + 10);
+    ctx.lineTo(W * 0.72, y + 38);
+    ctx.lineTo(W * 0.74, y + 52);
+    ctx.lineTo(W * 0.4, y + 28);
+    ctx.closePath();
+    ctx.fill();
+
+    // Engines (CFM-style underwing pods)
+    ctx.fillStyle = state.colors.engines;
+    roundRect(ctx, W * 0.4, y + 20, 78, 40, 18);
+    ctx.fill();
+    roundRect(ctx, W * 0.54, y + 26, 68, 34, 15);
+    ctx.fill();
+    // Intake rings
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    roundRect(ctx, W * 0.405, y + 28, 24, 24, 12);
+    ctx.fill();
+    roundRect(ctx, W * 0.545, y + 32, 20, 20, 10);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.lineWidth = 2;
+    roundRect(ctx, W * 0.4, y + 20, 78, 40, 18);
+    ctx.stroke();
+
+    // Fuselage (tube + pointed nose + tapered tailcone)
+    ctx.fillStyle = state.colors.fuselage;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.1, y);
+    ctx.quadraticCurveTo(W * 0.11, y - 34, W * 0.18, y - 40);
+    ctx.lineTo(W * 0.7, y - 42);
+    ctx.quadraticCurveTo(W * 0.78, y - 38, W * 0.82, y - 8);
+    ctx.lineTo(W * 0.83, y + 16);
+    ctx.quadraticCurveTo(W * 0.78, y + 38, W * 0.7, y + 38);
+    ctx.lineTo(W * 0.2, y + 36);
+    ctx.quadraticCurveTo(W * 0.12, y + 28, W * 0.1, y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Belly shade
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.beginPath();
+    ctx.moveTo(W * 0.16, y + 10);
+    ctx.quadraticCurveTo(W * 0.45, y + 22, W * 0.78, y + 8);
+    ctx.lineTo(W * 0.78, y + 34);
+    ctx.quadraticCurveTo(W * 0.45, y + 42, W * 0.16, y + 32);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cockpit windows (A320 angled look)
+    ctx.fillStyle = "rgba(18, 28, 48, 0.92)";
+    ctx.beginPath();
+    ctx.moveTo(W * 0.175, y - 28);
+    ctx.lineTo(W * 0.235, y - 30);
+    ctx.lineTo(W * 0.245, y - 14);
+    ctx.lineTo(W * 0.17, y - 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(120, 170, 220, 0.15)";
+    ctx.fill();
+
+    // Cabin windows
+    ctx.fillStyle = "rgba(20,30,50,0.88)";
+    for (let i = 0; i < 16; i++) {
+      const x = W * 0.27 + i * 24;
+      roundRect(ctx, x, y - 16, 11, 9, 3);
+      ctx.fill();
+    }
+
+    // Passenger doors hints
+    ctx.strokeStyle = "rgba(0,0,0,0.2)";
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, W * 0.25, y - 32, 14, 52, 3);
+    ctx.stroke();
+    roundRect(ctx, W * 0.68, y - 32, 14, 52, 3);
+    ctx.stroke();
+
+    // Vertical stabilizer (A320 fin)
+    ctx.fillStyle = state.colors.tail;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.72, y - 40);
+    ctx.lineTo(W * 0.76, y - 145);
+    ctx.lineTo(W * 0.88, y - 145);
+    ctx.quadraticCurveTo(W * 0.9, y - 130, W * 0.86, y - 40);
+    ctx.closePath();
+    ctx.fill();
+    // Fin leading edge shade
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.beginPath();
+    ctx.moveTo(W * 0.72, y - 40);
+    ctx.lineTo(W * 0.76, y - 145);
+    ctx.lineTo(W * 0.785, y - 145);
+    ctx.lineTo(W * 0.74, y - 40);
+    ctx.closePath();
+    ctx.fill();
+
+    // Horizontal stabilizer
+    ctx.fillStyle = state.colors.tail;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.74, y - 6);
+    ctx.lineTo(W * 0.93, y - 20);
+    ctx.lineTo(W * 0.94, y - 6);
+    ctx.lineTo(W * 0.76, y + 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // APU exhaust hint
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    roundRect(ctx, W * 0.805, y - 2, 14, 10, 3);
+    ctx.fill();
+
+    // Nose gear / main gear simple
+    ctx.strokeStyle = "rgba(180,190,210,0.55)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.22, y + 36);
+    ctx.lineTo(W * 0.22, y + 58);
+    ctx.moveTo(W * 0.48, y + 36);
+    ctx.lineTo(W * 0.48, y + 62);
+    ctx.stroke();
+    ctx.fillStyle = "#222";
+    ctx.beginPath();
+    ctx.arc(W * 0.22, y + 62, 7, 0, Math.PI * 2);
+    ctx.arc(W * 0.46, y + 66, 9, 0, Math.PI * 2);
+    ctx.arc(W * 0.5, y + 66, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Team stripe
+    if (state.stickers.stripe) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(W * 0.26, y + 10, W * 0.44, 7);
+      ctx.fillStyle = state.colors.tail;
+      ctx.fillRect(W * 0.26, y + 17, W * 0.44, 5);
+    }
+
+    // Heart
+    if (state.stickers.heart) {
+      drawHeart(ctx, W * 0.38, y - 4, 13, "#dc2840");
+    }
+
+    // Registration / custom text
+    if (state.stickers.text) {
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 22px Segoe UI, system-ui, sans-serif";
+      ctx.fillText(state.stickerText || state.registration, W * 0.48, y - 6);
+    }
+
+    // Photo decal
+    if (state.soacra) {
+      const pw = 52;
+      const ph = 52;
+      const dx = W * 0.33;
+      const dy = y + 18;
+      ctx.save();
+      roundRect(ctx, dx, dy, pw, ph, 6);
+      ctx.clip();
+      ctx.drawImage(state.soacra, dx, dy, pw, ph);
+      ctx.restore();
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 2;
+      roundRect(ctx, dx, dy, pw, ph, 6);
+      ctx.stroke();
+    }
+
+    // Title overlay
+    ctx.fillStyle = "rgba(232,238,252,0.95)";
+    ctx.font = "600 18px Segoe UI, system-ui, sans-serif";
+    ctx.fillText(state.name, 28, 36);
+    ctx.fillStyle = "rgba(143,160,191,0.95)";
+    ctx.font = "13px Segoe UI, system-ui, sans-serif";
+    ctx.fillText(
+      state.registration + " · Asobo A320neo · SkinMyBird",
+      28,
+      56
+    );
+  }
+
   function makeTexturePng(kind) {
-    const size = 512;
+    const size = 2048;
     const c = document.createElement("canvas");
     c.width = size;
     c.height = size;
@@ -269,18 +364,18 @@
       ctx.fillRect(size - tw, 0, tw, size);
       if (state.stickers.stripe) {
         ctx.fillStyle = "#fff";
-        ctx.fillRect(40, size / 2 + 20, size - tw - 60, 16);
+        ctx.fillRect(80, size / 2 + 40, size - tw - 120, 28);
         ctx.fillStyle = state.colors.tail;
-        ctx.fillRect(40, size / 2 + 36, size - tw - 60, 12);
+        ctx.fillRect(80, size / 2 + 68, size - tw - 120, 22);
       }
-      if (state.stickers.heart) drawHeart(ctx, size / 3, size / 3, 28, "#dc2840");
+      if (state.stickers.heart) drawHeart(ctx, size / 3, size / 3, 55, "#dc2840");
       if (state.stickers.text) {
         ctx.fillStyle = "#fff";
-        ctx.font = "bold 36px Segoe UI, sans-serif";
-        ctx.fillText(state.registration, 100, 100);
+        ctx.font = "bold 96px Segoe UI, sans-serif";
+        ctx.fillText(state.stickerText || state.registration, 280, 280);
       }
       if (state.soacra) {
-        ctx.drawImage(state.soacra, size / 2 - 60, size / 2 + 40, 120, 120);
+        ctx.drawImage(state.soacra, size / 2 - 140, size / 2 + 100, 280, 280);
       }
     } else if (kind === "wings") {
       ctx.fillStyle = state.colors.wings;
@@ -290,23 +385,31 @@
       ctx.fillRect(0, 0, size, size);
     } else if (kind === "livery") {
       ctx.clearRect(0, 0, size, size);
-      if (state.stickers.heart) drawHeart(ctx, size / 2, size / 2, 40, "#dc2840");
+      if (state.stickers.heart) drawHeart(ctx, size / 2, size / 2, 80, "#dc2840");
     } else if (kind === "texts") {
       ctx.clearRect(0, 0, size, size);
       ctx.fillStyle = "#fff";
-      ctx.font = "bold 48px Segoe UI, sans-serif";
-      ctx.fillText(state.registration, 40, size / 2);
-    }
-    // watermark
-    if (kind !== "livery" && kind !== "texts") {
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
-      ctx.font = "14px Segoe UI, sans-serif";
-      ctx.fillText("SkinMyBird placeholder PNG — convert to DDS", 12, 24);
+      ctx.font = "bold 120px Segoe UI, sans-serif";
+      ctx.fillText(state.registration, 80, size / 2);
     }
     return new Promise((resolve) => c.toBlob((b) => resolve(b), "image/png"));
   }
 
-  function aircraftCfg(slug, textureName, title) {
+  function canvasToJpegBlob(quality) {
+    return new Promise((resolve) => {
+      const src = $("preview");
+      const c = document.createElement("canvas");
+      c.width = 720;
+      c.height = 404;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#0a101c";
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(src, 0, 0, c.width, c.height);
+      c.toBlob((b) => resolve(b), "image/jpeg", quality || 0.88);
+    });
+  }
+
+  function aircraftCfg(textureName, title) {
     return `[VERSION]
 major = 1
 minor = 0
@@ -320,7 +423,9 @@ model = ""
 panel = ""
 sound = ""
 texture = "${textureName}"
-description = "SkinMyBird custom A320neo livery — ${state.name}. Placeholder PNG textures."
+kb_checklists = ""
+kb_reference = ""
+description = "SkinMyBird custom A320neo livery — ${state.name}. Convert PNG→BC7 DDS before flight."
 wip_indicator = 0
 ui_manufacturer = "Airbus"
 ui_type = "A320neo"
@@ -329,6 +434,7 @@ ui_typerole = "Commercial Airliner"
 ui_createdby = "SkinMyBird"
 atc_id = "${state.registration}"
 atc_airline = "SkinMyBird"
+atc_flight_number = "1"
 icao_airline = "SMB"
 isAirTraffic = 0
 isUserSelectable = 1
@@ -337,13 +443,12 @@ isUserSelectable = 1
 
   function textureCfg() {
     return `[fltsim]
-fallback.1=..\\..\\Asobo_A320_NEO\\texture
-fallback.2=..\\..\\..\\..\\texture\\DetailMap
-fallback.3=..\\..\\..\\..\\texture\\Glass
-fallback.4=..\\..\\..\\..\\texture\\Interiors
-fallback.5=..\\..\\..\\..\\texture
-fallback.6=..\\..\\..\\..\\texture\\Livery
-fallback.7=..\\..\\..\\..\\texture\\Planes_Generic
+fallback.1=..\\..\\..\\..\\texture\\DetailMap
+fallback.2=..\\..\\..\\..\\texture\\Glass
+fallback.3=..\\..\\..\\..\\texture\\Interiors
+fallback.4=..\\..\\..\\..\\texture
+fallback.5=..\\texture
+fallback.6=..\\..\\Asobo_A320_NEO\\texture
 `;
   }
 
@@ -353,6 +458,7 @@ fallback.7=..\\..\\..\\..\\texture\\Planes_Generic
       return;
     }
     readInputs();
+    drawPreview();
     const slug = slugify(state.name);
     const packageFolder = `skinmybird-a320neo-${slug}`;
     const aircraftFolder = `skinmybird_a320neo_${slug}`;
@@ -368,25 +474,54 @@ fallback.7=..\\..\\..\\..\\texture\\Planes_Generic
       title: `SkinMyBird A320neo — ${state.name}`,
       manufacturer: "Airbus",
       creator: "SkinMyBird",
-      package_version: "0.1.0",
+      package_version: "0.2.0",
       minimum_game_version: "1.7.12",
       release_notes: {
         neutral: {
           LastUpdate: new Date().toISOString().slice(0, 10),
-          OlderHistory: "SkinMyBird MVP placeholder PNG textures. Convert to DDS next.",
+          OlderHistory:
+            "Browser ZIP: PNG 2K + thumbnails. Convert to BC7 *.PNG.DDS with convert_to_dds / Python exporter before flight.",
         },
       },
     };
+    const acCfg = aircraftCfg(textureName, title);
+    const txCfg = textureCfg();
+    const readme = `# SkinMyBird — Instalare
+
+Copiază folderul \`${packageFolder}\` în **Community**, restart MSFS, alege **${state.name}**.
+
+## IMPORTANT
+MSFS 2020 are nevoie de texturi \`*.PNG.DDS\` (BC7), nu PNG simplu.
+Acest ZIP din browser include PNG 2K + thumbnail-uri.
+Pe PC rulează \`convert_to_dds.ps1\` din pachet SAU pe box:
+\`python -m exporter.export --preset eugen-orange --zip\`
+
+Fără DDS → fuselaj alb/albastru default.
+`;
+
     zip.file(`${packageFolder}/manifest.json`, JSON.stringify(manifest, null, 2));
-    zip.file(`${base}/aircraft.cfg`, aircraftCfg(slug, textureName, title));
-    zip.file(`${tex}/texture.cfg`, textureCfg());
+    zip.file(`${base}/aircraft.cfg`, acCfg);
+    zip.file(`${tex}/texture.cfg`, txCfg);
+    zip.file(`${packageFolder}/README_INSTALL_RO.md`, readme);
     zip.file(
-      `${packageFolder}/README_INSTALL_RO.md`,
-      `# SkinMyBird — Instalare\n\nCopiază folderul \`${packageFolder}\` în Community, restart MSFS, alege livery **${state.name}**.\n\nTexturi = PNG placeholder → DDS + paintkit pe roadmap.\n`
-    );
-    zip.file(
-      `${tex}/TEXTURES_README.txt`,
-      "PLACEHOLDER PNG — replace with DDS from paintkit + texconv.\n"
+      `${packageFolder}/convert_to_dds.ps1`,
+      `# Convert PNG → BC7 *.PNG.DDS (MSFS Community)
+$ErrorActionPreference = 'Stop'
+$Texconv = $env:SKINMYBIRD_TEXCONV
+if (-not $Texconv) { $Texconv = 'texconv.exe' }
+$TexDir = Join-Path $PSScriptRoot 'SimObjects\\Airplanes\\${aircraftFolder}\\texture.${textureName}'
+Get-ChildItem $TexDir -Filter '*.png' | ForEach-Object {
+  & $Texconv -f BC7_UNORM -y -o $TexDir $_.FullName
+  $dds = Join-Path $TexDir ($_.BaseName + '.dds')
+  if (-not (Test-Path $dds)) { $dds = Join-Path $TexDir ($_.BaseName + '.DDS') }
+  $dest = Join-Path $TexDir ($_.BaseName + '.PNG.DDS')
+  Move-Item -Force $dds $dest
+  @{ Version=2; SourceFileName=(Split-Path $dest -Leaf); Flags=@('FL_BITMAP_COMPRESSION','FL_BITMAP_MIPMAP') } |
+    ConvertTo-Json | Set-Content ($dest + '.json') -Encoding UTF8
+  Remove-Item $_.FullName -Force
+}
+Write-Host 'Gata. Regenerare layout.json recomandată via exporter Python.'
+`
     );
 
     const fuselage = await makeTexturePng("fuselage");
@@ -394,37 +529,61 @@ fallback.7=..\\..\\..\\..\\texture\\Planes_Generic
     const engines = await makeTexturePng("engines");
     const livery = await makeTexturePng("livery");
     const texts = await makeTexturePng("texts");
+    const thumb = await canvasToJpegBlob(0.88);
+    // small thumb
+    const smallBlob = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = 256;
+        c.height = 144;
+        c.getContext("2d").drawImage(img, 0, 0, 256, 144);
+        c.toBlob((b) => resolve(b), "image/jpeg", 0.85);
+      };
+      img.src = URL.createObjectURL(thumb);
+    });
+
     zip.file(`${tex}/A320NEO_AIRFRAME_FUSELAGE_ALBD.png`, fuselage);
     zip.file(`${tex}/A320NEO_AIRFRAME_WINGS_ALBD.png`, wings);
     zip.file(`${tex}/A320NEO_AIRFRAME_ENGINES_ALBD.png`, engines);
     zip.file(`${tex}/A320NEO_AIRFRAME_LIVERY_ALBD.png`, livery);
     zip.file(`${tex}/A320NEO_AIRFRAME_LIVERY_TEXTS_ALBD.png`, texts);
+    zip.file(`${tex}/thumbnail.jpg`, thumb);
+    zip.file(`${tex}/thumbnail_small.jpg`, smallBlob);
 
-    // layout.json after we know file list — rough sizes from blobs
     const content = [];
     const now = Date.now() / 1000;
     const date = Math.floor((now + 11644473600) * 10000000);
     async function addLayout(path, blobOrStr) {
-      let size;
-      if (typeof blobOrStr === "string") size = new Blob([blobOrStr]).size;
-      else size = blobOrStr.size;
+      const size =
+        typeof blobOrStr === "string"
+          ? new Blob([blobOrStr]).size
+          : blobOrStr.size;
       content.push({ path, size, date });
     }
     await addLayout("manifest.json", JSON.stringify(manifest, null, 2));
-    await addLayout(`SimObjects/Airplanes/${aircraftFolder}/aircraft.cfg`, aircraftCfg(slug, textureName, title));
-    await addLayout(`SimObjects/Airplanes/${aircraftFolder}/texture.${textureName}/texture.cfg`, textureCfg());
+    await addLayout(`SimObjects/Airplanes/${aircraftFolder}/aircraft.cfg`, acCfg);
+    await addLayout(
+      `SimObjects/Airplanes/${aircraftFolder}/texture.${textureName}/texture.cfg`,
+      txCfg
+    );
     for (const [name, blob] of [
       ["A320NEO_AIRFRAME_FUSELAGE_ALBD.png", fuselage],
       ["A320NEO_AIRFRAME_WINGS_ALBD.png", wings],
       ["A320NEO_AIRFRAME_ENGINES_ALBD.png", engines],
       ["A320NEO_AIRFRAME_LIVERY_ALBD.png", livery],
       ["A320NEO_AIRFRAME_LIVERY_TEXTS_ALBD.png", texts],
+      ["thumbnail.jpg", thumb],
+      ["thumbnail_small.jpg", smallBlob],
     ]) {
-      await addLayout(`SimObjects/Airplanes/${aircraftFolder}/texture.${textureName}/${name}`, blob);
+      await addLayout(
+        `SimObjects/Airplanes/${aircraftFolder}/texture.${textureName}/${name}`,
+        blob
+      );
     }
     zip.file(`${packageFolder}/layout.json`, JSON.stringify({ content }, null, 2));
 
-    const blob = await zip.generateAsync({ type: "blob" });
+    const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${packageFolder}.zip`;
@@ -434,7 +593,9 @@ fallback.7=..\\..\\..\\..\\texture\\Planes_Generic
 
   function downloadConfig() {
     const cfg = buildConfig();
-    const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(cfg, null, 2)], {
+      type: "application/json",
+    });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `skinmybird-${cfg.id}.json`;
@@ -451,18 +612,62 @@ fallback.7=..\\..\\..\\..\\texture\\Planes_Generic
     });
     state.name = EUGEN.name;
     state.registration = EUGEN.registration;
+    state.stickerText = EUGEN.stickerText;
     state.stickers = { stripe: true, heart: false, text: true };
     syncInputsFromState();
     drawPreview();
   }
 
-  // Events
-  ["c-fuselage", "c-wings", "c-engines", "c-tail", "livery-name", "registration", "st-stripe", "st-heart", "st-text"].forEach(
-    (id) => {
-      $(id).addEventListener("input", drawPreview);
-      $(id).addEventListener("change", drawPreview);
+  function setBusy(busy) {
+    ["btn-generate", "btn-generate-2"].forEach((id) => {
+      const b = $(id);
+      if (!b) return;
+      b.disabled = busy;
+      b.textContent = busy ? "Se generează…" : "Descarcă pachet ZIP";
+    });
+  }
+
+  async function onGenerate() {
+    setBusy(true);
+    try {
+      await generateZip();
+    } catch (err) {
+      alert("Eroare export: " + (err && err.message ? err.message : err));
+    } finally {
+      setBusy(false);
     }
-  );
+  }
+
+  // Tabs
+  document.querySelectorAll(".tool-tabs .tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tool-tabs .tab").forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      const id = tab.getAttribute("data-tab");
+      document.querySelectorAll(".tab-panel").forEach((p) => {
+        const match = p.id === "tab-" + id;
+        p.classList.toggle("active", match);
+        p.hidden = !match;
+      });
+    });
+  });
+
+  [
+    "c-fuselage",
+    "c-wings",
+    "c-engines",
+    "c-tail",
+    "livery-name",
+    "registration",
+    "sticker-text",
+    "st-stripe",
+    "st-heart",
+    "st-text",
+  ].forEach((id) => {
+    const el = $(id);
+    el.addEventListener("input", drawPreview);
+    el.addEventListener("change", drawPreview);
+  });
 
   $("soacra").addEventListener("change", (e) => {
     const file = e.target.files && e.target.files[0];
@@ -472,22 +677,25 @@ fallback.7=..\\..\\..\\..\\texture\\Planes_Generic
     img.onload = () => {
       state.soacra = img;
       $("soacra-label").textContent = file.name;
+      $("btn-clear-photo").hidden = false;
       drawPreview();
     };
     img.src = URL.createObjectURL(file);
   });
 
-  $("btn-preset").addEventListener("click", applyEugen);
-  $("btn-generate").addEventListener("click", () => {
-    $("btn-generate").disabled = true;
-    $("btn-generate").textContent = "Se generează…";
-    generateZip()
-      .catch((err) => alert("Eroare export: " + err.message))
-      .finally(() => {
-        $("btn-generate").disabled = false;
-        $("btn-generate").textContent = "Generate package (ZIP)";
-      });
+  $("btn-clear-photo").addEventListener("click", () => {
+    state.soacra = null;
+    state.soacraName = null;
+    $("soacra").value = "";
+    $("soacra-label").textContent = "Încarcă o poză → decal pe fuselaj";
+    $("btn-clear-photo").hidden = true;
+    drawPreview();
   });
+
+  $("btn-preset").addEventListener("click", applyEugen);
+  $("btn-preset-2").addEventListener("click", applyEugen);
+  $("btn-generate").addEventListener("click", onGenerate);
+  $("btn-generate-2").addEventListener("click", onGenerate);
   $("btn-config").addEventListener("click", downloadConfig);
 
   syncInputsFromState();
