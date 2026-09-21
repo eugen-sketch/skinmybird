@@ -616,6 +616,43 @@ function projectDecal(group, hit, size, material, renderOrder = 2) {
   return mesh;
 }
 
+
+function makeRegTexture(state) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, 512, 128);
+  if (!(state.stickers && state.stickers.text) || !state.registration) {
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    tex.userData.canvas = canvas;
+    return tex;
+  }
+  const rState = { ...state, textStyle: "bold", textFont: state.textFont };
+  ctx.fillStyle = state.textColor || "#FFFFFF";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur = 6;
+  const px =
+    typeof fitFontPx === "function"
+      ? fitFontPx(ctx, state.registration, 480, 48, rState, 14)
+      : 36;
+  ctx.font =
+    typeof resolveFontFace === "function"
+      ? resolveFontFace(rState, px)
+      : `700 ${px}px "Segoe UI", system-ui, sans-serif`;
+  ctx.fillText(state.registration, 256, 64);
+  ctx.shadowBlur = 0;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  tex.userData.canvas = canvas;
+  return tex;
+}
+
 /**
  * Mesh-projected text/sticker decals on BOTH sides of the fuselage (or belly/tail/wing).
  * Never places free-floating PlaneGeometry in empty space.
@@ -1657,7 +1694,16 @@ export class Preview3D {
     this.root.add(craft);
     craft.updateMatrixWorld(true);
 
-    const decal = addTextDecals(craft, state);
+    let decal = { tex: null, regTex: null };
+    try {
+      decal = addTextDecals(craft, state);
+    } catch (decalErr) {
+      console.warn("Text decals failed (keeping GLB model):", decalErr);
+      try {
+        const line = document.getElementById("status-line");
+        if (line) line.innerHTML = "Model GLB OK; text pe piele temporar indisponibil: " + (decalErr && decalErr.message ? decalErr.message : decalErr);
+      } catch (e) {}
+    }
     this.decalTex = decal.tex;
     this.regTex = decal.regTex || null;
     this.anim = null;
