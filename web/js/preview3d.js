@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
 
 const TEX_W = 1024;
 const TEX_H = 512;
@@ -492,47 +493,132 @@ function makeDecalTexture(state, w = 1536, h = 256) {
   return tex;
 }
 
-function estimateFuselageRadius(size) {
-  // After hangar fit: X=length, Y=height, Z=wing span (~12).
-  // NEVER use size.z (span) — that parks decals out on the wings / in the air.
-  // Civil airliner fuselage half-width ≈ ~20–25% of overall height after fit.
-  return Math.max(0.35, Math.min(size.y * 0.22, 0.95));
-}
-
-function makeRegTexture(state) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 128;
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, 512, 128);
-  if (!(state.stickers && state.stickers.text) || !state.registration) {
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.userData.canvas = canvas;
-    return tex;
-  }
-  const rState = { ...state, textStyle: "bold", textFont: state.textFont };
-  ctx.fillStyle = state.textColor || "#FFFFFF";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(0,0,0,0.5)";
-  ctx.shadowBlur = 6;
-  const px = fitFontPx(ctx, state.registration, 480, 48, rState, 14);
-  ctx.font = resolveFontFace(rState, px);
-  ctx.fillText(state.registration, 256, 64);
-  ctx.shadowBlur = 0;
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
-  tex.userData.canvas = canvas;
-  return tex;
+/**
+ * Collect mesh targets for decal projection. Prefer fuselage-role / larger meshes.
+ */
+function collectDecalTargetMeshes(craft) {
+  craft.updateMatrixWorld(true);
+  const craftBox = new THREE.Box3().setFromObject(craft);
+  const scored = [];
+  craft.traverse((child) => {
+    if (!child.isMesh || !child.geometry) return;
+    if (child.name === "textDecals" || (child.parent && child.parent.name === "textDecals"))
+      return;
+    // Skip existing decal meshes
+    if (child.userData && child.userData.isTextDecal) return;
+    const box = new THREE.Box3().setFromObject(child);
+    const size = box.getSize(new THREE.Vector3());
+    const vol = Math.max(size.x, 0.001) * Math.max(size.y, 0.001) * Math.max(size.z, 0.001);
+    if (vol < 0.02) return;
+    const role = classifyMeshRole(child.name, box, craftBox);
+    scored.push({ mesh: child, role, vol, box, size });
+  });
+  scored.sort((a, b) => b.vol - a.vol);
+  const fuselage = scored.filter((s) => s.role === "fuselage");
+  const wings = scored.filter((s) => s.role === "wings");
+  const tail = scored.filter((s) => s.role === "tail");
+  return { all: scored.map((s) => s.mesh), fuselage, wings, tail, craftBox, scored };
 }
 
 /**
- * Flat fuselage-hugging text/sticker panels (FrontSide only — no mirrored ghost).
- * Prefer planes at fuselage half-width (from height, NOT wing span) so slogans
- * read painted-on rather than floating curved strips above the tail.
- * Placement: fuselage / belly / tail / wing.
+ * World-space Euler so projector −Z looks along worldNormal
+ * (Three Object3D.lookAt / official webgl_decals convention).
+ */
+function orientationFromWorldNormal(worldNormal, worldUpHint) {
+  const n = worldNormal.clone().normalize();
+  let up = (worldUpHint || new THREE.Vector3(0, 1, 0)).clone().normalize();
+  if (Math.abs(n.dot(up)) > 0.92) {
+    // Belly / spine: use aircraft forward (+X) as lookAt up-hint
+    up.set(1, 0, 0);
+  }
+  const dummy = new THREE.Object3D();
+  dummy.up.copy(up);
+  dummy.position.set(0, 0, 0);
+  dummy.lookAt(n);
+  return dummy.rotation.clone();
+}
+
+/**
+ * Raycast from outside toward the craft; return best hit or null.
+ * origins: array of THREE.Vector3 in world space
+ * dir: THREE.Vector3 (will be normalized)
+ */
+function raycastBestHit(meshes, origin, dir, raycaster) {
+  if (!meshes.length) return null;
+  raycaster.set(origin, dir.clone().normalize());
+  const hits = raycaster.intersectObjects(meshes, true);
+  for (const h of hits) {
+    if (!h.face || !h.object || !h.object.isMesh) continue;
+    if (h.object.userData && h.object.userData.isTextDecal) continue;
+    return h;
+  }
+  return null;
+}
+
+function sideMaterialFromTex(baseTex, flipU, sharedMatOpts) {
+  const matMap = baseTex.clone();
+  matMap.userData = baseTex.userData;
+  if (flipU) {
+    matMap.repeat.x = -1;
+    matMap.offset.x = 1;
+  }
+  matMap.needsUpdate = true;
+  return new THREE.MeshBasicMaterial({
+    ...sharedMatOpts,
+    map: matMap,
+  });
+}
+
+/**
+ * Project a canvas texture onto mesh surface via DecalGeometry (no free-floating planes).
+ *
+ * Local-space note: DecalGeometry transforms mesh verts by mesh.matrixWorld, so
+ * `position` + `orientation` MUST be in **world** space (same as the official
+ * webgl_decals example). We then `group.attach(mesh)` so world-space geometry
+ * stays correct under the craft hierarchy (attach = keep world matrix).
+ */
+function projectDecal(group, hit, size, material, renderOrder = 2) {
+  if (!hit || !hit.face || !hit.object) return null;
+
+  hit.object.updateMatrixWorld(true);
+
+  const worldPoint = hit.point.clone();
+  const normalMatrix = new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld);
+  const worldNormal = hit.face.normal
+    .clone()
+    .applyNormalMatrix(normalMatrix)
+    .normalize();
+
+  const orientation = orientationFromWorldNormal(worldNormal);
+
+  let geo;
+  try {
+    geo = new DecalGeometry(hit.object, worldPoint, orientation, size);
+  } catch (err) {
+    console.warn("DecalGeometry failed", err);
+    return null;
+  }
+
+  // Empty projector (missed surface) — skip
+  const posAttr = geo.getAttribute("position");
+  if (!posAttr || posAttr.count < 3) {
+    geo.dispose();
+    return null;
+  }
+
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.userData.isTextDecal = true;
+  mesh.renderOrder = renderOrder;
+  mesh.receiveShadow = false;
+  mesh.castShadow = false;
+  // Geometry is in world space; attach preserves world transform under group/craft
+  group.attach(mesh);
+  return mesh;
+}
+
+/**
+ * Mesh-projected text/sticker decals on BOTH sides of the fuselage (or belly/tail/wing).
+ * Never places free-floating PlaneGeometry in empty space.
  */
 function addTextDecals(craft, state) {
   craft.updateMatrixWorld(true);
@@ -542,13 +628,15 @@ function addTextDecals(craft, state) {
 
   const group = new THREE.Group();
   group.name = "textDecals";
+  // Identity under craft so attach() math stays simple
+  craft.add(group);
+  craft.updateMatrixWorld(true);
 
   const st = state.stickers || {};
   const anyVisual =
     st.text || st.stripe || st.heart || st.star || st.lightning ||
     st.bird || st.roundel || st.chevron || st.checkered;
   if (!anyVisual) {
-    craft.add(group);
     return { tex: null, mat: null, group, regTex: null };
   }
 
@@ -561,104 +649,143 @@ function addTextDecals(craft, state) {
     depthWrite: false,
     side: THREE.FrontSide,
     polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -1,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
   };
 
-  const fusR = estimateFuselageRadius(size);
-  const zSide = fusR * 1.02;
+  const targets = collectDecalTargetMeshes(craft);
+  const raycaster = new THREE.Raycaster();
+  // Avoid tiny self-hits; start a bit out
+  raycaster.near = 0;
+  raycaster.far = 100;
 
-  // Wide enough for long slogans like "3RD STREAM AIRLINE"
-  const lengthFrac = place === "tail" ? 0.32 : place === "wing" ? 0.28 : 0.7;
-  const panelW = Math.min(size.x * lengthFrac, size.x * 0.78);
-  const panelH = Math.max(panelW * 0.4, Math.min(size.y * 0.22, panelW * 0.5));
+  const fusLen = size.x;
+  const panelLen =
+    place === "tail" ? fusLen * 0.32 :
+    place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
+    fusLen * 0.62;
+  const panelH =
+    place === "wing" ? Math.max(0.35, panelLen * 0.35) :
+    Math.max(0.55, Math.min(size.y * 0.55, 1.15));
+  const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
+  const decalSize = new THREE.Vector3(panelLen, panelH, panelDepth);
 
-  let xPos = center.x + size.x * 0.02;
-  let yPos = center.y + size.y * 0.04;
-  if (place === "tail") {
-    xPos = center.x - size.x * 0.28;
-    yPos = center.y + size.y * 0.1;
-  } else if (place === "belly") {
-    yPos = center.y - fusR * 1.02;
-  } else if (place === "wing") {
-    yPos = center.y + size.y * 0.06;
-  }
+  // Sample X along fuselage
+  let xMain = center.x + size.x * 0.02;
+  if (place === "tail") xMain = center.x - size.x * 0.28;
+  else if (place === "wing") xMain = center.x - size.x * 0.02;
 
-  function sideMat(baseTex, side) {
-    const matMap = baseTex.clone();
-    matMap.userData = baseTex.userData;
-    // Flip U on −Z (viewer looking from outside) so text reads L→R
-    if (side < 0) {
-      matMap.repeat.x = -1;
-      matMap.offset.x = 1;
+  const yWindow = center.y + size.y * 0.02;
+  const yAlts = [
+    yWindow,
+    center.y + size.y * 0.08,
+    center.y - size.y * 0.06,
+    center.y + size.y * 0.14,
+  ];
+
+  const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
+
+  function meshesForPlace() {
+    if (place === "wing" && targets.wings.length)
+      return targets.wings.map((t) => t.mesh);
+    if (place === "tail") {
+      const list = targets.tail.map((t) => t.mesh);
+      const fus = targets.fuselage.map((t) => t.mesh);
+      if (list.length || fus.length) return list.concat(fus);
     }
-    matMap.needsUpdate = true;
-    return new THREE.MeshBasicMaterial({
-      ...sharedMatOpts,
-      map: matMap,
-    });
+    if (targets.fuselage.length) return targets.fuselage.map((t) => t.mesh);
+    // Fallback: prefer meshes near centerline (fuselage), not wing tips
+    const cz = center.z;
+    const nearCenter = targets.scored
+      .filter((s) => {
+        const c = s.box.getCenter(new THREE.Vector3());
+        return Math.abs(c.z - cz) < size.z * 0.22;
+      })
+      .map((s) => s.mesh);
+    if (nearCenter.length) return nearCenter.slice(0, 8);
+    return targets.all.slice(0, 6);
   }
 
-  if (place === "wing") {
-    const w = Math.min(size.z * 0.22, 2.8);
-    const h = w * 0.35;
-    const geo = new THREE.PlaneGeometry(w, h);
-    [-1, 1].forEach((side) => {
-      const mat = sideMat(tex, side);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(
-        center.x - size.x * 0.02,
-        center.y + size.y * 0.08,
-        side * size.z * 0.25
+  const meshList = meshesForPlace();
+
+  function trySideHit(sideSign, x, yCandidates) {
+    // sideSign: +1 = +Z (right), −1 = −Z (left)
+    for (const y of yCandidates) {
+      let origin, dir;
+      if (place === "belly") {
+        origin = new THREE.Vector3(x, center.y - reach, center.z + sideSign * 0.05);
+        dir = new THREE.Vector3(0, 1, -sideSign * 0.02).normalize();
+      } else if (place === "wing") {
+        origin = new THREE.Vector3(
+          x,
+          center.y + reach * 0.55,
+          center.z + sideSign * size.z * 0.28
+        );
+        dir = new THREE.Vector3(0, -1, 0);
+      } else {
+        // Fuselage / tail: from outside toward centerline
+        origin = new THREE.Vector3(x, y, center.z + sideSign * reach);
+        dir = new THREE.Vector3(0, 0, -sideSign);
+      }
+      const hit = raycastBestHit(meshList, origin, dir, raycaster);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  // LEFT (−Z) and RIGHT (+Z)
+  [-1, 1].forEach((side) => {
+    const hit = trySideHit(side, xMain, place === "belly" || place === "wing" ? [yWindow] : yAlts);
+    if (!hit) {
+      console.warn("addTextDecals: no hit on side", side, place);
+      return;
+    }
+    // Flip U on −Z so text still reads L→R from outside
+    const flipU = side < 0;
+    const mat = sideMaterialFromTex(tex, flipU, sharedMatOpts);
+    const sizeVec =
+      place === "belly"
+        ? new THREE.Vector3(panelLen, panelH * 0.85, panelDepth)
+        : decalSize.clone();
+    projectDecal(group, hit, sizeVec, mat, 2);
+  });
+
+  // Belly-only: also try a centered under-fuselage ray if sides missed (extra)
+  if (place === "belly" && group.children.length === 0) {
+    const origin = new THREE.Vector3(xMain, center.y - reach, center.z);
+    const hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, 1, 0), raycaster);
+    if (hit) {
+      const mat = sideMaterialFromTex(tex, false, sharedMatOpts);
+      projectDecal(
+        group,
+        hit,
+        new THREE.Vector3(panelLen, panelH * 0.85, panelDepth),
+        mat,
+        2
       );
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.rotation.z = side > 0 ? 0 : Math.PI;
-      mesh.renderOrder = 2;
-      group.add(mesh);
-    });
-  } else if (place === "belly") {
-    const geo = new THREE.PlaneGeometry(panelW, panelH * 0.85);
-    const mat = new THREE.MeshBasicMaterial(sharedMatOpts);
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(xPos, yPos, center.z);
-    // Face down (−Y) so belly text is readable from below
-    mesh.rotation.x = Math.PI / 2;
-    mesh.renderOrder = 2;
-    group.add(mesh);
-  } else {
-    // Fuselage / tail: flat side panels hugging estimated fuselage radius
-    const geo = new THREE.PlaneGeometry(panelW, panelH);
-    [-1, 1].forEach((side) => {
-      const mat = sideMat(tex, side);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(xPos, yPos, center.z + side * zSide);
-      // Default plane faces +Z; −Z side flips 180° around Y to face outward
-      mesh.rotation.y = side > 0 ? 0 : Math.PI;
-      mesh.renderOrder = 2;
-      group.add(mesh);
-    });
+    }
   }
 
-  // Secondary registration toward rear at same fuselage radius
+  // Secondary registration aft on both sides
   let regTex = null;
   if (st.text && state.registration && place !== "tail" && place !== "wing") {
     regTex = makeRegTexture(state);
     const regW = Math.min(size.x * 0.16, 1.5);
-    const regH = regW * 0.35;
+    const regH = Math.max(0.28, regW * 0.38);
+    const regDepth = panelDepth * 0.9;
+    const regSize = new THREE.Vector3(regW, regH, regDepth);
     const regX = center.x - size.x * 0.22;
-    const regY = yPos - size.y * 0.02;
-    const geo = new THREE.PlaneGeometry(regW, regH);
+    const regYAlts = yAlts.map((y) => y - size.y * 0.02);
+
     [-1, 1].forEach((side) => {
-      const mat = sideMat(regTex, side);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(regX, regY, center.z + side * zSide * 0.98);
-      mesh.rotation.y = side > 0 ? 0 : Math.PI;
-      mesh.renderOrder = 2;
-      group.add(mesh);
+      const hit = trySideHit(side, regX, regYAlts);
+      if (!hit) return;
+      const flipU = side < 0;
+      const mat = sideMaterialFromTex(regTex, flipU, sharedMatOpts);
+      projectDecal(group, hit, regSize, mat, 3);
     });
   }
 
-  craft.add(group);
   return { tex, mat: null, group, regTex };
 }
 
@@ -1522,13 +1649,14 @@ export class Preview3D {
       });
     }
 
+    // Sit slightly above hangar floor grid BEFORE decals so raycasts/world matches final pose
+    craft.position.y = 0.02;
+    this.root.add(craft);
+    craft.updateMatrixWorld(true);
+
     const decal = addTextDecals(craft, state);
     this.decalTex = decal.tex;
     this.regTex = decal.regTex || null;
-
-    // Sit slightly above hangar floor grid
-    craft.position.y = 0.02;
-    this.root.add(craft);
     this.anim = null;
     this.mats = null;
 
@@ -1592,7 +1720,7 @@ export class Preview3D {
           mat.needsUpdate = true;
         });
       }
-      // Rebuild flat side-panel decals (size/font/placement/text length) — not canvas-only
+      // Rebuild mesh-projected decals (size/font/placement/text length)
       const craft = this.root.getObjectByName("aircraft");
       if (craft) {
         removeNamedGroup(craft, "textDecals");
