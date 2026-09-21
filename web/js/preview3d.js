@@ -1,9 +1,10 @@
 /**
- * SkinMyBird 3D hangar preview — procedural meshes + OrbitControls.
- * ES module; Three.js via local vendor importmap.
+ * SkinMyBird 3D hangar preview — real airliner GLBs + procedural helo/balloon.
+ * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const TEX_W = 1024;
 const TEX_H = 512;
@@ -103,6 +104,230 @@ export function resolveShapeFamily(profile) {
   )
     return "narrow-short";
   return "narrow";
+}
+
+const GLB_TARGET_SPAN = 12;
+const glbCache = new Map(); // url -> Promise<GLTF>
+let _gltfLoader = null;
+
+function getGltfLoader() {
+  if (!_gltfLoader) _gltfLoader = new GLTFLoader();
+  return _gltfLoader;
+}
+
+/** Map profile → vendored GLB path, or null for procedural (helo/balloon). */
+export function resolveGlbUrl(profile) {
+  if (!profile) return null;
+  const id = String(profile.id || "").toLowerCase();
+  const sil = String(profile.silhouette || "").toLowerCase();
+  const cat = String(profile.category || "").toLowerCase();
+  const name = String(profile.displayName || "").toLowerCase();
+  const blob = `${id} ${sil} ${cat} ${name}`;
+
+  if (sil === "balloon" || cat === "balon" || blob.includes("balloon"))
+    return null;
+  if (
+    sil === "helicopter" ||
+    cat === "elicopter" ||
+    blob.includes("h135") ||
+    blob.includes("helo") ||
+    blob.includes("helicopter")
+  )
+    return null;
+
+  if (blob.includes("787") || blob.includes("dreamliner"))
+    return "models/b787.glb";
+  if (
+    blob.includes("737") ||
+    blob.includes("736") ||
+    blob.includes("pmdg")
+  )
+    return "models/b737.glb";
+  // Widebody stand-in (A350 GLB): A330 / 747 / generic wide — 747 is not exact
+  if (
+    blob.includes("747") ||
+    blob.includes("a330") ||
+    blob.includes("a350") ||
+    blob.includes("widebody") ||
+    blob.includes("wide-body")
+  )
+    return "models/a350.glb";
+  // A320 / A319 / A321 / FBW / LatinVFR Airbus + default airliner
+  return "models/a320.glb";
+}
+
+function loadGlbCached(url) {
+  if (!glbCache.has(url)) {
+    glbCache.set(
+      url,
+      new Promise((resolve, reject) => {
+        getGltfLoader().load(
+          url,
+          (gltf) => resolve(gltf),
+          undefined,
+          (err) => {
+            glbCache.delete(url);
+            reject(err);
+          }
+        );
+      })
+    );
+  }
+  return glbCache.get(url);
+}
+
+/**
+ * Orient so smallest extent → +Y (up), longest → +X (forward), then
+ * scale to ~span 12 and sit on y=0.
+ */
+function fitAircraftToHangar(model, targetSpan = GLB_TARGET_SPAN) {
+  model.updateMatrixWorld(true);
+  const box0 = new THREE.Box3().setFromObject(model);
+  const size0 = box0.getSize(new THREE.Vector3());
+
+  const axes = [
+    { len: size0.x, dir: new THREE.Vector3(1, 0, 0) },
+    { len: size0.y, dir: new THREE.Vector3(0, 1, 0) },
+    { len: size0.z, dir: new THREE.Vector3(0, 0, 1) },
+  ].sort((a, b) => a.len - b.len);
+
+  const up = axes[0].dir.clone();
+  const forward = axes[2].dir.clone();
+  let right = new THREE.Vector3().crossVectors(forward, up);
+  if (right.lengthSq() < 1e-8) {
+    right = axes[1].dir.clone();
+  }
+  right.normalize();
+  const upOrtho = new THREE.Vector3().crossVectors(right, forward).normalize();
+  forward.normalize();
+
+  // Matrix whose columns map unit axes → (forward, up, right); invert to remap model
+  const basis = new THREE.Matrix4().makeBasis(forward, upOrtho, right);
+  const inv = basis.clone().invert();
+  model.applyMatrix4(inv);
+
+  model.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(model);
+  let size = box.getSize(new THREE.Vector3());
+  // Prefer wing span (Z after remap) but fall back to max horizontal
+  const span = Math.max(size.z, size.x * 0.85, 0.001);
+  const scale = targetSpan / span;
+  model.scale.multiplyScalar(scale);
+
+  model.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(model);
+  const center = box.getCenter(new THREE.Vector3());
+  model.position.x -= center.x;
+  model.position.z -= center.z;
+  model.position.y -= box.min.y;
+
+  model.updateMatrixWorld(true);
+  return model;
+}
+
+function cloneMaterialsDeep(root) {
+  root.traverse((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+    if (!child.material) return;
+    if (Array.isArray(child.material)) {
+      child.material = child.material.map((m) => m.clone());
+    } else {
+      child.material = child.material.clone();
+    }
+  });
+}
+
+function classifyMeshRole(name, box, craftBox) {
+  const n = String(name || "").toLowerCase();
+  if (/engine|nacelle|motor|fan|pylon/.test(n)) return "engines";
+  if (/wing|aileron|flap|slat|winglet/.test(n)) return "wings";
+  if (/tail|fin|rudder|stabil|elevator|htail|vtail/.test(n)) return "tail";
+  if (/fusel|body|hull|cabin|cockpit|nose/.test(n)) return "fuselage";
+  // Bounding-box heuristic when names are generic (single-mesh models)
+  if (!craftBox || !box) return "fuselage";
+  const cSize = craftBox.getSize(new THREE.Vector3());
+  const mSize = box.getSize(new THREE.Vector3());
+  const cCenter = craftBox.getCenter(new THREE.Vector3());
+  const mCenter = box.getCenter(new THREE.Vector3());
+  // Engines: small, below center
+  if (mSize.x < cSize.x * 0.35 && mCenter.y < cCenter.y - cSize.y * 0.05)
+    return "engines";
+  // Wings: wide in Z, thin in Y, near mid height
+  if (mSize.z > cSize.z * 0.55 && mSize.y < cSize.y * 0.35) return "wings";
+  // Tail: aft (low X if nose=+X)
+  if (mCenter.x < cCenter.x - cSize.x * 0.25) return "tail";
+  return "fuselage";
+}
+
+function paintDecalCanvas(canvas, state) {
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!(state.stickers && state.stickers.text)) return;
+  const textColor = state.textColor || "#FFFFFF";
+  const sizeKey = state.textSize || "M";
+  const px = sizeKey === "S" ? 36 : sizeKey === "L" ? 72 : 52;
+  const weight = state.textStyle === "bold" ? "700" : "500";
+  ctx.fillStyle = textColor;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 8;
+  ctx.font = `${weight} ${px}px "Segoe UI", system-ui, sans-serif`;
+  ctx.fillText(state.airline || "SkinMyBird", W / 2, H * 0.38);
+  if (state.slogan) {
+    ctx.font = `500 ${Math.round(px * 0.45)}px "Segoe UI", system-ui, sans-serif`;
+    ctx.fillText(state.slogan, W / 2, H * 0.38 + px * 0.55);
+  }
+  ctx.font = `600 ${Math.round(px * 0.4)}px "Segoe UI", system-ui, sans-serif`;
+  ctx.fillText(state.registration || "", W / 2, H * 0.78);
+  ctx.shadowBlur = 0;
+}
+
+function makeDecalTexture(state) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 256;
+  paintDecalCanvas(canvas, state);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  tex.userData.canvas = canvas;
+  return tex;
+}
+
+function addTextDecals(craft, state) {
+  craft.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(craft);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const tex = makeDecalTexture(state);
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const w = Math.min(size.x * 0.42, 4.2);
+  const h = w * 0.45;
+  const geo = new THREE.PlaneGeometry(w, h);
+  const y = center.y + size.y * 0.05;
+  const x = center.x + size.x * 0.02;
+  const z = size.z * 0.22;
+  const group = new THREE.Group();
+  group.name = "textDecals";
+  [-1, 1].forEach((side) => {
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, y, side * z);
+    mesh.rotation.y = side > 0 ? 0 : Math.PI;
+    mesh.renderOrder = 2;
+    group.add(mesh);
+  });
+  craft.add(group);
+  return { tex, mat, group };
 }
 
 function drawHeart2d(ctx, cx, cy, s, color) {
@@ -376,7 +601,8 @@ function buildAirliner(group, family, mats) {
       { len: semi * 0.52, chord: s.rootChord * 0.92, z0: R * 0.05 },
       { len: semi * 0.48, chord: (s.rootChord + s.tipChord) / 2, z0: R * 0.05 + semi * 0.52 },
     ];
-    // Single tapered approximation using scaled box + tip box
+    // Panels built along +localZ for side=+1; multiply Z by `side` so the left
+    // wing extends outward (-Z) instead of folding inward through the fuselage.
     const rootPanel = addBox(
       wingG,
       s.rootChord,
@@ -384,7 +610,7 @@ function buildAirliner(group, family, mats) {
       segs[0].len,
       -s.rootChord * 0.15,
       0,
-      segs[0].z0 + segs[0].len / 2,
+      side * (segs[0].z0 + segs[0].len / 2),
       mats.wings
     );
     rootPanel.name = "wingRoot";
@@ -395,13 +621,13 @@ function buildAirliner(group, family, mats) {
       segs[1].len,
       -s.rootChord * 0.15 - (s.rootChord - s.tipChord) * 0.35,
       0,
-      segs[1].z0 + segs[1].len / 2,
+      side * (segs[1].z0 + segs[1].len / 2),
       mats.wings
     );
     tipPanel.name = "wingTip";
 
     // Winglet upward at tip
-    const tipZ = segs[1].z0 + segs[1].len;
+    const tipZ = side * (segs[1].z0 + segs[1].len);
     const winglet = addBox(
       wingG,
       s.tipChord * 0.45,
@@ -645,6 +871,11 @@ export class Preview3D {
     this.fuselageTex = null;
     this.family = null;
     this.profileId = null;
+    this.glbUrl = null;
+    this.modelMode = null; // "glb" | "procedural"
+    this.decalTex = null;
+    this.glbMaterials = []; // { mat, role }
+    this._loadToken = 0;
     this.raf = 0;
     this.idleTimer = 0;
     this.userInteracting = false;
@@ -818,15 +1049,23 @@ export class Preview3D {
       this.fuselageTex.dispose();
       this.fuselageTex = null;
     }
+    if (this.decalTex) {
+      this.decalTex.dispose();
+      this.decalTex = null;
+    }
     this.anim = null;
     this.mats = null;
+    this.glbMaterials = [];
+    this.modelMode = null;
+    this.glbUrl = null;
   }
 
-  buildModel(profile, state) {
+  buildProcedural(profile, state) {
     const family = resolveShapeFamily(profile);
     this.clearModel();
     this.family = family;
     this.profileId = profile ? profile.id : null;
+    this.modelMode = "procedural";
 
     this.fuselageTex = makeFuselageTexture(state, family);
     const mats = createMaterials(state, this.fuselageTex);
@@ -852,6 +1091,79 @@ export class Preview3D {
     this.applyPaint(state);
   }
 
+  /**
+   * Place a loaded GLTF scene into the hangar, tint + decals from state.
+   */
+  mountGlb(gltf, profile, state, url) {
+    this.clearModel();
+    this.family = resolveShapeFamily(profile);
+    this.profileId = profile ? profile.id : null;
+    this.glbUrl = url;
+    this.modelMode = "glb";
+
+    const craft = new THREE.Group();
+    craft.name = "aircraft";
+
+    const model = gltf.scene.clone(true);
+    cloneMaterialsDeep(model);
+    fitAircraftToHangar(model, GLB_TARGET_SPAN);
+    craft.add(model);
+
+    // Index materials by role for live recolor
+    const craftBox = new THREE.Box3().setFromObject(craft);
+    this.glbMaterials = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const mats = Array.isArray(child.material)
+        ? child.material
+        : [child.material];
+      const meshBox = new THREE.Box3().setFromObject(child);
+      const role = classifyMeshRole(child.name, meshBox, craftBox);
+      mats.forEach((m) => {
+        if (m.map) {
+          // Keep albedo loosely; we'll tint via color
+          m.color.set(0xffffff);
+        }
+        this.glbMaterials.push({ mat: m, role });
+      });
+    });
+
+    // Single-material models: fuselage primary + text decal overlay
+    const uniqueMats = new Set(this.glbMaterials.map((g) => g.mat));
+    if (uniqueMats.size <= 1) {
+      this.glbMaterials.forEach((g) => {
+        g.role = "fuselage";
+      });
+    }
+
+    const decal = addTextDecals(craft, state);
+    this.decalTex = decal.tex;
+
+    // Sit slightly above hangar floor grid
+    craft.position.y = 0.02;
+    this.root.add(craft);
+    this.anim = null;
+    this.mats = null;
+
+    this.resetCamera();
+    this._lastStateKey = "";
+    this.applyPaint(state);
+  }
+
+  async buildGlb(profile, state, url) {
+    const token = ++this._loadToken;
+    try {
+      const gltf = await loadGlbCached(url);
+      if (token !== this._loadToken) return; // stale
+      if (!this.ok || !this.root) return;
+      this.mountGlb(gltf, profile, state, url);
+    } catch (err) {
+      console.warn("GLB load failed, falling back to procedural:", url, err);
+      if (token !== this._loadToken) return;
+      this.buildProcedural(profile, state);
+    }
+  }
+
   applyPaint(state) {
     if (!this.ok || !this.root) return;
     const family = this.family || "narrow";
@@ -867,11 +1179,39 @@ export class Preview3D {
       st: state.stickers,
       photo: state.soacraName || null,
       fam: family,
+      mode: this.modelMode,
     });
     if (key === this._lastStateKey) return;
     this._lastStateKey = key;
 
-    // Update canvas texture (colors + text + stickers)
+    if (this.modelMode === "glb") {
+      const colors = {
+        fuselage: hexToThree(state.colors.fuselage || "#FF6A00"),
+        wings: hexToThree(state.colors.wings || "#111111"),
+        engines: hexToThree(state.colors.engines || "#222222"),
+        tail: hexToThree(state.colors.tail || "#FF6A00"),
+      };
+      const unique = new Set(this.glbMaterials.map((g) => g.mat));
+      if (unique.size <= 1) {
+        // Single material: fuselage as primary tint
+        this.glbMaterials.forEach(({ mat }) => {
+          mat.color.copy(colors.fuselage);
+          mat.needsUpdate = true;
+        });
+      } else {
+        this.glbMaterials.forEach(({ mat, role }) => {
+          mat.color.copy(colors[role] || colors.fuselage);
+          mat.needsUpdate = true;
+        });
+      }
+      if (this.decalTex && this.decalTex.userData.canvas) {
+        paintDecalCanvas(this.decalTex.userData.canvas, state);
+        this.decalTex.needsUpdate = true;
+      }
+      return;
+    }
+
+    // Procedural path
     if (this.fuselageTex && this.fuselageTex.userData.canvas) {
       paintFuselageCanvas(this.fuselageTex.userData.canvas, state, family);
       this.fuselageTex.needsUpdate = true;
@@ -891,14 +1231,25 @@ export class Preview3D {
     // Editor may have just become visible — sync canvas size
     this.resize();
     if (!profile) {
+      this._loadToken++;
       this.clearModel();
       this.profileId = null;
       return;
     }
-    if (this.profileId !== profile.id) {
-      this.buildModel(profile, state);
-    } else {
+    const url = resolveGlbUrl(profile);
+    const sameProfile = this.profileId === profile.id;
+    const sameGlb = url && this.glbUrl === url && this.modelMode === "glb";
+
+    if (sameProfile && (sameGlb || (!url && this.modelMode === "procedural"))) {
       this.applyPaint(state);
+      return;
+    }
+
+    if (url) {
+      this.buildGlb(profile, state, url);
+    } else {
+      this._loadToken++;
+      this.buildProcedural(profile, state);
     }
   }
 

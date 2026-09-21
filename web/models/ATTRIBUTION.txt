@@ -1,0 +1,17 @@
+3D aircraft models
+==================
+
+Models by amvlab (https://github.com/amvlab/aircraft-models)
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Files in this folder (renamed for SkinMyBird):
+  a320.glb  ← A320_nologo.glb
+  b737.glb  ← B737_nologo.glb
+  b787.glb  ← B787_nologo.glb
+  a350.glb  ← A350_nologo.glb
+
+The original LICENSE text from amvlab/aircraft-models is included as LICENSE
+in this directory. Attribution is also shown in the SkinMyBird preview UI:
+"Modele 3D: amvlab (CC BY 4.0)".
+

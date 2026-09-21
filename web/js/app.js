@@ -1,5 +1,5 @@
 /**
- * SkinMyBird web editor v0.4.1 — commercial UI + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.4.2 — commercial UI + 3D hangar preview (Three.js).
  * UI labels in Romanian. Keeps /api/export + /api/export-form contracts.
  */
 import { Preview3D } from "./preview3d.js";

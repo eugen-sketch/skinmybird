@@ -684,6 +684,12 @@ input[type="text"]:focus {
 }
 .preview-cta { display: flex; gap: 0.4rem; }
 
+.model-credit {
+  margin: 0.35rem 0 0;
+  font-size: 0.68rem;
+  color: var(--faint);
+  letter-spacing: 0.01em;
+}
 .status-line {
   margin: 0.65rem 0 0;
   font-size: 0.78rem;
