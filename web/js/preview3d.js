@@ -1579,6 +1579,7 @@ export class Preview3D {
     this.family = family;
     this.profileId = profile ? profile.id : null;
     this.modelMode = "procedural";
+    try { window.dispatchEvent(new CustomEvent("skinmybird-model-mode",{detail:{mode:"procedural"}})); } catch (e) {}
 
     this.fuselageTex = makeFuselageTexture(state, family);
     const mats = createMaterials(state, this.fuselageTex);
@@ -1613,6 +1614,8 @@ export class Preview3D {
     this.profileId = profile ? profile.id : null;
     this.glbUrl = url;
     this.modelMode = "glb";
+    try { window.dispatchEvent(new CustomEvent("skinmybird-model-mode",{detail:{mode:"glb",url}})); } catch (e) {}
+    try { window.__SMB_MODEL_MODE = "glb"; const el=document.getElementById("preview-sub"); if(el&&!el.dataset.keep){/* set by app */} } catch(e){}
 
     const craft = new THREE.Group();
     craft.name = "aircraft";

@@ -1,10 +1,23 @@
 /**
- * SkinMyBird web editor v0.4.5 — commercial UI + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.4.6 — commercial UI + 3D hangar preview (Three.js).
  * UI labels in Romanian. Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D } from "./preview3d.js";
+import { Preview3D } from "./preview3d.js?v=0.4.5";
 
 const $ = (id) => document.getElementById(id);
+
+  window.addEventListener("skinmybird-model-mode", (ev) => {
+    const sub = $("preview-sub");
+    if (!sub || !ev.detail) return;
+    if (ev.detail.mode === "glb") {
+      sub.textContent = "Model 3D real (GLB) · " + (ev.detail.url || "");
+      sub.style.color = "#7dffa0";
+    } else {
+      sub.textContent = "Formă simplă (fallback) — GLB neîncărcat";
+      sub.style.color = "#ff8a7a";
+    }
+  });
+
 
   const state = {
     profiles: [],

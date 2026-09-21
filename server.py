@@ -288,7 +288,7 @@ def main() -> None:
     host = os.environ.get("SKINMYBIRD_HOST", "127.0.0.1")
     port = int(os.environ.get("SKINMYBIRD_PORT", "5173"))
     print(f"SkinMyBird → http://{host}:{port}")
-    uvicorn.run("server:app", host=host, port=port, reload=False)
+    uvicorn.run(app, host=host, port=port, reload=False, workers=1)
 
 
 if __name__ == "__main__":
