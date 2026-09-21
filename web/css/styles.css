@@ -838,3 +838,14 @@ input[type="text"]:focus {
   .selector-hero { flex-direction: column; align-items: flex-start; }
   .tool-tabs { grid-template-columns: repeat(4, 1fr); }
 }
+
+.select {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 0.88rem;
+}
+.select:focus-visible { box-shadow: var(--focus); }

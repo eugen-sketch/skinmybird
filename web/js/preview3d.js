@@ -261,36 +261,229 @@ function classifyMeshRole(name, box, craftBox) {
   return "fuselage";
 }
 
+const FONT_STACKS = {
+  segoe: '"Segoe UI", system-ui, sans-serif',
+  arial: 'Arial, Helvetica, sans-serif',
+  georgia: 'Georgia, "Times New Roman", serif',
+  impact: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif',
+  courier: '"Courier New", Courier, monospace',
+  trebuchet: '"Trebuchet MS", "Segoe UI", sans-serif',
+  verdana: 'Verdana, Geneva, sans-serif',
+  comic: '"Comic Sans MS", "Comic Sans", cursive',
+};
+
+function resolveFontStack(key) {
+  return FONT_STACKS[key] || FONT_STACKS.segoe;
+}
+
+/** Map textStyle → CSS font style + weight for canvas. */
+function resolveFontFace(state, px) {
+  const style = String(state.textStyle || "bold").toLowerCase();
+  const italic = style.includes("italic") ? "italic " : "";
+  let weight = "400";
+  if (style === "bold" || style === "bold-italic" || style === "bolditalic") weight = "700";
+  else if (style === "normal" || style === "regular") weight = "400";
+  else if (style === "italic") weight = "400";
+  else if (style.includes("bold")) weight = "700";
+  const stack = resolveFontStack(state.textFont);
+  return `${italic}${weight} ${Math.round(px)}px ${stack}`;
+}
+
+/** Shrink font until text fits maxWidth; returns used px. */
+function fitFontPx(ctx, text, maxWidth, basePx, state, minPx = 10) {
+  let px = basePx;
+  while (px > minPx) {
+    ctx.font = resolveFontFace(state, px);
+    if (ctx.measureText(text || "").width <= maxWidth) return px;
+    px -= 2;
+  }
+  ctx.font = resolveFontFace(state, minPx);
+  return minPx;
+}
+
+function drawStar2d(ctx, cx, cy, r, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+    const b = a + Math.PI / 5;
+    const x1 = cx + Math.cos(a) * r;
+    const y1 = cy + Math.sin(a) * r;
+    const x2 = cx + Math.cos(b) * (r * 0.4);
+    const y2 = cy + Math.sin(b) * (r * 0.4);
+    if (i === 0) ctx.moveTo(x1, y1);
+    else ctx.lineTo(x1, y1);
+    ctx.lineTo(x2, y2);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawLightning2d(ctx, cx, cy, s, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.15, cy - s);
+  ctx.lineTo(cx + s * 0.35, cy - s * 0.15);
+  ctx.lineTo(cx + s * 0.05, cy - s * 0.15);
+  ctx.lineTo(cx + s * 0.4, cy + s);
+  ctx.lineTo(cx - s * 0.2, cy + s * 0.05);
+  ctx.lineTo(cx + s * 0.05, cy + s * 0.05);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawBird2d(ctx, cx, cy, s, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, s * 0.18);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx - s, cy + s * 0.15);
+  ctx.quadraticCurveTo(cx - s * 0.35, cy - s * 0.7, cx, cy);
+  ctx.quadraticCurveTo(cx + s * 0.35, cy - s * 0.7, cx + s, cy + s * 0.15);
+  ctx.stroke();
+}
+
+function drawRoundel2d(ctx, cx, cy, r, colors) {
+  const rings = colors || ["#dc2840", "#ffffff", "#1a3a8a"];
+  rings.forEach((c, i) => {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * (1 - i * 0.28), 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawChevron2d(ctx, cx, cy, s, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(3, s * 0.2);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (let i = 0; i < 3; i++) {
+    const x = cx - s * 0.5 + i * s * 0.45;
+    ctx.beginPath();
+    ctx.moveTo(x, cy - s * 0.55);
+    ctx.lineTo(x + s * 0.4, cy);
+    ctx.lineTo(x, cy + s * 0.55);
+    ctx.stroke();
+  }
+}
+
+function drawCheckered2d(ctx, x, y, w, h, cols, colorA, colorB) {
+  const cw = w / cols;
+  const rows = Math.max(2, Math.round(h / cw));
+  const ch = h / rows;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      ctx.fillStyle = (row + col) % 2 === 0 ? colorA : colorB;
+      ctx.fillRect(x + col * cw, y + row * ch, cw + 0.5, ch + 0.5);
+    }
+  }
+}
+
+function drawStickersOnCanvas(ctx, W, H, state, layout) {
+  const st = state.stickers || {};
+  const accent = state.colors && state.colors.tail ? state.colors.tail : "#FF6A00";
+  // layout: "decal" (single panel) or "half" with x0 offset for procedural sides
+  const xMid = layout.xMid != null ? layout.xMid : W / 2;
+  const scale = layout.scale || 1;
+
+  if (st.stripe) {
+    const sy = layout.stripeY != null ? layout.stripeY : H * 0.82;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(layout.x0 || 0, sy, layout.bandW || W, 8 * scale);
+    ctx.fillStyle = accent;
+    ctx.fillRect(layout.x0 || 0, sy + 8 * scale, layout.bandW || W, 6 * scale);
+  }
+  if (st.heart) {
+    drawHeart2d(ctx, xMid - 70 * scale, H * 0.22, 16 * scale, "#dc2840");
+  }
+  if (st.star) {
+    drawStar2d(ctx, xMid + 80 * scale, H * 0.2, 18 * scale, "#ffd24a");
+  }
+  if (st.lightning) {
+    drawLightning2d(ctx, (layout.x0 || 0) + 40 * scale, H * 0.55, 22 * scale, "#ffe566");
+  }
+  if (st.bird) {
+    drawBird2d(ctx, xMid, H * 0.88, 28 * scale, state.textColor || "#FFFFFF");
+  }
+  if (st.roundel) {
+    drawRoundel2d(ctx, (layout.x0 || 0) + W * 0.08 * (layout.bandW ? 1 : 1) + 36 * scale, H * 0.55, 22 * scale);
+  }
+  if (st.chevron) {
+    drawChevron2d(ctx, xMid + 100 * scale, H * 0.55, 20 * scale, "#ffffff");
+  }
+  if (st.checkered) {
+    const bw = layout.bandW || W;
+    const x0 = layout.x0 || 0;
+    drawCheckered2d(ctx, x0, H * 0.05, bw, 18 * scale, 16, "#111111", "#f5f5f5");
+  }
+}
+
 function paintDecalCanvas(canvas, state) {
   const ctx = canvas.getContext("2d");
   const W = canvas.width;
   const H = canvas.height;
   ctx.clearRect(0, 0, W, H);
-  if (!(state.stickers && state.stickers.text)) return;
+
+  const st = state.stickers || {};
+  const anySticker =
+    st.stripe || st.heart || st.star || st.lightning || st.bird ||
+    st.roundel || st.chevron || st.checkered;
+  const showText = !!st.text;
+
+  if (anySticker) {
+    drawStickersOnCanvas(ctx, W, H, state, { xMid: W / 2, scale: 1.2 });
+  }
+
+  if (!showText) return;
+
   const textColor = state.textColor || "#FFFFFF";
   const sizeKey = state.textSize || "M";
-  const px = sizeKey === "S" ? 36 : sizeKey === "L" ? 72 : 52;
-  const weight = state.textStyle === "bold" ? "700" : "500";
+  const basePx = sizeKey === "S" ? 42 : sizeKey === "L" ? 86 : 62;
+  const maxW = W * 0.92;
+
   ctx.fillStyle = textColor;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.shadowColor = "rgba(0,0,0,0.55)";
   ctx.shadowBlur = 8;
-  ctx.font = `${weight} ${px}px "Segoe UI", system-ui, sans-serif`;
-  ctx.fillText(state.airline || "SkinMyBird", W / 2, H * 0.38);
+
+  const airline = state.airline || "SkinMyBird";
+  const airPx = fitFontPx(ctx, airline, maxW, basePx, state, 14);
+  ctx.font = resolveFontFace(state, airPx);
+  ctx.fillText(airline, W / 2, H * 0.36);
+
   if (state.slogan) {
-    ctx.font = `500 ${Math.round(px * 0.45)}px "Segoe UI", system-ui, sans-serif`;
-    ctx.fillText(state.slogan, W / 2, H * 0.38 + px * 0.55);
+    const sloganState = { ...state, textStyle: state.textStyle === "bold-italic" || state.textStyle === "italic" ? "italic" : "regular" };
+    // keep weight lighter for slogan but honor italic
+    const style = String(state.textStyle || "").toLowerCase();
+    const sloganStyle = style.includes("italic")
+      ? (style.includes("bold") ? "bold-italic" : "italic")
+      : "regular";
+    const sState = { ...state, textStyle: sloganStyle };
+    const sPx = fitFontPx(ctx, state.slogan, maxW, Math.round(basePx * 0.48), sState, 12);
+    ctx.font = resolveFontFace(sState, sPx);
+    ctx.fillText(state.slogan, W / 2, H * 0.36 + airPx * 0.58);
   }
-  ctx.font = `600 ${Math.round(px * 0.4)}px "Segoe UI", system-ui, sans-serif`;
-  ctx.fillText(state.registration || "", W / 2, H * 0.78);
+
+  // Registration drawn on primary wrap only when placement is fuselage/belly;
+  // secondary rear decal handles it for GLB — still paint lightly here as fallback.
+  if (state.registration && (state.textPlacement === "fuselage" || state.textPlacement === "belly")) {
+    const rState = { ...state, textStyle: "bold" };
+    const rPx = fitFontPx(ctx, state.registration, maxW * 0.4, Math.round(basePx * 0.38), rState, 10);
+    ctx.font = resolveFontFace(rState, rPx);
+    ctx.globalAlpha = 0.9;
+    ctx.fillText(state.registration, W * 0.82, H * 0.72);
+    ctx.globalAlpha = 1;
+  }
   ctx.shadowBlur = 0;
 }
 
-function makeDecalTexture(state) {
+function makeDecalTexture(state, w = 1536, h = 256) {
   const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 256;
+  canvas.width = w;
+  canvas.height = h;
   paintDecalCanvas(canvas, state);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -299,35 +492,197 @@ function makeDecalTexture(state) {
   return tex;
 }
 
+function estimateFuselageRadius(size) {
+  // After hangar fit: X=length, Y=height, Z=span. Fuselage ≈ lower portion of height.
+  return Math.max(0.28, Math.min(size.y * 0.28, size.z * 0.12, 1.15));
+}
+
+function makeSideCylinderGeo(radius, length, arcRad, side) {
+  // Partial cylinder along Y, arc centered on ±Z, then rotate axis → X.
+  const thetaCenter = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+  const thetaStart = thetaCenter - arcRad / 2;
+  const geo = new THREE.CylinderGeometry(
+    radius,
+    radius,
+    length,
+    48,
+    1,
+    true,
+    thetaStart,
+    arcRad
+  );
+  geo.rotateZ(-Math.PI / 2);
+  return geo;
+}
+
+function makeRegTexture(state) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, 512, 128);
+  if (!(state.stickers && state.stickers.text) || !state.registration) {
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.userData.canvas = canvas;
+    return tex;
+  }
+  const rState = { ...state, textStyle: "bold", textFont: state.textFont };
+  ctx.fillStyle = state.textColor || "#FFFFFF";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur = 6;
+  const px = fitFontPx(ctx, state.registration, 480, 48, rState, 14);
+  ctx.font = resolveFontFace(rState, px);
+  ctx.fillText(state.registration, 256, 64);
+  ctx.shadowBlur = 0;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  tex.userData.canvas = canvas;
+  return tex;
+}
+
+/**
+ * Curved fuselage-hugging text/sticker wraps (FrontSide only — no mirrored ghost).
+ * Placement: fuselage / belly / tail / wing.
+ */
 function addTextDecals(craft, state) {
   craft.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(craft);
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
-  const tex = makeDecalTexture(state);
-  const mat = new THREE.MeshBasicMaterial({
+
+  const group = new THREE.Group();
+  group.name = "textDecals";
+
+  const st = state.stickers || {};
+  const anyVisual =
+    st.text || st.stripe || st.heart || st.star || st.lightning ||
+    st.bird || st.roundel || st.chevron || st.checkered;
+  if (!anyVisual) {
+    craft.add(group);
+    return { tex: null, mat: null, group, regTex: null };
+  }
+
+  const place = state.textPlacement || "fuselage";
+  const tex = makeDecalTexture(state, 1536, 256);
+  const sharedMatOpts = {
     map: tex,
     transparent: true,
     depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const w = Math.min(size.x * 0.42, 4.2);
-  const h = w * 0.45;
-  const geo = new THREE.PlaneGeometry(w, h);
-  const y = center.y + size.y * 0.05;
-  const x = center.x + size.x * 0.02;
-  const z = size.z * 0.22;
-  const group = new THREE.Group();
-  group.name = "textDecals";
-  [-1, 1].forEach((side) => {
+    side: THREE.FrontSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  };
+
+  const radius = estimateFuselageRadius(size);
+  // Lift slightly off surface to avoid z-fighting
+  const rWrap = radius * 1.04;
+  const arc = ((place === "belly" ? 100 : 110) * Math.PI) / 180;
+  const lengthFrac = place === "tail" ? 0.35 : place === "wing" ? 0.28 : 0.62;
+  const wrapLen = Math.min(size.x * lengthFrac, size.x * 0.72);
+
+  let xPos = center.x + size.x * 0.02;
+  let yPos = center.y + size.y * 0.02;
+  if (place === "tail") {
+    xPos = center.x - size.x * 0.28;
+    yPos = center.y + size.y * 0.08;
+  } else if (place === "belly") {
+    yPos = center.y - size.y * 0.12;
+  } else if (place === "wing") {
+    yPos = center.y + size.y * 0.02;
+  }
+
+  if (place === "wing") {
+    // Flat decks on upper wing surfaces (no DoubleSide ghost)
+    const w = Math.min(size.z * 0.22, 2.8);
+    const h = w * 0.35;
+    const geo = new THREE.PlaneGeometry(w, h);
+    const mat = new THREE.MeshBasicMaterial(sharedMatOpts);
+    [-1, 1].forEach((side) => {
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(center.x - size.x * 0.02, center.y + size.y * 0.08, side * size.z * 0.28);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.rotation.z = side > 0 ? 0 : Math.PI;
+      mesh.renderOrder = 2;
+      group.add(mesh);
+    });
+  } else if (place === "belly") {
+    // Arc under belly (centered on -Y)
+    const geo = new THREE.CylinderGeometry(rWrap, rWrap, wrapLen, 48, 1, true, -Math.PI / 2 - arc / 2, arc);
+    geo.rotateZ(-Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial(sharedMatOpts);
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(x, y, side * z);
-    mesh.rotation.y = side > 0 ? 0 : Math.PI;
+    mesh.position.set(xPos, center.y, center.z);
     mesh.renderOrder = 2;
     group.add(mesh);
-  });
+  } else {
+    // Fuselage / tail: open ~110° wraps on each side
+    [-1, 1].forEach((side) => {
+      const geo = makeSideCylinderGeo(rWrap, wrapLen, arc, side);
+      // Flip U on left so glyphs read L→R from outside
+      const matMap = tex.clone();
+      matMap.userData = tex.userData;
+      if (side < 0) {
+        matMap.repeat.x = -1;
+        matMap.offset.x = 1;
+      }
+      matMap.needsUpdate = true;
+      const mat = new THREE.MeshBasicMaterial({
+        ...sharedMatOpts,
+        map: matMap,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(xPos, yPos, center.z);
+      mesh.renderOrder = 2;
+      group.add(mesh);
+    });
+  }
+
+  // Secondary registration near rear / wing root
+  let regTex = null;
+  if (st.text && state.registration && place !== "tail") {
+    regTex = makeRegTexture(state);
+    const regLen = Math.min(size.x * 0.18, 1.6);
+    const regArc = (70 * Math.PI) / 180;
+    const regX = center.x - size.x * 0.22;
+    [-1, 1].forEach((side) => {
+      const geo = makeSideCylinderGeo(rWrap * 0.98, regLen, regArc, side);
+      const map = regTex.clone();
+      map.userData = regTex.userData;
+      if (side < 0) {
+        map.repeat.x = -1;
+        map.offset.x = 1;
+      }
+      const mat = new THREE.MeshBasicMaterial({
+        map,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.FrontSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(regX, yPos - size.y * 0.02, center.z);
+      mesh.renderOrder = 2;
+      group.add(mesh);
+    });
+  }
+
   craft.add(group);
-  return { tex, mat, group };
+  return { tex, mat: null, group, regTex };
+}
+
+function removeNamedGroup(craft, name) {
+  if (!craft) return;
+  const old = craft.getObjectByName(name);
+  if (!old) return;
+  craft.remove(old);
+  disposeObject(old);
 }
 
 function drawHeart2d(ctx, cx, cy, s, color) {
@@ -388,27 +743,50 @@ function paintFuselageCanvas(canvas, state, family) {
     }
   }
 
-  // Team stripe
-  if (state.stickers && state.stickers.stripe) {
+  // Stickers (both UV halves)
+  const st = state.stickers || {};
+  if (st.stripe) {
     const sy = H * 0.58;
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, sy, W, 10);
     ctx.fillStyle = tail;
     ctx.fillRect(0, sy + 10, W, 8);
   }
-
-  // Heart
-  if (state.stickers && state.stickers.heart) {
-    drawHeart2d(ctx, W * 0.22, H * 0.28, 28, "#dc2840");
-    drawHeart2d(ctx, W * 0.72, H * 0.28, 28, "#dc2840");
+  if (st.checkered) {
+    drawCheckered2d(ctx, 0, H * 0.04, W, 16, 24, "#111111", "#f5f5f5");
+  }
+  if (st.heart) {
+    drawHeart2d(ctx, W * 0.18, H * 0.26, 26, "#dc2840");
+    drawHeart2d(ctx, W * 0.68, H * 0.26, 26, "#dc2840");
+  }
+  if (st.star) {
+    drawStar2d(ctx, W * 0.32, H * 0.26, 22, "#ffd24a");
+    drawStar2d(ctx, W * 0.82, H * 0.26, 22, "#ffd24a");
+  }
+  if (st.lightning) {
+    drawLightning2d(ctx, W * 0.12, H * 0.7, 26, "#ffe566");
+    drawLightning2d(ctx, W * 0.62, H * 0.7, 26, "#ffe566");
+  }
+  if (st.bird) {
+    drawBird2d(ctx, W * 0.25, H * 0.78, 32, textColor);
+    drawBird2d(ctx, W * 0.75, H * 0.78, 32, textColor);
+  }
+  if (st.roundel) {
+    drawRoundel2d(ctx, W * 0.1, H * 0.7, 24);
+    drawRoundel2d(ctx, W * 0.6, H * 0.7, 24);
+  }
+  if (st.chevron) {
+    drawChevron2d(ctx, W * 0.38, H * 0.7, 22, "#ffffff");
+    drawChevron2d(ctx, W * 0.88, H * 0.7, 22, "#ffffff");
   }
 
-  // Text / airline / registration
-  if (state.stickers && state.stickers.text) {
+  // Text / airline / registration — wide halves + auto-shrink + font/style
+  if (st.text) {
     const sizeKey = state.textSize || "M";
-    const px = sizeKey === "S" ? 28 : sizeKey === "L" ? 52 : 40;
-    const weight = state.textStyle === "bold" ? "700" : "500";
+    const basePx = sizeKey === "S" ? 30 : sizeKey === "L" ? 56 : 42;
     const place = state.textPlacement || "fuselage";
+    // Each side gets ~42% of full width (was tighter); leave margin
+    const maxW = W * 0.42;
 
     ctx.fillStyle = textColor;
     ctx.textBaseline = "middle";
@@ -417,27 +795,45 @@ function paintFuselageCanvas(canvas, state, family) {
 
     const drawSideText = (xCenter) => {
       ctx.textAlign = "center";
-      let y = H * 0.32;
+      let y = H * 0.3;
       if (place === "belly") y = H * 0.72;
-      if (place === "tail") y = H * 0.28;
+      if (place === "tail") y = H * 0.26;
+      if (place === "wing") y = H * 0.48;
 
-      ctx.font = `${weight} ${px}px "Segoe UI", system-ui, sans-serif`;
-      ctx.fillText(state.airline || "SkinMyBird", xCenter, y);
+      const airline = state.airline || "SkinMyBird";
+      const airPx = fitFontPx(ctx, airline, maxW, basePx, state, 12);
+      ctx.font = resolveFontFace(state, airPx);
+      ctx.fillText(airline, xCenter, y);
 
       if (state.slogan) {
-        ctx.font = `500 ${Math.round(px * 0.5)}px "Segoe UI", system-ui, sans-serif`;
+        const style = String(state.textStyle || "").toLowerCase();
+        const sloganStyle = style.includes("italic")
+          ? (style.includes("bold") ? "bold-italic" : "italic")
+          : "regular";
+        const sState = { ...state, textStyle: sloganStyle };
+        const sPx = fitFontPx(ctx, state.slogan, maxW, Math.round(basePx * 0.5), sState, 10);
+        ctx.font = resolveFontFace(sState, sPx);
         ctx.globalAlpha = 0.92;
-        ctx.fillText(state.slogan, xCenter, y + px * 0.55);
+        ctx.fillText(state.slogan, xCenter, y + airPx * 0.58);
         ctx.globalAlpha = 1;
       }
 
-      ctx.font = `600 ${Math.round(px * 0.42)}px "Segoe UI", system-ui, sans-serif`;
-      const regY = place === "tail" ? y + px * 0.7 : H * 0.52;
-      const regX = place === "tail" ? xCenter : xCenter + W * 0.12;
+      const rState = { ...state, textStyle: "bold" };
+      const regPx = fitFontPx(
+        ctx,
+        state.registration || "",
+        maxW * 0.55,
+        Math.round(basePx * 0.42),
+        rState,
+        10
+      );
+      ctx.font = resolveFontFace(rState, regPx);
+      const regY = place === "tail" ? y + airPx * 0.75 : H * 0.52;
+      const regX = place === "tail" ? xCenter : xCenter + W * 0.1;
       ctx.fillText(state.registration || "", regX, regY);
     };
 
-    // Left and right sides of cylinder UV
+    // Wider centers on each cylinder UV half
     drawSideText(W * 0.25);
     drawSideText(W * 0.75);
     ctx.shadowBlur = 0;
@@ -874,6 +1270,7 @@ export class Preview3D {
     this.glbUrl = null;
     this.modelMode = null; // "glb" | "procedural"
     this.decalTex = null;
+    this.regTex = null;
     this.glbMaterials = []; // { mat, role }
     this._loadToken = 0;
     this.raf = 0;
@@ -1053,6 +1450,10 @@ export class Preview3D {
       this.decalTex.dispose();
       this.decalTex = null;
     }
+    if (this.regTex) {
+      this.regTex.dispose();
+      this.regTex = null;
+    }
     this.anim = null;
     this.mats = null;
     this.glbMaterials = [];
@@ -1138,6 +1539,7 @@ export class Preview3D {
 
     const decal = addTextDecals(craft, state);
     this.decalTex = decal.tex;
+    this.regTex = decal.regTex || null;
 
     // Sit slightly above hangar floor grid
     craft.position.y = 0.02;
@@ -1175,6 +1577,7 @@ export class Preview3D {
       tc: state.textColor,
       ts: state.textSize,
       ty: state.textStyle,
+      tf: state.textFont,
       tp: state.textPlacement,
       st: state.stickers,
       photo: state.soacraName || null,
@@ -1204,9 +1607,21 @@ export class Preview3D {
           mat.needsUpdate = true;
         });
       }
-      if (this.decalTex && this.decalTex.userData.canvas) {
-        paintDecalCanvas(this.decalTex.userData.canvas, state);
-        this.decalTex.needsUpdate = true;
+      // Rebuild curved decals (size/font/placement/text length) — not canvas-only
+      const craft = this.root.getObjectByName("aircraft");
+      if (craft) {
+        removeNamedGroup(craft, "textDecals");
+        if (this.decalTex) {
+          this.decalTex.dispose();
+          this.decalTex = null;
+        }
+        if (this.regTex) {
+          this.regTex.dispose();
+          this.regTex = null;
+        }
+        const decal = addTextDecals(craft, state);
+        this.decalTex = decal.tex;
+        this.regTex = decal.regTex || null;
       }
       return;
     }

@@ -1,6 +1,6 @@
 {
   "name": "skinmybird",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "description": "SkinMyBird — Canva multi-aircraft livery editor + BC7 DDS Community exporter for MSFS 2020",
   "scripts": {

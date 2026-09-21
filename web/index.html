@@ -119,7 +119,7 @@
             <h2>Text pe aeronavă</h2>
             <label class="field">
               <span>Companie / airline</span>
-              <input type="text" id="airline" value="SkinMyBird" maxlength="40" placeholder="ex. Huculeaks Air" />
+              <input type="text" id="airline" value="SkinMyBird" maxlength="56" placeholder="ex. Huculeaks Air" />
             </label>
             <label class="field">
               <span>Înmatriculare</span>
@@ -127,7 +127,7 @@
             </label>
             <label class="field">
               <span>Slogan / linia 2 <em>(opțional)</em></span>
-              <input type="text" id="slogan" value="" maxlength="32" placeholder="ex. Fly Orange" />
+              <input type="text" id="slogan" value="" maxlength="72" placeholder="ex. 3RD STREAM AIRLINE" />
             </label>
 
             <div class="field-row">
@@ -147,10 +147,26 @@
             </div>
 
             <label class="field">
+              <span>Font</span>
+              <select id="text-font" class="select">
+                <option value="segoe" selected>Segoe UI</option>
+                <option value="arial">Arial</option>
+                <option value="georgia">Georgia</option>
+                <option value="impact">Impact</option>
+                <option value="courier">Courier New</option>
+                <option value="trebuchet">Trebuchet MS</option>
+                <option value="verdana">Verdana</option>
+                <option value="comic">Comic Sans</option>
+              </select>
+            </label>
+
+            <label class="field">
               <span>Stil</span>
-              <div class="segmented" role="group" aria-label="Stil text">
-                <button type="button" class="seg" data-style="normal">Normal</button>
+              <div class="segmented wrap" role="group" aria-label="Stil text">
+                <button type="button" class="seg" data-style="regular">Regular</button>
                 <button type="button" class="seg active" data-style="bold">Bold</button>
+                <button type="button" class="seg" data-style="italic">Italic</button>
+                <button type="button" class="seg" data-style="bold-italic">Bold Italic</button>
               </div>
               <input type="hidden" id="text-style" value="bold" />
             </label>
@@ -161,6 +177,7 @@
                 <button type="button" class="seg active" data-place="fuselage">Fuselaj</button>
                 <button type="button" class="seg" data-place="tail">Coadă</button>
                 <button type="button" class="seg" data-place="belly">Burtă</button>
+                <button type="button" class="seg" data-place="wing">Aripă</button>
               </div>
               <input type="hidden" id="text-placement" value="fuselage" />
             </label>
@@ -182,6 +199,30 @@
               <label class="check">
                 <input type="checkbox" id="st-heart" />
                 <span>Inimă</span>
+              </label>
+              <label class="check">
+                <input type="checkbox" id="st-star" />
+                <span>Stea</span>
+              </label>
+              <label class="check">
+                <input type="checkbox" id="st-lightning" />
+                <span>Fulger</span>
+              </label>
+              <label class="check">
+                <input type="checkbox" id="st-bird" />
+                <span>Pasăre</span>
+              </label>
+              <label class="check">
+                <input type="checkbox" id="st-roundel" />
+                <span>Cercuri (roundel)</span>
+              </label>
+              <label class="check">
+                <input type="checkbox" id="st-chevron" />
+                <span>Săgeți (chevron)</span>
+              </label>
+              <label class="check">
+                <input type="checkbox" id="st-checkered" />
+                <span>Damier</span>
               </label>
             </div>
             <h2>Logo / poză</h2>
@@ -275,7 +316,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.4.2 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
+      <span>v0.4.3 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
     </footer>
   </div>
 </body>

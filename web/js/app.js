@@ -1,5 +1,5 @@
 /**
- * SkinMyBird web editor v0.4.2 — commercial UI + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.4.3 — commercial UI + 3D hangar preview (Three.js).
  * UI labels in Romanian. Keeps /api/export + /api/export-form contracts.
  */
 import { Preview3D } from "./preview3d.js";
@@ -23,8 +23,19 @@ const $ = (id) => document.getElementById(id);
     textColor: "#FFFFFF",
     textSize: "M",
     textStyle: "bold",
+    textFont: "segoe",
     textPlacement: "fuselage",
-    stickers: { stripe: true, heart: false, text: true },
+    stickers: {
+      stripe: true,
+      heart: false,
+      text: true,
+      star: false,
+      lightning: false,
+      bird: false,
+      roundel: false,
+      chevron: false,
+      checkered: false,
+    },
     soacra: null,
     soacraName: null,
     soacraFile: null,
@@ -44,6 +55,7 @@ const $ = (id) => document.getElementById(id);
     textColor: "#FFFFFF",
     textSize: "M",
     textStyle: "bold",
+    textFont: "segoe",
     textPlacement: "fuselage",
   };
 
@@ -65,10 +77,17 @@ const $ = (id) => document.getElementById(id);
     $("text-color").value = state.textColor;
     $("text-size").value = state.textSize;
     $("text-style").value = state.textStyle;
+    if ($("text-font")) $("text-font").value = state.textFont || "segoe";
     $("text-placement").value = state.textPlacement;
-    $("st-stripe").checked = state.stickers.stripe;
-    $("st-heart").checked = state.stickers.heart;
-    $("st-text").checked = state.stickers.text;
+    $("st-stripe").checked = !!state.stickers.stripe;
+    $("st-heart").checked = !!state.stickers.heart;
+    $("st-text").checked = !!state.stickers.text;
+    if ($("st-star")) $("st-star").checked = !!state.stickers.star;
+    if ($("st-lightning")) $("st-lightning").checked = !!state.stickers.lightning;
+    if ($("st-bird")) $("st-bird").checked = !!state.stickers.bird;
+    if ($("st-roundel")) $("st-roundel").checked = !!state.stickers.roundel;
+    if ($("st-chevron")) $("st-chevron").checked = !!state.stickers.chevron;
+    if ($("st-checkered")) $("st-checkered").checked = !!state.stickers.checkered;
     updateHexLabels();
     syncSegmented("data-size", state.textSize);
     syncSegmented("data-style", state.textStyle);
@@ -107,12 +126,19 @@ const $ = (id) => document.getElementById(id);
     state.textColor = $("text-color").value || "#FFFFFF";
     state.textSize = $("text-size").value || "M";
     state.textStyle = $("text-style").value || "bold";
+    state.textFont = ($("text-font") && $("text-font").value) || "segoe";
     state.textPlacement = $("text-placement").value || "fuselage";
     // custom_text payload: slogan if set, else registration (legacy sticker-text behaviour)
     state.stickerText = state.slogan || state.registration;
     state.stickers.stripe = $("st-stripe").checked;
     state.stickers.heart = $("st-heart").checked;
     state.stickers.text = $("st-text").checked;
+    state.stickers.star = $("st-star") ? $("st-star").checked : false;
+    state.stickers.lightning = $("st-lightning") ? $("st-lightning").checked : false;
+    state.stickers.bird = $("st-bird") ? $("st-bird").checked : false;
+    state.stickers.roundel = $("st-roundel") ? $("st-roundel").checked : false;
+    state.stickers.chevron = $("st-chevron") ? $("st-chevron").checked : false;
+    state.stickers.checkered = $("st-checkered") ? $("st-checkered").checked : false;
     updateHexLabels();
   }
 
@@ -129,6 +155,12 @@ const $ = (id) => document.getElementById(id);
     const list = [
       { type: "team_stripe", enabled: state.stickers.stripe },
       { type: "heart", enabled: state.stickers.heart },
+      { type: "star", enabled: !!state.stickers.star },
+      { type: "lightning", enabled: !!state.stickers.lightning },
+      { type: "bird", enabled: !!state.stickers.bird },
+      { type: "roundel", enabled: !!state.stickers.roundel },
+      { type: "chevron", enabled: !!state.stickers.chevron },
+      { type: "checkered", enabled: !!state.stickers.checkered },
       {
         type: "custom_text",
         enabled: state.stickers.text,
@@ -136,6 +168,7 @@ const $ = (id) => document.getElementById(id);
         color: state.textColor,
         size: state.textSize,
         style: state.textStyle,
+        font: state.textFont,
         placement: state.textPlacement,
       },
     ];
@@ -157,6 +190,7 @@ const $ = (id) => document.getElementById(id);
         color: state.textColor,
         size: state.textSize,
         style: state.textStyle,
+        font: state.textFont,
         placement: state.textPlacement,
       },
       stickers: buildStickersPayload(),
@@ -203,10 +237,16 @@ const $ = (id) => document.getElementById(id);
       { on: true, label: "Coadă", meta: state.colors.tail, color: state.colors.tail },
       { on: state.stickers.stripe, label: "Bandă echipă", meta: "" },
       { on: state.stickers.heart, label: "Inimă", meta: "" },
+      { on: state.stickers.star, label: "Stea", meta: "" },
+      { on: state.stickers.lightning, label: "Fulger", meta: "" },
+      { on: state.stickers.bird, label: "Pasăre", meta: "" },
+      { on: state.stickers.roundel, label: "Cercuri", meta: "" },
+      { on: state.stickers.chevron, label: "Săgeți", meta: "" },
+      { on: state.stickers.checkered, label: "Damier", meta: "" },
       {
         on: state.stickers.text,
         label: "Text",
-        meta: state.textPlacement,
+        meta: (state.textFont || "segoe") + " · " + state.textPlacement,
       },
       { on: !!state.soacra, label: "Logo / poză", meta: state.soacraName || "" },
     ];
@@ -512,7 +552,18 @@ const $ = (id) => document.getElementById(id);
     state.textSize = EUGEN.textSize;
     state.textStyle = EUGEN.textStyle;
     state.textPlacement = EUGEN.textPlacement;
-    state.stickers = { stripe: true, heart: false, text: true };
+    state.textFont = EUGEN.textFont || "segoe";
+    state.stickers = {
+      stripe: true,
+      heart: false,
+      text: true,
+      star: false,
+      lightning: false,
+      bird: false,
+      roundel: false,
+      chevron: false,
+      checkered: false,
+    };
     syncInputsFromState();
     drawPreview();
     closeMoreMenu();
@@ -594,9 +645,16 @@ const $ = (id) => document.getElementById(id);
     "airline",
     "slogan",
     "text-color",
+    "text-font",
     "st-stripe",
     "st-heart",
     "st-text",
+    "st-star",
+    "st-lightning",
+    "st-bird",
+    "st-roundel",
+    "st-chevron",
+    "st-checkered",
   ].forEach((id) => {
     const el = $(id);
     if (!el) return;
