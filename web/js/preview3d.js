@@ -493,26 +493,10 @@ function makeDecalTexture(state, w = 1536, h = 256) {
 }
 
 function estimateFuselageRadius(size) {
-  // After hangar fit: X=length, Y=height, Z=span. Fuselage ≈ lower portion of height.
-  return Math.max(0.28, Math.min(size.y * 0.28, size.z * 0.12, 1.15));
-}
-
-function makeSideCylinderGeo(radius, length, arcRad, side) {
-  // Partial cylinder along Y, arc centered on ±Z, then rotate axis → X.
-  const thetaCenter = side > 0 ? Math.PI / 2 : -Math.PI / 2;
-  const thetaStart = thetaCenter - arcRad / 2;
-  const geo = new THREE.CylinderGeometry(
-    radius,
-    radius,
-    length,
-    48,
-    1,
-    true,
-    thetaStart,
-    arcRad
-  );
-  geo.rotateZ(-Math.PI / 2);
-  return geo;
+  // After hangar fit: X=length, Y=height, Z=wing span (~12).
+  // NEVER use size.z (span) — that parks decals out on the wings / in the air.
+  // Civil airliner fuselage half-width ≈ ~20–25% of overall height after fit.
+  return Math.max(0.35, Math.min(size.y * 0.22, 0.95));
 }
 
 function makeRegTexture(state) {
@@ -545,7 +529,9 @@ function makeRegTexture(state) {
 }
 
 /**
- * Curved fuselage-hugging text/sticker wraps (FrontSide only — no mirrored ghost).
+ * Flat fuselage-hugging text/sticker panels (FrontSide only — no mirrored ghost).
+ * Prefer planes at fuselage half-width (from height, NOT wing span) so slogans
+ * read painted-on rather than floating curved strips above the tail.
  * Placement: fuselage / belly / tail / wing.
  */
 function addTextDecals(craft, state) {
@@ -571,103 +557,102 @@ function addTextDecals(craft, state) {
   const sharedMatOpts = {
     map: tex,
     transparent: true,
+    depthTest: true,
     depthWrite: false,
     side: THREE.FrontSide,
     polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
   };
 
-  const radius = estimateFuselageRadius(size);
-  // Lift slightly off surface to avoid z-fighting
-  const rWrap = radius * 1.04;
-  const arc = ((place === "belly" ? 100 : 110) * Math.PI) / 180;
-  const lengthFrac = place === "tail" ? 0.35 : place === "wing" ? 0.28 : 0.62;
-  const wrapLen = Math.min(size.x * lengthFrac, size.x * 0.72);
+  const fusR = estimateFuselageRadius(size);
+  const zSide = fusR * 1.02;
+
+  // Wide enough for long slogans like "3RD STREAM AIRLINE"
+  const lengthFrac = place === "tail" ? 0.32 : place === "wing" ? 0.28 : 0.7;
+  const panelW = Math.min(size.x * lengthFrac, size.x * 0.78);
+  const panelH = Math.max(panelW * 0.4, Math.min(size.y * 0.22, panelW * 0.5));
 
   let xPos = center.x + size.x * 0.02;
-  let yPos = center.y + size.y * 0.02;
+  let yPos = center.y + size.y * 0.04;
   if (place === "tail") {
     xPos = center.x - size.x * 0.28;
-    yPos = center.y + size.y * 0.08;
+    yPos = center.y + size.y * 0.1;
   } else if (place === "belly") {
-    yPos = center.y - size.y * 0.12;
+    yPos = center.y - fusR * 1.02;
   } else if (place === "wing") {
-    yPos = center.y + size.y * 0.02;
+    yPos = center.y + size.y * 0.06;
+  }
+
+  function sideMat(baseTex, side) {
+    const matMap = baseTex.clone();
+    matMap.userData = baseTex.userData;
+    // Flip U on −Z (viewer looking from outside) so text reads L→R
+    if (side < 0) {
+      matMap.repeat.x = -1;
+      matMap.offset.x = 1;
+    }
+    matMap.needsUpdate = true;
+    return new THREE.MeshBasicMaterial({
+      ...sharedMatOpts,
+      map: matMap,
+    });
   }
 
   if (place === "wing") {
-    // Flat decks on upper wing surfaces (no DoubleSide ghost)
     const w = Math.min(size.z * 0.22, 2.8);
     const h = w * 0.35;
     const geo = new THREE.PlaneGeometry(w, h);
-    const mat = new THREE.MeshBasicMaterial(sharedMatOpts);
     [-1, 1].forEach((side) => {
+      const mat = sideMat(tex, side);
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(center.x - size.x * 0.02, center.y + size.y * 0.08, side * size.z * 0.28);
+      mesh.position.set(
+        center.x - size.x * 0.02,
+        center.y + size.y * 0.08,
+        side * size.z * 0.25
+      );
       mesh.rotation.x = -Math.PI / 2;
       mesh.rotation.z = side > 0 ? 0 : Math.PI;
       mesh.renderOrder = 2;
       group.add(mesh);
     });
   } else if (place === "belly") {
-    // Arc under belly (centered on -Y)
-    const geo = new THREE.CylinderGeometry(rWrap, rWrap, wrapLen, 48, 1, true, -Math.PI / 2 - arc / 2, arc);
-    geo.rotateZ(-Math.PI / 2);
+    const geo = new THREE.PlaneGeometry(panelW, panelH * 0.85);
     const mat = new THREE.MeshBasicMaterial(sharedMatOpts);
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(xPos, center.y, center.z);
+    mesh.position.set(xPos, yPos, center.z);
+    // Face down (−Y) so belly text is readable from below
+    mesh.rotation.x = Math.PI / 2;
     mesh.renderOrder = 2;
     group.add(mesh);
   } else {
-    // Fuselage / tail: open ~110° wraps on each side
+    // Fuselage / tail: flat side panels hugging estimated fuselage radius
+    const geo = new THREE.PlaneGeometry(panelW, panelH);
     [-1, 1].forEach((side) => {
-      const geo = makeSideCylinderGeo(rWrap, wrapLen, arc, side);
-      // Flip U on left so glyphs read L→R from outside
-      const matMap = tex.clone();
-      matMap.userData = tex.userData;
-      if (side < 0) {
-        matMap.repeat.x = -1;
-        matMap.offset.x = 1;
-      }
-      matMap.needsUpdate = true;
-      const mat = new THREE.MeshBasicMaterial({
-        ...sharedMatOpts,
-        map: matMap,
-      });
+      const mat = sideMat(tex, side);
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(xPos, yPos, center.z);
+      mesh.position.set(xPos, yPos, center.z + side * zSide);
+      // Default plane faces +Z; −Z side flips 180° around Y to face outward
+      mesh.rotation.y = side > 0 ? 0 : Math.PI;
       mesh.renderOrder = 2;
       group.add(mesh);
     });
   }
 
-  // Secondary registration near rear / wing root
+  // Secondary registration toward rear at same fuselage radius
   let regTex = null;
-  if (st.text && state.registration && place !== "tail") {
+  if (st.text && state.registration && place !== "tail" && place !== "wing") {
     regTex = makeRegTexture(state);
-    const regLen = Math.min(size.x * 0.18, 1.6);
-    const regArc = (70 * Math.PI) / 180;
+    const regW = Math.min(size.x * 0.16, 1.5);
+    const regH = regW * 0.35;
     const regX = center.x - size.x * 0.22;
+    const regY = yPos - size.y * 0.02;
+    const geo = new THREE.PlaneGeometry(regW, regH);
     [-1, 1].forEach((side) => {
-      const geo = makeSideCylinderGeo(rWrap * 0.98, regLen, regArc, side);
-      const map = regTex.clone();
-      map.userData = regTex.userData;
-      if (side < 0) {
-        map.repeat.x = -1;
-        map.offset.x = 1;
-      }
-      const mat = new THREE.MeshBasicMaterial({
-        map,
-        transparent: true,
-        depthWrite: false,
-        side: THREE.FrontSide,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2,
-      });
+      const mat = sideMat(regTex, side);
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(regX, yPos - size.y * 0.02, center.z);
+      mesh.position.set(regX, regY, center.z + side * zSide * 0.98);
+      mesh.rotation.y = side > 0 ? 0 : Math.PI;
       mesh.renderOrder = 2;
       group.add(mesh);
     });
@@ -1607,7 +1592,7 @@ export class Preview3D {
           mat.needsUpdate = true;
         });
       }
-      // Rebuild curved decals (size/font/placement/text length) — not canvas-only
+      // Rebuild flat side-panel decals (size/font/placement/text length) — not canvas-only
       const craft = this.root.getObjectByName("aircraft");
       if (craft) {
         removeNamedGroup(craft, "textDecals");

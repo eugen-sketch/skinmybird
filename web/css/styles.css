@@ -763,6 +763,11 @@ input[type="text"]:focus {
 .price-note { font-size: 0.68rem; color: var(--faint); }
 
 /* ——— Advanced drawer ——— */
+/* [hidden] must win over display:flex / fixed positioning */
+.drawer[hidden],
+.drawer-backdrop[hidden] {
+  display: none !important;
+}
 .drawer-backdrop {
   position: fixed;
   inset: 0;
