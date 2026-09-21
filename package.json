@@ -1,0 +1,11 @@
+{
+  "name": "skinmybird",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SkinMyBird — recolor Asobo A320neo liveries for MSFS 2020",
+  "scripts": {
+    "start": "python3 -m http.server 5173 --directory web",
+    "export": "python3 -m exporter.export --preset eugen-orange",
+    "export:zip": "python3 -m exporter.export --preset eugen-orange --zip"
+  }
+}
