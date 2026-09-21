@@ -9,8 +9,8 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      "three": "./vendor/three/three.module.js",
+      "three/addons/": "./vendor/three/"
     }
   }
   </script>
@@ -226,7 +226,7 @@
           <canvas id="preview3d" aria-label="Previzualizare 3D livery"></canvas>
           <div class="stage-hint" id="stage-hint">Trage pentru a roti · scroll zoom · click-dreapta pan</div>
           <div class="stage-fallback" id="stage-fallback" hidden>
-            <p>WebGL indisponibil — previzualizarea 3D nu poate porni pe acest dispozitiv.</p>
+            <p>Previzualizarea 3D nu a putut porni. Reîncearcă sau folosește Export fără preview.</p>
           </div>
           <div class="stage-empty" id="stage-empty">
             <p>Selectează un model pentru a începe</p>

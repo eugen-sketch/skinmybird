@@ -650,6 +650,13 @@ input[type="text"]:focus {
   pointer-events: none;
 }
 
+/* [hidden] must win over display:grid on stage overlays */
+.stage-fallback[hidden],
+.stage-empty[hidden],
+.stage-hint[hidden] {
+  display: none !important;
+}
+
 .preview-footer {
   display: flex;
   align-items: center;

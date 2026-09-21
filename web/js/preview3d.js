@@ -1,6 +1,6 @@
 /**
  * SkinMyBird 3D hangar preview — procedural meshes + OrbitControls.
- * ES module; Three.js via importmap CDN.
+ * ES module; Three.js via local vendor importmap.
  */
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -284,260 +284,293 @@ function addCyl(parent, rTop, rBot, h, x, y, z, material, rx = 0, ry = 0, rz = 0
 
 function buildAirliner(group, family, mats) {
   const specs = {
-    narrow: { len: 10.5, rad: 0.55, wingSpan: 9.5, wingY: -0.15, engCount: 2, engScale: 1 },
-    "narrow-short": { len: 9.2, rad: 0.52, wingSpan: 8.8, wingY: -0.12, engCount: 2, engScale: 0.95 },
-    "narrow-long": { len: 12.2, rad: 0.55, wingSpan: 10.2, wingY: -0.15, engCount: 2, engScale: 1.05 },
-    widebody: { len: 14.5, rad: 0.78, wingSpan: 13.5, wingY: -0.2, engCount: 2, engScale: 1.35 },
-    "747": { len: 16.5, rad: 0.85, wingSpan: 15.5, wingY: -0.22, engCount: 4, engScale: 1.15 },
+    narrow: { len: 11.2, rad: 0.52, wingSpan: 10.4, wingY: -0.18, engCount: 2, engScale: 1, rootChord: 2.05, tipChord: 0.85 },
+    "narrow-short": { len: 9.6, rad: 0.5, wingSpan: 9.4, wingY: -0.16, engCount: 2, engScale: 0.92, rootChord: 1.9, tipChord: 0.8 },
+    "narrow-long": { len: 13.0, rad: 0.52, wingSpan: 11.0, wingY: -0.18, engCount: 2, engScale: 1.05, rootChord: 2.15, tipChord: 0.88 },
+    widebody: { len: 15.2, rad: 0.78, wingSpan: 14.2, wingY: -0.22, engCount: 2, engScale: 1.35, rootChord: 2.7, tipChord: 1.05 },
+    "747": { len: 17.0, rad: 0.82, wingSpan: 16.0, wingY: -0.24, engCount: 4, engScale: 1.12, rootChord: 2.9, tipChord: 1.1 },
   };
   const s = specs[family] || specs.narrow;
   const half = s.len / 2;
+  const R = s.rad;
 
-  // Fuselage body (cylinder along Z → rotate to X)
-  const fuselage = addCyl(
-    group,
-    s.rad,
-    s.rad,
-    s.len * 0.78,
-    0,
-    0,
-    0,
-    mats.fuselage,
-    0,
-    0,
-    Math.PI / 2,
-    32
+  // Smooth civil-airliner fuselage (Lathe → rotate so axis is +X forward)
+  const profile = [
+    new THREE.Vector2(0.001, half),
+    new THREE.Vector2(R * 0.22, half - s.len * 0.028),
+    new THREE.Vector2(R * 0.55, half - s.len * 0.06),
+    new THREE.Vector2(R * 0.88, half - s.len * 0.1),
+    new THREE.Vector2(R * 0.98, half - s.len * 0.14),
+    new THREE.Vector2(R, half - s.len * 0.18),
+    new THREE.Vector2(R, -half + s.len * 0.2),
+    new THREE.Vector2(R * 0.92, -half + s.len * 0.14),
+    new THREE.Vector2(R * 0.62, -half + s.len * 0.08),
+    new THREE.Vector2(R * 0.28, -half + s.len * 0.035),
+    new THREE.Vector2(R * 0.08, -half + s.len * 0.01),
+    new THREE.Vector2(0.001, -half),
+  ];
+  const fuselage = new THREE.Mesh(
+    new THREE.LatheGeometry(profile, 48),
+    mats.fuselage
   );
+  fuselage.rotation.z = -Math.PI / 2; // Y-axis lathe → X-axis fuselage
   fuselage.name = "fuselage";
+  fuselage.castShadow = true;
+  fuselage.receiveShadow = true;
+  group.add(fuselage);
 
-  // Nose cone (pointing +X / forward)
-  const nose = addCyl(
+  // Cockpit windscreen (slightly raised near nose)
+  const glass = addCyl(
     group,
-    0.02,
-    s.rad,
-    s.len * 0.14,
-    half * 0.78 + (s.len * 0.07),
-    0,
-    0,
-    mats.fuselage,
-    0,
-    0,
-    Math.PI / 2,
-    24
-  );
-  nose.name = "nose";
-
-  // Cockpit glass tint
-  addCyl(
-    group,
-    s.rad * 0.92,
-    s.rad * 0.98,
-    s.len * 0.06,
-    half * 0.72,
-    s.rad * 0.15,
+    R * 0.78,
+    R * 0.92,
+    s.len * 0.055,
+    half - s.len * 0.12,
+    R * 0.22,
     0,
     mats.glass,
     0,
     0,
     Math.PI / 2,
-    16
-  );
-
-  // Tail cone
-  addCyl(
-    group,
-    s.rad,
-    s.rad * 0.15,
-    s.len * 0.12,
-    -half * 0.78 - s.len * 0.05,
-    0,
-    0,
-    mats.fuselage,
-    0,
-    0,
-    Math.PI / 2,
     20
   );
+  glass.name = "cockpit";
 
-  // 747 upper-deck hump
+  // 747 upper-deck hump (recognizable "hump" ahead of wing)
   if (family === "747") {
-    const hump = addCyl(
-      group,
-      s.rad * 0.55,
-      s.rad * 0.72,
-      s.len * 0.28,
-      half * 0.25,
-      s.rad * 0.55,
-      0,
-      mats.fuselage,
-      0,
-      0,
-      Math.PI / 2,
-      20
-    );
+    const humpPts = [
+      new THREE.Vector2(0.001, s.len * 0.16),
+      new THREE.Vector2(R * 0.42, s.len * 0.14),
+      new THREE.Vector2(R * 0.58, s.len * 0.08),
+      new THREE.Vector2(R * 0.62, 0),
+      new THREE.Vector2(R * 0.55, -s.len * 0.06),
+      new THREE.Vector2(R * 0.28, -s.len * 0.12),
+      new THREE.Vector2(0.001, -s.len * 0.14),
+    ];
+    const hump = new THREE.Mesh(new THREE.LatheGeometry(humpPts, 28), mats.fuselage);
+    hump.rotation.z = -Math.PI / 2;
+    hump.position.set(half * 0.22, R * 0.55, 0);
+    hump.scale.set(1, 0.85, 1);
     hump.name = "hump";
-    // hump fairing toward nose
-    addCyl(
-      group,
-      s.rad * 0.35,
-      s.rad * 0.55,
-      s.len * 0.1,
-      half * 0.48,
-      s.rad * 0.45,
-      0,
-      mats.fuselage,
-      0,
-      0,
-      Math.PI / 2,
-      16
-    );
+    hump.castShadow = true;
+    group.add(hump);
   }
 
-  // Wings
-  const wingChord = family === "widebody" || family === "747" ? 2.4 : 1.8;
-  const wingThick = 0.12;
-  const wingZ = s.wingSpan / 2;
+  // Wings: thin airfoil-ish boxes, sweep-back ~25°, dihedral, root>tip chord, upward winglets
+  const sweep = (25 * Math.PI) / 180;
+  const dihedral = (6 * Math.PI) / 180;
+  const semi = s.wingSpan / 2;
+  const wingRootX = -s.len * 0.02; // slightly aft of mid
+  const wingThick = Math.max(0.08, R * 0.18);
+
   [-1, 1].forEach((side) => {
-    const wing = addBox(
-      group,
-      wingChord,
+    const wingG = new THREE.Group();
+    wingG.name = "wing";
+    // Root sits just outside fuselage
+    wingG.position.set(wingRootX, s.wingY, side * R * 0.92);
+    // Sweep: tip goes aft (-X); dihedral: tip goes up
+    wingG.rotation.y = side > 0 ? -sweep : sweep;
+    wingG.rotation.x = side > 0 ? -dihedral : dihedral;
+
+    const segs = [
+      { len: semi * 0.52, chord: s.rootChord * 0.92, z0: R * 0.05 },
+      { len: semi * 0.48, chord: (s.rootChord + s.tipChord) / 2, z0: R * 0.05 + semi * 0.52 },
+    ];
+    // Single tapered approximation using scaled box + tip box
+    const rootPanel = addBox(
+      wingG,
+      s.rootChord,
       wingThick,
-      wingZ,
-      -0.3,
-      s.wingY,
-      (side * wingZ) / 2,
+      segs[0].len,
+      -s.rootChord * 0.15,
+      0,
+      segs[0].z0 + segs[0].len / 2,
+      mats.wings
+    );
+    rootPanel.name = "wingRoot";
+    const tipPanel = addBox(
+      wingG,
+      s.tipChord,
+      wingThick * 0.85,
+      segs[1].len,
+      -s.rootChord * 0.15 - (s.rootChord - s.tipChord) * 0.35,
+      0,
+      segs[1].z0 + segs[1].len / 2,
+      mats.wings
+    );
+    tipPanel.name = "wingTip";
+
+    // Winglet upward at tip
+    const tipZ = segs[1].z0 + segs[1].len;
+    const winglet = addBox(
+      wingG,
+      s.tipChord * 0.45,
+      0.85,
+      0.07,
+      -s.rootChord * 0.15 - (s.rootChord - s.tipChord) * 0.35,
+      0.4,
+      tipZ,
       mats.wings,
       0,
       0,
-      side * 0.08
+      side > 0 ? -0.2 : 0.2
     );
-    wing.name = "wing";
-    // winglet
-    addBox(
-      group,
-      0.35,
-      0.9,
-      0.08,
-      -0.3 + wingChord * 0.15,
-      s.wingY + 0.35,
-      side * (wingZ - 0.1),
-      mats.wings,
-      0,
-      0,
-      side * -0.15
-    );
+    winglet.name = "winglet";
+
+    group.add(wingG);
   });
 
-  // Engines under wing
-  const engR = 0.28 * s.engScale;
-  const engLen = 1.35 * s.engScale;
-  const engY = s.wingY - 0.55;
+  // Under-wing engine pods with pylons
+  const engR = 0.26 * s.engScale;
+  const engLen = 1.45 * s.engScale;
+  const engY = s.wingY - 0.62 * s.engScale;
+  const engXs = -0.05;
   const positions =
     s.engCount === 4
       ? [
-          [-0.2, engY, 2.2],
-          [-0.2, engY, 4.6],
-          [-0.2, engY, -2.2],
-          [-0.2, engY, -4.6],
+          [engXs, engY, semi * 0.32],
+          [engXs - 0.15, engY, semi * 0.62],
+          [engXs, engY, -semi * 0.32],
+          [engXs - 0.15, engY, -semi * 0.62],
         ]
       : [
-          [-0.15, engY, s.wingSpan * 0.28],
-          [-0.15, engY, -s.wingSpan * 0.28],
+          [engXs, engY, semi * 0.38],
+          [engXs, engY, -semi * 0.38],
         ];
   positions.forEach(([x, y, z]) => {
-    const eng = addCyl(group, engR, engR * 0.85, engLen, x, y, z, mats.engines, 0, 0, Math.PI / 2, 20);
+    const eng = addCyl(group, engR, engR * 0.88, engLen, x, y, z, mats.engines, 0, 0, Math.PI / 2, 24);
     eng.name = "engine";
-    // intake lip
-    addCyl(group, engR * 1.05, engR, 0.12, x + engLen * 0.48, y, z, mats.enginesDark, 0, 0, Math.PI / 2, 16);
-    // pylon
-    addBox(group, 0.5, 0.45, 0.1, x + 0.1, y + 0.35, z, mats.wings);
+    // Cylindrical nacelle intake lip
+    addCyl(group, engR * 1.06, engR * 0.98, 0.14, x + engLen * 0.48, y, z, mats.enginesDark, 0, 0, Math.PI / 2, 20);
+    // Exhaust taper
+    addCyl(group, engR * 0.88, engR * 0.55, 0.28, x - engLen * 0.48, y, z, mats.enginesDark, 0, 0, Math.PI / 2, 16);
+    // Pylon (wing → nacelle)
+    addBox(group, 0.55, Math.abs(s.wingY - y) * 0.75, 0.1, x + 0.05, (s.wingY + y) / 2, z, mats.wings);
   });
 
-  // Vertical stabilizer
-  const finH = family === "747" || family === "widebody" ? 2.8 : 2.2;
+  // Vertical fin (slight sweep) + horizontal stabilizers at tail
+  const finH = family === "747" || family === "widebody" ? 2.9 : 2.25;
+  const finRootX = -half + s.len * 0.12;
   const fin = addBox(
     group,
-    1.4,
+    1.55,
     finH,
-    0.12,
-    -half * 0.72,
-    finH * 0.45,
+    0.11,
+    finRootX,
+    finH * 0.42,
     0,
     mats.tail,
     0,
     0,
-    -0.15
+    -0.22
   );
   fin.name = "fin";
+  // Cap / fairing hint
+  addBox(group, 0.45, 0.18, 0.12, finRootX - 0.35, finH * 0.85, 0, mats.tail, 0, 0, -0.22);
 
-  // Horizontal stabilizer
-  const stabSpan = family === "widebody" || family === "747" ? 5.2 : 3.8;
+  const stabSpan = family === "widebody" || family === "747" ? 5.4 : 3.9;
   addBox(
     group,
-    1.1,
-    0.08,
+    1.15,
+    0.07,
     stabSpan,
-    -half * 0.78,
-    0.35,
+    -half + s.len * 0.08,
+    R * 0.55,
     0,
-    mats.tail
+    mats.tail,
+    0,
+    0,
+    -0.12
   );
 
-  // Landing gear (simple)
-  addBox(group, 0.15, 0.7, 0.15, half * 0.35, -s.rad - 0.25, 0, mats.enginesDark);
-  addBox(group, 0.15, 0.85, 0.15, -0.5, -s.rad - 0.3, 0.9, mats.enginesDark);
-  addBox(group, 0.15, 0.85, 0.15, -0.5, -s.rad - 0.3, -0.9, mats.enginesDark);
+  // Simple grounded landing gear
+  const gearY = -R - 0.15;
+  // Nose gear
+  addBox(group, 0.12, 0.75, 0.12, half * 0.42, gearY - 0.15, 0, mats.enginesDark);
+  addCyl(group, 0.14, 0.14, 0.08, half * 0.42, gearY - 0.52, 0, mats.enginesDark, Math.PI / 2, 0, 0, 12);
+  // Main gear left/right
+  [-1, 1].forEach((side) => {
+    addBox(group, 0.12, 0.9, 0.12, -0.35, gearY - 0.2, side * R * 1.15, mats.enginesDark);
+    addCyl(group, 0.16, 0.16, 0.1, -0.35, gearY - 0.62, side * R * 1.15, mats.enginesDark, Math.PI / 2, 0, 0, 12);
+  });
 
-  return { fuselageMeshes: [fuselage, nose] };
+  return { fuselageMeshes: [fuselage] };
 }
 
 function buildHelicopter(group, mats) {
-  // Cabin
-  const cabin = addBox(group, 3.2, 1.5, 1.6, 0.2, 0.2, 0, mats.fuselage);
+  // H135-ish: bubble cabin, slender boom, skids, main + tail rotors
+  const cabin = new THREE.Group();
   cabin.name = "fuselage";
-  // Rounded nose
-  addCyl(group, 0.7, 0.75, 1.1, 1.7, 0.15, 0, mats.fuselage, 0, 0, Math.PI / 2, 16);
-  // Cockpit glass
-  addBox(group, 0.9, 0.7, 1.35, 1.55, 0.35, 0, mats.glass);
 
-  // Boom
-  const boom = addCyl(group, 0.18, 0.12, 4.2, -3.2, 0.35, 0, mats.tail, 0, 0, Math.PI / 2, 12);
+  // Bubble / rounded cabin (sphere scaled)
+  const bubble = new THREE.Mesh(
+    new THREE.SphereGeometry(1.05, 28, 20),
+    mats.fuselage
+  );
+  bubble.scale.set(1.35, 0.95, 0.95);
+  bubble.position.set(0.35, 0.35, 0);
+  bubble.castShadow = true;
+  cabin.add(bubble);
+
+  // Lower cabin fairing
+  addBox(cabin, 2.4, 0.7, 1.35, 0.15, -0.05, 0, mats.fuselage);
+
+  // Nose / cockpit glass bubble
+  const noseGlass = new THREE.Mesh(
+    new THREE.SphereGeometry(0.72, 20, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    mats.glass
+  );
+  noseGlass.rotation.z = -Math.PI / 2;
+  noseGlass.position.set(1.45, 0.4, 0);
+  noseGlass.scale.set(1.1, 1.05, 1.15);
+  cabin.add(noseGlass);
+
+  group.add(cabin);
+
+  // Slender tail boom
+  const boom = addCyl(group, 0.16, 0.1, 4.6, -2.85, 0.45, 0, mats.tail, 0, 0, Math.PI / 2, 14);
   boom.name = "boom";
+  // Boom fairing at cabin junction
+  addCyl(group, 0.28, 0.16, 0.7, -0.9, 0.4, 0, mats.fuselage, 0, 0, Math.PI / 2, 12);
 
-  // Tail fin
-  addBox(group, 0.6, 1.1, 0.08, -5.1, 0.7, 0, mats.tail);
+  // Vertical / horizontal stabilizers at boom end
+  addBox(group, 0.55, 1.15, 0.07, -5.0, 0.85, 0, mats.tail);
+  addBox(group, 0.35, 0.06, 0.9, -4.85, 0.55, 0, mats.tail);
 
   // Skids
-  addBox(group, 2.8, 0.08, 0.1, 0.1, -0.85, 0.7, mats.engines);
-  addBox(group, 2.8, 0.08, 0.1, 0.1, -0.85, -0.7, mats.engines);
-  addBox(group, 0.08, 0.55, 0.08, 0.8, -0.55, 0.7, mats.engines);
-  addBox(group, 0.08, 0.55, 0.08, -0.6, -0.55, 0.7, mats.engines);
-  addBox(group, 0.08, 0.55, 0.08, 0.8, -0.55, -0.7, mats.engines);
-  addBox(group, 0.08, 0.55, 0.08, -0.6, -0.55, -0.7, mats.engines);
+  const skidY = -0.95;
+  [-1, 1].forEach((side) => {
+    const z = side * 0.72;
+    addBox(group, 3.0, 0.07, 0.09, 0.1, skidY, z, mats.engines);
+    addBox(group, 0.07, 0.55, 0.07, 1.0, skidY + 0.28, z, mats.engines);
+    addBox(group, 0.07, 0.55, 0.07, -0.85, skidY + 0.28, z, mats.engines);
+  });
 
-  // Main rotor hub + blades (animated group)
+  // Main rotor mast + 4-blade disk
   const rotor = new THREE.Group();
   rotor.name = "mainRotor";
-  rotor.position.set(0.1, 1.15, 0);
+  rotor.position.set(0.05, 1.35, 0);
   group.add(rotor);
-  addCyl(rotor, 0.12, 0.12, 0.35, 0, 0, 0, mats.wings);
-  const bladeMat = mats.wings;
+  addCyl(rotor, 0.1, 0.12, 0.45, 0, -0.1, 0, mats.wings);
+  addCyl(rotor, 0.22, 0.22, 0.12, 0, 0.12, 0, mats.enginesDark);
   for (let i = 0; i < 4; i++) {
-    const blade = addBox(rotor, 5.5, 0.04, 0.22, 0, 0.12, 0, bladeMat);
+    const blade = addBox(rotor, 5.8, 0.035, 0.2, 0, 0.18, 0, mats.wings);
     blade.rotation.y = (i * Math.PI) / 2;
+    blade.position.y = 0.18;
   }
 
-  // Tail rotor
+  // Fenestron-ish / classic tail rotor
   const tailRotor = new THREE.Group();
   tailRotor.name = "tailRotor";
-  tailRotor.position.set(-5.2, 0.55, 0.25);
+  tailRotor.position.set(-5.05, 0.7, 0.22);
   group.add(tailRotor);
-  for (let i = 0; i < 2; i++) {
-    const blade = addBox(tailRotor, 0.08, 0.9, 0.12, 0, 0, 0, mats.wings);
-    blade.rotation.z = (i * Math.PI) / 2;
+  addCyl(tailRotor, 0.06, 0.06, 0.2, 0, 0, 0, mats.enginesDark, 0, 0, Math.PI / 2, 8);
+  for (let i = 0; i < 4; i++) {
+    const blade = addBox(tailRotor, 0.06, 0.85, 0.1, 0, 0, 0, mats.wings);
+    blade.rotation.z = (i * Math.PI) / 4;
   }
 
-  return { fuselageMeshes: [cabin], anim: { mainRotor: rotor, tailRotor } };
+  return { fuselageMeshes: [bubble], anim: { mainRotor: rotor, tailRotor } };
 }
 
 function buildBalloon(group, mats) {
@@ -634,6 +667,7 @@ export class Preview3D {
       this.ok = false;
       return false;
     }
+    try {
     const canvas = this.canvas;
     const rect = this.stageEl.getBoundingClientRect();
     const w = Math.max(320, Math.floor(rect.width) || 800);
@@ -655,7 +689,7 @@ export class Preview3D {
     this.scene = new THREE.Scene();
 
     this.camera = new THREE.PerspectiveCamera(42, w / h, 0.1, 200);
-    this.camera.position.set(8, 3.5, 10);
+    this.camera.position.set(9, 4, 7.5);
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
@@ -730,6 +764,17 @@ export class Preview3D {
     this.idleTimer = performance.now();
     this._loop();
     return true;
+    } catch (err) {
+      console.error("Preview3D.init failed", err);
+      this.ok = false;
+      try {
+        if (this.renderer) {
+          this.renderer.dispose();
+          this.renderer = null;
+        }
+      } catch (_) { /* ignore */ }
+      return false;
+    }
   }
 
   resize() {
@@ -746,16 +791,18 @@ export class Preview3D {
   resetCamera() {
     if (!this.camera || !this.controls) return;
     const family = this.family || "narrow";
+    // Distance chosen so craft fills ~60% of the frame
     const dist =
       family === "balloon"
-        ? 12
+        ? 11
         : family === "747" || family === "widebody"
-          ? 18
+          ? 16
           : family === "helicopter"
-            ? 11
-            : 14;
-    this.camera.position.set(dist * 0.55, dist * 0.28, dist * 0.7);
-    this.controls.target.set(0, family === "balloon" ? 1.5 : 0.4, 0);
+            ? 10
+            : 12.5;
+    // Classic 3/4 front-side view, slightly above
+    this.camera.position.set(dist * 0.72, dist * 0.32, dist * 0.58);
+    this.controls.target.set(0, family === "balloon" ? 1.6 : 0.35, 0);
     this.controls.autoRotate = true;
     this.controls.update();
   }
@@ -793,8 +840,8 @@ export class Preview3D {
 
     // Lift craft so gear sits near floor
     if (family === "balloon") craft.position.y = 0.2;
-    else if (family === "helicopter") craft.position.y = 0.5;
-    else craft.position.y = 0.15;
+    else if (family === "helicopter") craft.position.y = 0.85;
+    else craft.position.y = 0.55;
 
     this.root.add(craft);
     this.anim = (result && result.anim) || null;
