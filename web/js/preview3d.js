@@ -137,13 +137,13 @@ export function resolveGlbUrl(profile) {
     return null;
 
   if (blob.includes("787") || blob.includes("dreamliner"))
-    return "models/b787.glb";
+    return "/models/b787.glb";
   if (
     blob.includes("737") ||
     blob.includes("736") ||
     blob.includes("pmdg")
   )
-    return "models/b737.glb";
+    return "/models/b737.glb";
   // Widebody stand-in (A350 GLB): A330 / 747 / generic wide — 747 is not exact
   if (
     blob.includes("747") ||
@@ -152,9 +152,9 @@ export function resolveGlbUrl(profile) {
     blob.includes("widebody") ||
     blob.includes("wide-body")
   )
-    return "models/a350.glb";
+    return "/models/a350.glb";
   // A320 / A319 / A321 / FBW / LatinVFR Airbus + default airliner
-  return "models/a320.glb";
+  return "/models/a320.glb";
 }
 
 function loadGlbCached(url) {
@@ -1677,6 +1677,13 @@ export class Preview3D {
       this.mountGlb(gltf, profile, state, url);
     } catch (err) {
       console.warn("GLB load failed, falling back to procedural:", url, err);
+      try {
+        const line = document.getElementById("status-line");
+        if (line) {
+          line.innerHTML = "<strong style=\"color:#ff8a7a\">GLB eșuat</strong> (" + url + "): " + (err && err.message ? err.message : err) + " — forma simplă temporar.";
+        }
+        window.dispatchEvent(new CustomEvent("skinmybird-model-mode",{detail:{mode:"procedural",error:String(err)}}));
+      } catch (e) {}
       if (token !== this._loadToken) return;
       this.buildProcedural(profile, state);
     }

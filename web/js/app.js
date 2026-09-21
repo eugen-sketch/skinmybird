@@ -1,10 +1,22 @@
 /**
- * SkinMyBird web editor v0.4.6 — commercial UI + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.4.7 — commercial UI + 3D hangar preview (Three.js).
  * UI labels in Romanian. Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D } from "./preview3d.js?v=0.4.6";
+import { Preview3D } from "./preview3d.js?v=0.4.7";
 
 const $ = (id) => document.getElementById(id);
+
+  // Deep-link: ?plane=<profileId> opens hangar directly (debug + bookmarks)
+  function autoSelectFromUrl() {
+    try {
+      const q = new URLSearchParams(location.search);
+      const id = q.get("plane");
+      if (!id || !state.profiles.length) return;
+      const prof = state.profiles.find((p) => p.id === id);
+      if (prof) selectProfile(id);
+    } catch (e) {}
+  }
+
 
   window.addEventListener("skinmybird-model-mode", (ev) => {
     const sub = $("preview-sub");
@@ -405,9 +417,11 @@ const $ = (id) => document.getElementById(id);
       state.profiles = data.profiles || [];
       renderModelCards();
       setStatus(`Încărcate <strong>${state.profiles.length}</strong> profile.`);
+      autoSelectFromUrl();
     } catch (err) {
       state.profiles = FALLBACK_PROFILES;
       renderModelCards();
+      autoSelectFromUrl();
       setStatus(
         "API indisponibil — listă statică. Pornește <code>python server.py</code> pentru Export DDS.",
         String(err)
