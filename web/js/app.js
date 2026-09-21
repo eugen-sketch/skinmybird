@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.4.8 — commercial UI + 3D hangar preview (Three.js).
- * UI labels in Romanian. Keeps /api/export + /api/export-form contracts.
+ * SkinMyBird web editor v0.5.0 — commercial UI + 3D hangar preview (Three.js).
+ * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D } from "./preview3d.js?v=0.4.8";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.0";
 
 const $ = (id) => document.getElementById(id);
 
@@ -22,10 +22,10 @@ const $ = (id) => document.getElementById(id);
     const sub = $("preview-sub");
     if (!sub || !ev.detail) return;
     if (ev.detail.mode === "glb") {
-      sub.textContent = "Model 3D real (GLB) · " + (ev.detail.url || "");
+      sub.textContent = "Real 3D model (GLB) · " + (ev.detail.url || "");
       sub.style.color = "#7dffa0";
     } else {
-      sub.textContent = "Formă simplă (fallback) — GLB neîncărcat";
+      sub.textContent = "Simple shape (fallback) — GLB not loaded";
       sub.style.color = "#ff8a7a";
     }
   });
@@ -36,9 +36,13 @@ const $ = (id) => document.getElementById(id);
     profile: null,
     colors: {
       fuselage: "#FF6A00",
+      nose: "#1A1A1A",
+      belly: "#E8E8E8",
       wings: "#111111",
+      winglet: "#FF6A00",
       engines: "#222222",
       tail: "#FF6A00",
+      accent: "#FFFFFF",
     },
     name: "Eugen Orange",
     registration: "YR-EUG",
@@ -50,6 +54,11 @@ const $ = (id) => document.getElementById(id);
     textStyle: "bold",
     textFont: "segoe",
     textPlacement: "fuselage",
+    textPosX: 0,
+    textPosY: -10,
+    textScale: 100,
+    textFlipLeft: false,
+    textFlipRight: true,
     stickers: {
       stripe: true,
       heart: false,
@@ -60,6 +69,16 @@ const $ = (id) => document.getElementById(id);
       roundel: false,
       chevron: false,
       checkered: false,
+      smile: false,
+      crown: false,
+      diamond: false,
+      sun: false,
+      moon: false,
+      flag: false,
+      shield: false,
+      arrow: false,
+      sparkle: false,
+      wingbadge: false,
     },
     soacra: null,
     soacraName: null,
@@ -69,9 +88,13 @@ const $ = (id) => document.getElementById(id);
 
   const EUGEN = {
     fuselage: "#FF6A00",
+    nose: "#1A1A1A",
+    belly: "#E8E8E8",
     wings: "#111111",
+    winglet: "#FF6A00",
     engines: "#222222",
     tail: "#FF6A00",
+    accent: "#FFFFFF",
     name: "Eugen Orange",
     registration: "YR-EUG",
     airline: "SkinMyBird",
@@ -92,9 +115,13 @@ const $ = (id) => document.getElementById(id);
 
   function syncInputsFromState() {
     $("c-fuselage").value = state.colors.fuselage;
+    if ($("c-nose")) $("c-nose").value = state.colors.nose || "#1A1A1A";
+    if ($("c-belly")) $("c-belly").value = state.colors.belly || "#E8E8E8";
     $("c-wings").value = state.colors.wings;
+    if ($("c-winglet")) $("c-winglet").value = state.colors.winglet || "#FF6A00";
     $("c-engines").value = state.colors.engines;
     $("c-tail").value = state.colors.tail;
+    if ($("c-accent")) $("c-accent").value = state.colors.accent || "#FFFFFF";
     $("livery-name").value = state.name;
     $("registration").value = state.registration;
     $("airline").value = state.airline;
@@ -104,6 +131,14 @@ const $ = (id) => document.getElementById(id);
     $("text-style").value = state.textStyle;
     if ($("text-font")) $("text-font").value = state.textFont || "segoe";
     $("text-placement").value = state.textPlacement;
+    if ($("text-pos-x")) $("text-pos-x").value = state.textPosX ?? 0;
+    if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? -10;
+    if ($("text-scale")) $("text-scale").value = state.textScale ?? 100;
+    if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
+    if ($("text-flip-right")) $("text-flip-right").checked = state.textFlipRight !== false;
+    if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
+    if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? -10);
+    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 100) + "%";
     $("st-stripe").checked = !!state.stickers.stripe;
     $("st-heart").checked = !!state.stickers.heart;
     $("st-text").checked = !!state.stickers.text;
@@ -113,6 +148,10 @@ const $ = (id) => document.getElementById(id);
     if ($("st-roundel")) $("st-roundel").checked = !!state.stickers.roundel;
     if ($("st-chevron")) $("st-chevron").checked = !!state.stickers.chevron;
     if ($("st-checkered")) $("st-checkered").checked = !!state.stickers.checkered;
+    ["smile","crown","diamond","sun","moon","flag","shield","arrow","sparkle","wingbadge"].forEach((k) => {
+      const el = $("st-" + k);
+      if (el) el.checked = !!state.stickers[k];
+    });
     updateHexLabels();
     syncSegmented("data-size", state.textSize);
     syncSegmented("data-style", state.textStyle);
@@ -129,9 +168,13 @@ const $ = (id) => document.getElementById(id);
   function updateHexLabels() {
     const map = {
       fuselage: "hex-fuselage",
+      nose: "hex-nose",
+      belly: "hex-belly",
       wings: "hex-wings",
+      winglet: "hex-winglet",
       engines: "hex-engines",
       tail: "hex-tail",
+      accent: "hex-accent",
     };
     Object.keys(map).forEach((k) => {
       const el = $(map[k]);
@@ -141,9 +184,13 @@ const $ = (id) => document.getElementById(id);
 
   function readInputs() {
     state.colors.fuselage = $("c-fuselage").value;
+    state.colors.nose = $("c-nose") ? $("c-nose").value : (state.colors.nose || "#1A1A1A");
+    state.colors.belly = $("c-belly") ? $("c-belly").value : (state.colors.belly || "#E8E8E8");
     state.colors.wings = $("c-wings").value;
+    state.colors.winglet = $("c-winglet") ? $("c-winglet").value : (state.colors.winglet || "#FF6A00");
     state.colors.engines = $("c-engines").value;
     state.colors.tail = $("c-tail").value;
+    state.colors.accent = $("c-accent") ? $("c-accent").value : (state.colors.accent || "#FFFFFF");
     state.name = $("livery-name").value.trim() || "Custom";
     state.registration = $("registration").value.trim() || "SMB-001";
     state.airline = $("airline").value.trim() || "SkinMyBird";
@@ -153,6 +200,11 @@ const $ = (id) => document.getElementById(id);
     state.textStyle = $("text-style").value || "bold";
     state.textFont = ($("text-font") && $("text-font").value) || "segoe";
     state.textPlacement = $("text-placement").value || "fuselage";
+    state.textPosX = $("text-pos-x") ? Number($("text-pos-x").value) : 0;
+    state.textPosY = $("text-pos-y") ? Number($("text-pos-y").value) : -10;
+    state.textScale = $("text-scale") ? Number($("text-scale").value) : 100;
+    state.textFlipLeft = $("text-flip-left") ? $("text-flip-left").checked : false;
+    state.textFlipRight = $("text-flip-right") ? $("text-flip-right").checked : true;
     // custom_text payload: slogan if set, else registration (legacy sticker-text behaviour)
     state.stickerText = state.slogan || state.registration;
     state.stickers.stripe = $("st-stripe").checked;
@@ -164,6 +216,10 @@ const $ = (id) => document.getElementById(id);
     state.stickers.roundel = $("st-roundel") ? $("st-roundel").checked : false;
     state.stickers.chevron = $("st-chevron") ? $("st-chevron").checked : false;
     state.stickers.checkered = $("st-checkered") ? $("st-checkered").checked : false;
+    ["smile","crown","diamond","sun","moon","flag","shield","arrow","sparkle","wingbadge"].forEach((k) => {
+      const el = $("st-" + k);
+      state.stickers[k] = el ? el.checked : !!state.stickers[k];
+    });
     updateHexLabels();
   }
 
@@ -177,26 +233,40 @@ const $ = (id) => document.getElementById(id);
   }
 
   function buildStickersPayload() {
-    const list = [
-      { type: "team_stripe", enabled: state.stickers.stripe },
-      { type: "heart", enabled: state.stickers.heart },
-      { type: "star", enabled: !!state.stickers.star },
-      { type: "lightning", enabled: !!state.stickers.lightning },
-      { type: "bird", enabled: !!state.stickers.bird },
-      { type: "roundel", enabled: !!state.stickers.roundel },
-      { type: "chevron", enabled: !!state.stickers.chevron },
-      { type: "checkered", enabled: !!state.stickers.checkered },
-      {
-        type: "custom_text",
-        enabled: state.stickers.text,
-        text: state.stickerText,
-        color: state.textColor,
-        size: state.textSize,
-        style: state.textStyle,
-        font: state.textFont,
-        placement: state.textPlacement,
-      },
+    const kinds = [
+      ["team_stripe", "stripe"],
+      ["heart", "heart"],
+      ["star", "star"],
+      ["lightning", "lightning"],
+      ["bird", "bird"],
+      ["roundel", "roundel"],
+      ["chevron", "chevron"],
+      ["checkered", "checkered"],
+      ["smile", "smile"],
+      ["crown", "crown"],
+      ["diamond", "diamond"],
+      ["sun", "sun"],
+      ["moon", "moon"],
+      ["flag", "flag"],
+      ["shield", "shield"],
+      ["arrow", "arrow"],
+      ["sparkle", "sparkle"],
+      ["wingbadge", "wingbadge"],
     ];
+    const list = kinds.map(([type, key]) => ({
+      type,
+      enabled: !!state.stickers[key],
+    }));
+    list.push({
+      type: "custom_text",
+      enabled: state.stickers.text,
+      text: state.stickerText,
+      color: state.textColor,
+      size: state.textSize,
+      style: state.textStyle,
+      font: state.textFont,
+      placement: state.textPlacement,
+    });
     return list;
   }
 
@@ -236,10 +306,14 @@ const $ = (id) => document.getElementById(id);
   function updateSwatches() {
     const el = $("swatches");
     const entries = [
-      ["Corp", state.colors.fuselage],
-      ["Aripi", state.colors.wings],
-      ["Motoare", state.colors.engines],
-      ["Coadă", state.colors.tail],
+      ["Body", state.colors.fuselage],
+      ["Nose", state.colors.nose],
+      ["Belly", state.colors.belly],
+      ["Wings", state.colors.wings],
+      ["Winglet", state.colors.winglet],
+      ["Engines", state.colors.engines],
+      ["Tail", state.colors.tail],
+      ["Accent", state.colors.accent],
     ];
     el.innerHTML = entries
       .map(
@@ -252,28 +326,42 @@ const $ = (id) => document.getElementById(id);
   function updateLayers() {
     const list = $("layer-list");
     if (!state.profile) {
-      list.innerHTML = '<li class="layer empty">Niciun model selectat</li>';
+      list.innerHTML = '<li class="layer empty">No model selected</li>';
       return;
     }
     const items = [
-      { on: true, label: "Fuselaj", meta: state.colors.fuselage, color: state.colors.fuselage },
-      { on: true, label: "Aripi", meta: state.colors.wings, color: state.colors.wings },
-      { on: true, label: "Motoare", meta: state.colors.engines, color: state.colors.engines },
-      { on: true, label: "Coadă", meta: state.colors.tail, color: state.colors.tail },
-      { on: state.stickers.stripe, label: "Bandă echipă", meta: "" },
-      { on: state.stickers.heart, label: "Inimă", meta: "" },
-      { on: state.stickers.star, label: "Stea", meta: "" },
-      { on: state.stickers.lightning, label: "Fulger", meta: "" },
-      { on: state.stickers.bird, label: "Pasăre", meta: "" },
-      { on: state.stickers.roundel, label: "Cercuri", meta: "" },
-      { on: state.stickers.chevron, label: "Săgeți", meta: "" },
-      { on: state.stickers.checkered, label: "Damier", meta: "" },
+      { on: true, label: "Fuselage", meta: state.colors.fuselage, color: state.colors.fuselage },
+      { on: true, label: "Nose", meta: state.colors.nose, color: state.colors.nose },
+      { on: true, label: "Belly", meta: state.colors.belly, color: state.colors.belly },
+      { on: true, label: "Wings", meta: state.colors.wings, color: state.colors.wings },
+      { on: true, label: "Winglet", meta: state.colors.winglet, color: state.colors.winglet },
+      { on: true, label: "Engines", meta: state.colors.engines, color: state.colors.engines },
+      { on: true, label: "Tail", meta: state.colors.tail, color: state.colors.tail },
+      { on: true, label: "Accent", meta: state.colors.accent, color: state.colors.accent },
+      { on: state.stickers.stripe, label: "Team stripe", meta: "" },
+      { on: state.stickers.heart, label: "Heart", meta: "" },
+      { on: state.stickers.star, label: "Star", meta: "" },
+      { on: state.stickers.lightning, label: "Lightning", meta: "" },
+      { on: state.stickers.bird, label: "Bird", meta: "" },
+      { on: state.stickers.roundel, label: "Roundel", meta: "" },
+      { on: state.stickers.chevron, label: "Chevron", meta: "" },
+      { on: state.stickers.checkered, label: "Checkered", meta: "" },
+      { on: state.stickers.smile, label: "Smile", meta: "" },
+      { on: state.stickers.crown, label: "Crown", meta: "" },
+      { on: state.stickers.diamond, label: "Diamond", meta: "" },
+      { on: state.stickers.sun, label: "Sun", meta: "" },
+      { on: state.stickers.moon, label: "Moon", meta: "" },
+      { on: state.stickers.flag, label: "Pennant", meta: "" },
+      { on: state.stickers.shield, label: "Shield", meta: "" },
+      { on: state.stickers.arrow, label: "Arrow", meta: "" },
+      { on: state.stickers.sparkle, label: "Sparkle", meta: "" },
+      { on: state.stickers.wingbadge, label: "Wing badge", meta: "" },
       {
         on: state.stickers.text,
         label: "Text",
         meta: (state.textFont || "segoe") + " · " + state.textPlacement,
       },
-      { on: !!state.soacra, label: "Logo / poză", meta: state.soacraName || "" },
+      { on: !!state.soacra, label: "Logo / photo", meta: state.soacraName || "" },
     ];
     list.innerHTML = items
       .map(
@@ -291,7 +379,7 @@ const $ = (id) => document.getElementById(id);
       sum.innerHTML = `
         <div><strong>${state.name}</strong></div>
         <div>${state.airline} · ${state.registration}</div>
-        <div>${state.slogan ? "„" + state.slogan + "”" : "Fără slogan"}</div>
+        <div>${state.slogan ? "“" + state.slogan + "”" : "No slogan"}</div>
         <div style="margin-top:0.35rem;color:var(--faint)">${
           state.profile.displayName
         }</div>`;
@@ -349,7 +437,7 @@ const $ = (id) => document.getElementById(id);
     const grid = $("model-grid");
     if (!state.profiles.length) {
       grid.innerHTML =
-        '<div class="empty-state"><div class="empty-icon">✈</div><p>Nu am găsit profile. Pornește serverul: <code>python server.py</code></p></div>';
+        '<div class="empty-state"><div class="empty-icon">✈</div><p>No profiles found. Start the server: <code>python server.py</code></p></div>';
       return;
     }
     grid.innerHTML = state.profiles
@@ -387,16 +475,25 @@ const $ = (id) => document.getElementById(id);
     $("header-model-icon").textContent = CAT_ICON[p.category] || "✈️";
     $("header-model-name").textContent = p.displayName;
     $("preview-sub").textContent = `${p.displayName} · ${
-      p.has_uv ? "UV măsurat" : "whole-albedo stub"
+      p.has_uv ? "measured UV" : "whole-albedo stub"
     }`;
     $("mode-badge").textContent = p.has_uv ? "UV + DDS" : "Stub + DDS";
+    if ($("standin-badge")) {
+      try {
+        const meta = resolveGlbMeta(p);
+        $("standin-badge").hidden = !(meta && meta.standIn);
+        if (meta && meta.standIn && meta.note) $("standin-badge").title = meta.note;
+      } catch (e) {
+        $("standin-badge").hidden = true;
+      }
+    }
     $("paint-mode-note").innerHTML = p.has_uv
-      ? `Profil cu <strong>UV</strong>. Export → <code>*.PNG.DDS</code> BC7.`
-      : `UV necunoscut — <strong>whole-albedo</strong>. Vezi ASSUMPTIONS.md.`;
+      ? `<strong>UV</strong> profile. Export → <code>*.PNG.DDS</code> BC7.`
+      : `Unknown UV — <strong>whole-albedo</strong>. See ASSUMPTIONS.md.`;
     renderModelCards();
     drawPreview();
     setStatus(
-      `Model: <strong>${p.displayName}</strong>. Pictează, apoi Export ZIP.`
+      `Model: <strong>${p.displayName}</strong>. Paint, then Export ZIP.`
     );
   }
 
@@ -416,14 +513,14 @@ const $ = (id) => document.getElementById(id);
       const data = await res.json();
       state.profiles = data.profiles || [];
       renderModelCards();
-      setStatus(`Încărcate <strong>${state.profiles.length}</strong> profile.`);
+      setStatus(`Loaded <strong>${state.profiles.length}</strong> profiles.`);
       autoSelectFromUrl();
     } catch (err) {
       state.profiles = FALLBACK_PROFILES;
       renderModelCards();
       autoSelectFromUrl();
       setStatus(
-        "API indisponibil — listă statică. Pornește <code>python server.py</code> pentru Export DDS.",
+        "API unavailable — static list. Start <code>python server.py</code> for DDS Export.",
         String(err)
       );
     }
@@ -440,6 +537,7 @@ const $ = (id) => document.getElementById(id);
     { id: "pmdg-aircraft-736", displayName: "PMDG 737-600", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Boeing" },
     { id: "hpg-hotair-balloon", displayName: "HPG Hot Air Balloon", category: "balon", has_uv: false, silhouette: "balloon", ui_manufacturer: "HPG" },
     { id: "hpg-airbus-h135", displayName: "HPG Airbus H135", category: "elicopter", has_uv: false, silhouette: "helicopter", ui_manufacturer: "Airbus Helicopters" },
+    { id: "skinmybird-cessna-172-stub", displayName: "Cessna 172 (preview stub)", category: "avion", has_uv: false, silhouette: "ga", ui_manufacturer: "Cessna" },
   ];
 
   function setBusy(busy, label) {
@@ -448,16 +546,16 @@ const $ = (id) => document.getElementById(id);
       if (!b) return;
       b.disabled = busy;
     });
-    if (busy) setStatus(label || "Se lucrează…");
+    if (busy) setStatus(label || "Working…");
   }
 
   async function doExport() {
     if (!state.profile) {
-      alert("Alege mai întâi un model.");
+      alert("Pick a model first.");
       return;
     }
     readInputs();
-    setBusy(true, "Se exportă pachetul Community (DDS)…");
+    setBusy(true, "Exporting Community package (DDS)…");
     try {
       const payload = {
         profile_id: state.profile.id,
@@ -498,9 +596,9 @@ const $ = (id) => document.getElementById(id);
       state.lastPackage = data.package_folder;
       setStatus(
         `Export OK: <strong>${data.package_folder}</strong>` +
-          (data.used_dds ? " · DDS BC7" : " · PNG (rulează convert_to_dds pe Windows)") +
+          (data.used_dds ? " · DDS BC7" : " · PNG (run convert_to_dds on Windows)") +
           (data.download_zip
-            ? ` · <a href="${data.download_zip}">Descarcă ZIP</a>`
+            ? ` · <a href="${data.download_zip}">Download ZIP</a>`
             : ""),
         data
       );
@@ -511,8 +609,8 @@ const $ = (id) => document.getElementById(id);
         a.click();
       }
     } catch (err) {
-      setStatus("Export eșuat.", String(err));
-      alert("Eroare export: " + err.message);
+      setStatus("Export failed.", String(err));
+      alert("Export error: " + err.message);
     } finally {
       setBusy(false);
     }
@@ -520,10 +618,10 @@ const $ = (id) => document.getElementById(id);
 
   async function doInstall() {
     if (!state.lastPackage) {
-      alert("Exportă mai întâi un pachet, apoi Instalează.");
+      alert("Export a package first, then Install.");
       return;
     }
-    setBusy(true, "Se instalează în Community…");
+    setBusy(true, "Installing into Community…");
     try {
       const res = await fetch("/api/install", {
         method: "POST",
@@ -532,20 +630,20 @@ const $ = (id) => document.getElementById(id);
       });
       const data = await res.json();
       if (data.ok) {
-        setStatus(`Instalat: <code>${data.installed}</code>`, data);
+        setStatus(`Installed: <code>${data.installed}</code>`, data);
       } else {
         setStatus(
-          "Install pe acest PC nu e disponibil (cale Community lipsă). Copiază manual folderul din <code>output/</code>.",
+          "Install is not available on this PC (Community path missing). Copy the folder from <code>output/</code> manually.",
           data
         );
         alert(
           (data.hint || data.error || "Community path missing") +
-            "\n\nPe Windows: pornește SkinMyBird.bat și apasă din nou Instalează."
+            "\n\nOn Windows: start SkinMyBird.bat and press Install again."
         );
       }
     } catch (err) {
-      setStatus("Install eșuat.", String(err));
-      alert("Eroare install: " + err.message);
+      setStatus("Install failed.", String(err));
+      alert("Install error: " + err.message);
     } finally {
       setBusy(false);
     }
@@ -566,9 +664,13 @@ const $ = (id) => document.getElementById(id);
   function applyEugen() {
     Object.assign(state.colors, {
       fuselage: EUGEN.fuselage,
+      nose: EUGEN.nose,
+      belly: EUGEN.belly,
       wings: EUGEN.wings,
+      winglet: EUGEN.winglet,
       engines: EUGEN.engines,
       tail: EUGEN.tail,
+      accent: EUGEN.accent,
     });
     state.name = EUGEN.name;
     state.registration = EUGEN.registration;
@@ -590,11 +692,21 @@ const $ = (id) => document.getElementById(id);
       roundel: false,
       chevron: false,
       checkered: false,
+      smile: false,
+      crown: false,
+      diamond: false,
+      sun: false,
+      moon: false,
+      flag: false,
+      shield: false,
+      arrow: false,
+      sparkle: false,
+      wingbadge: false,
     };
     syncInputsFromState();
     drawPreview();
     closeMoreMenu();
-    setStatus("Preset <strong>Eugen Orange</strong> aplicat.");
+    setStatus("Preset <strong>Eugen Orange</strong> applied.");
   }
 
   function openAdvanced() {
@@ -651,6 +763,14 @@ const $ = (id) => document.getElementById(id);
     btn.addEventListener("click", () => {
       state.textPlacement = btn.getAttribute("data-place");
       $("text-placement").value = state.textPlacement;
+    if ($("text-pos-x")) $("text-pos-x").value = state.textPosX ?? 0;
+    if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? -10;
+    if ($("text-scale")) $("text-scale").value = state.textScale ?? 100;
+    if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
+    if ($("text-flip-right")) $("text-flip-right").checked = state.textFlipRight !== false;
+    if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
+    if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? -10);
+    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 100) + "%";
       syncSegmented("data-place", state.textPlacement);
       drawPreview();
     });
@@ -664,9 +784,13 @@ const $ = (id) => document.getElementById(id);
 
   [
     "c-fuselage",
+    "c-nose",
+    "c-belly",
     "c-wings",
+    "c-winglet",
     "c-engines",
     "c-tail",
+    "c-accent",
     "livery-name",
     "registration",
     "airline",
@@ -682,10 +806,30 @@ const $ = (id) => document.getElementById(id);
     "st-roundel",
     "st-chevron",
     "st-checkered",
+    "st-smile",
+    "st-crown",
+    "st-diamond",
+    "st-sun",
+    "st-moon",
+    "st-flag",
+    "st-shield",
+    "st-arrow",
+    "st-sparkle",
+    "st-wingbadge",
+    "text-pos-x",
+    "text-pos-y",
+    "text-scale",
+    "text-flip-left",
+    "text-flip-right",
   ].forEach((id) => {
     const el = $(id);
     if (!el) return;
-    el.addEventListener("input", drawPreview);
+    el.addEventListener("input", () => {
+      if (id === "text-pos-x" && $("lab-text-x")) $("lab-text-x").textContent = el.value;
+      if (id === "text-pos-y" && $("lab-text-y")) $("lab-text-y").textContent = el.value;
+      if (id === "text-scale" && $("lab-text-scale")) $("lab-text-scale").textContent = el.value + "%";
+      drawPreview();
+    });
     el.addEventListener("change", drawPreview);
   });
 
@@ -733,7 +877,7 @@ const $ = (id) => document.getElementById(id);
     state.soacraName = null;
     state.soacraFile = null;
     $("soacra").value = "";
-    $("soacra-label").textContent = "Trage sau click — logo / poză";
+    $("soacra-label").textContent = "Drop or click — logo / photo";
     $("btn-clear-photo").hidden = true;
     drawPreview();
   });

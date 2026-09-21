@@ -125,11 +125,17 @@ def _font(size: int, bold: bool = False) -> ImageFont.ImageFont:
 
 
 def _role_color(colors: dict, role: str) -> str:
+    # New UI zones (nose/belly/winglet/accent) map to nearest texture role when
+    # UV stubs lack dedicated slots — see ASSUMPTIONS.md § Color zones v0.5.
     mapping = {
         "fuselage": "fuselage",
+        "nose": "fuselage",
+        "belly": "fuselage",
         "wings": "wings",
+        "winglet": "wings",
         "engines": "engines",
         "tail": "tail",
+        "accent": "tail",
         "livery": "fuselage",
         "texts": "fuselage",
         "primary": "fuselage",
@@ -137,10 +143,17 @@ def _role_color(colors: dict, role: str) -> str:
     key = mapping.get(role, "fuselage")
     defaults = {
         "fuselage": "#FF6A00",
+        "nose": "#1A1A1A",
+        "belly": "#E8E8E8",
         "wings": "#111111",
+        "winglet": "#FF6A00",
         "engines": "#222222",
         "tail": "#FF6A00",
+        "accent": "#FFFFFF",
     }
+    # Prefer exact zone color when present (even if mapped role differs for stems)
+    if role in colors and colors.get(role):
+        return colors[role]
     return colors.get(key) or colors.get("accent") or defaults.get(key, "#888888")
 
 
@@ -172,10 +185,11 @@ def make_fuselage(
         t = st.get("type")
         if t == "team_stripe":
             y = TEX_SIZE // 2 + 80
-            draw.rectangle([120, y, TEX_SIZE - tw - 40, y + 48], fill=(255, 255, 255, 235))
+            accent = colors.get("accent") or "#FFFFFF"
+            draw.rectangle([120, y, TEX_SIZE - tw - 40, y + 48], fill=(*hex_to_rgb(accent), 235))
             draw.rectangle(
                 [120, y + 48, TEX_SIZE - tw - 40, y + 84],
-                fill=(*hex_to_rgb(colors["tail"]), 255),
+                fill=(*hex_to_rgb(colors.get("tail") or "#FF6A00"), 255),
             )
         elif t == "heart":
             cx, cy = TEX_SIZE // 3, TEX_SIZE // 3

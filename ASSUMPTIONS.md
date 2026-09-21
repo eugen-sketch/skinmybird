@@ -88,3 +88,31 @@ Card stil Asobo (siluetă airliner / helicopter / balloon pe fundal studio desch
 
 ## PC access note (2026-09-21)
 Executor subagent was **box-scoped** (no `machineId` / ListMachines / CopyFromBox). Profile updates below come from a **real PC scan of Eugen's MSFS packages** relayed by the parent (confirmed facts). Desktop sync of `profiles/` is left to the parent (`CopyFromBox`).
+
+## Color zones v0.5.0 (UI → texture roles)
+
+Hangar / editor expose extra paint zones beyond fuselage / wings / engines / tail:
+
+| UI zone | Preview behaviour | Export mapping (when UV stub has no dedicated slot) |
+|---------|-------------------|-----------------------------------------------------|
+| `nose` (cockpit band) | Procedural fuselage canvas forward band; GLB role heuristic | → `fuselage` albedo |
+| `belly` | Procedural lower band on fuselage canvas | → `fuselage` albedo |
+| `winglet` | Procedural tip boxes + GLB name/heuristic | → `wings` albedo |
+| `accent` (stripe accent) | Team-stripe primary colour in hangar + export stripe | → stripe fill; fallback `tail` for role lookups |
+
+Dedicated UV rects for nose/belly/winglet are **not** measured yet on Asobo / third-party packages. Export stubs therefore tint the nearest existing stem. Documented so Community packages stay valid without inventing missing texture filenames.
+
+## Hangar GLB mapping v0.5.0
+
+| Family | File | Notes |
+|--------|------|-------|
+| A320 / A319 / A321 / FBW | `web/models/a320.glb` | amvlab CC BY 4.0 |
+| 737 / PMDG | `b737.glb` | amvlab |
+| 787 | `b787.glb` | amvlab |
+| A350 | `a350.glb` | amvlab |
+| A330 | `a350.glb` | **stand-in** (no free distinct A330 GLB found) |
+| 747 | `b747.glb` | Miha Lunar / Poly Pizza CC BY 3.0 — distinct from A350 |
+| Cessna / GA stub | `cessna.glb` | Vojtěch Balák “Small Airplane” — **GA stand-in** |
+| H135 / balloon | procedural | no third-party GLB |
+
+Could not find a clearly commercial-licensed **exact Cessna 172** GLB in CC0/CC-BY downloadable form within this pass; the Small Airplane asset is used with an on-screen **Preview stand-in** label.

@@ -1,0 +1,23 @@
+{
+  "id": "skinmybird-cessna-172-stub",
+  "displayName": "Cessna 172 (preview stub)",
+  "category": "avion",
+  "simObjectType": "Airplanes",
+  "base_container": "..\\Asobo_C172sp_Asobo",
+  "ui_manufacturer": "Cessna",
+  "ui_type": "C172",
+  "ui_typerole": "Single Engine Prop",
+  "package_prefix": "skinmybird-c172",
+  "aircraft_folder_prefix": "skinmybird_c172",
+  "title_template": "Cessna 172 SkinMyBird {name}",
+  "paint_mode": "whole_albedo",
+  "tex_size": 2048,
+  "silhouette": "ga",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "C172_FUSELAGE_ALBD", "role": "fuselage" },
+    { "stem": "C172_WINGS_ALBD", "role": "wings" },
+    { "stem": "C172_TAIL_ALBD", "role": "tail" }
+  ],
+  "notes": "Stub profile for future MSFS GA paint. Hangar uses Poly Pizza Small Airplane GLB (CC BY 3.0) as a light-GA preview stand-in — not a real Cessna UV map. Export is whole-albedo placeholder until Official stems are scanned on a PC with the Asobo C172 package."
+}

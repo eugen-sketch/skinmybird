@@ -1,8 +1,8 @@
 {
   "name": "skinmybird",
-  "version": "0.4.8",
+  "version": "0.5.0",
   "private": true,
-  "description": "SkinMyBird — Canva multi-aircraft livery editor + BC7 DDS Community exporter for MSFS 2020",
+  "description": "SkinMyBird \u2014 English multi-aircraft livery editor + BC7 DDS Community exporter for MSFS 2020",
   "scripts": {
     "start": "python3 server.py",
     "start:static": "python3 -m http.server 5173 --directory web",

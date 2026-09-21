@@ -90,6 +90,13 @@ export function resolveShapeFamily(profile) {
     return "helicopter";
   if (blob.includes("747")) return "747";
   if (
+    blob.includes("cessna") ||
+    blob.includes("c172") ||
+    sil === "ga" ||
+    blob.includes("general aviation")
+  )
+    return "ga";
+  if (
     blob.includes("787") ||
     blob.includes("a330") ||
     blob.includes("dreamliner") ||
@@ -118,6 +125,15 @@ function getGltfLoader() {
 
 /** Map profile → vendored GLB path, or null for procedural (helo/balloon). */
 export function resolveGlbUrl(profile) {
+  const meta = resolveGlbMeta(profile);
+  return meta ? meta.url : null;
+}
+
+/**
+ * Resolve GLB URL + whether the mesh is a licensed stand-in (not exact type).
+ * 747 uses a distinct Poly Pizza CC-BY GLB; A330 still borrows A350; Cessna uses GA stand-in.
+ */
+export function resolveGlbMeta(profile) {
   if (!profile) return null;
   const id = String(profile.id || "").toLowerCase();
   const sil = String(profile.silhouette || "").toLowerCase();
@@ -136,25 +152,42 @@ export function resolveGlbUrl(profile) {
   )
     return null;
 
+  if (
+    blob.includes("cessna") ||
+    blob.includes("c172") ||
+    sil === "ga" ||
+    blob.includes("general aviation")
+  ) {
+    return {
+      url: "/models/cessna.glb",
+      standIn: true,
+      note: "Light GA preview stand-in (not a Cessna UV map)",
+    };
+  }
+
+  if (blob.includes("747")) {
+    return { url: "/models/b747.glb", standIn: false, note: "747 low-poly (Miha Lunar / Poly Pizza)" };
+  }
+
   if (blob.includes("787") || blob.includes("dreamliner"))
-    return "/models/b787.glb";
-  if (
-    blob.includes("737") ||
-    blob.includes("736") ||
-    blob.includes("pmdg")
-  )
-    return "/models/b737.glb";
-  // Widebody stand-in (A350 GLB): A330 / 747 / generic wide — 747 is not exact
-  if (
-    blob.includes("747") ||
-    blob.includes("a330") ||
-    blob.includes("a350") ||
-    blob.includes("widebody") ||
-    blob.includes("wide-body")
-  )
-    return "/models/a350.glb";
+    return { url: "/models/b787.glb", standIn: false };
+
+  if (blob.includes("737") || blob.includes("736") || blob.includes("pmdg"))
+    return { url: "/models/b737.glb", standIn: false };
+
+  // A330 / generic wide → A350 GLB (stand-in); exact A350 is not stand-in
+  if (blob.includes("a330") || blob.includes("widebody") || blob.includes("wide-body")) {
+    return {
+      url: "/models/a350.glb",
+      standIn: true,
+      note: "Widebody preview stand-in (A350 GLB)",
+    };
+  }
+  if (blob.includes("a350"))
+    return { url: "/models/a350.glb", standIn: false };
+
   // A320 / A319 / A321 / FBW / LatinVFR Airbus + default airliner
-  return "/models/a320.glb";
+  return { url: "/models/a320.glb", standIn: false };
 }
 
 function loadGlbCached(url) {
@@ -243,9 +276,12 @@ function cloneMaterialsDeep(root) {
 function classifyMeshRole(name, box, craftBox) {
   const n = String(name || "").toLowerCase();
   if (/engine|nacelle|motor|fan|pylon/.test(n)) return "engines";
-  if (/wing|aileron|flap|slat|winglet/.test(n)) return "wings";
+  if (/winglet|sharklet/.test(n)) return "winglet";
+  if (/wing|aileron|flap|slat/.test(n)) return "wings";
   if (/tail|fin|rudder|stabil|elevator|htail|vtail/.test(n)) return "tail";
-  if (/fusel|body|hull|cabin|cockpit|nose/.test(n)) return "fuselage";
+  if (/nose|cockpit|radome/.test(n)) return "nose";
+  if (/belly|underside|keel/.test(n)) return "belly";
+  if (/fusel|body|hull|cabin/.test(n)) return "fuselage";
   // Bounding-box heuristic when names are generic (single-mesh models)
   if (!craftBox || !box) return "fuselage";
   const cSize = craftBox.getSize(new THREE.Vector3());
@@ -257,6 +293,9 @@ function classifyMeshRole(name, box, craftBox) {
     return "engines";
   // Wings: wide in Z, thin in Y, near mid height
   if (mSize.z > cSize.z * 0.55 && mSize.y < cSize.y * 0.35) return "wings";
+  // Nose: forward tip region
+  if (mCenter.x > cCenter.x + cSize.x * 0.28 && mSize.x < cSize.x * 0.35)
+    return "nose";
   // Tail: aft (low X if nose=+X)
   if (mCenter.x < cCenter.x - cSize.x * 0.25) return "tail";
   return "fuselage";
@@ -382,43 +421,173 @@ function drawCheckered2d(ctx, x, y, w, h, cols, colorA, colorB) {
   }
 }
 
+
+function drawSmile2d(ctx, cx, cy, s, color) {
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(2, s * 0.12);
+  ctx.beginPath();
+  ctx.arc(cx, cy, s, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx - s * 0.35, cy - s * 0.15, s * 0.12, 0, Math.PI * 2);
+  ctx.arc(cx + s * 0.35, cy - s * 0.15, s * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, cy + s * 0.1, s * 0.55, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
+}
+
+function drawCrown2d(ctx, cx, cy, s, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx - s, cy + s * 0.45);
+  ctx.lineTo(cx - s, cy - s * 0.1);
+  ctx.lineTo(cx - s * 0.5, cy + s * 0.2);
+  ctx.lineTo(cx, cy - s * 0.55);
+  ctx.lineTo(cx + s * 0.5, cy + s * 0.2);
+  ctx.lineTo(cx + s, cy - s * 0.1);
+  ctx.lineTo(cx + s, cy + s * 0.45);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawDiamond2d(ctx, cx, cy, s, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s);
+  ctx.lineTo(cx + s * 0.7, cy);
+  ctx.lineTo(cx, cy + s);
+  ctx.lineTo(cx - s * 0.7, cy);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawSun2d(ctx, cx, cy, s, color) {
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, s * 0.14);
+  ctx.beginPath();
+  ctx.arc(cx, cy, s * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * s * 0.6, cy + Math.sin(a) * s * 0.6);
+    ctx.lineTo(cx + Math.cos(a) * s, cy + Math.sin(a) * s);
+    ctx.stroke();
+  }
+}
+
+function drawMoon2d(ctx, cx, cy, s, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(cx, cy, s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.arc(cx + s * 0.35, cy - s * 0.15, s * 0.85, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
+}
+
+function drawFlag2d(ctx, cx, cy, s, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(cx - s * 0.7, cy - s * 0.7, s * 0.12, s * 1.4);
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.55, cy - s * 0.7);
+  ctx.lineTo(cx + s * 0.7, cy - s * 0.35);
+  ctx.lineTo(cx - s * 0.55, cy);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawShield2d(ctx, cx, cy, s, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s);
+  ctx.lineTo(cx + s * 0.85, cy - s * 0.55);
+  ctx.lineTo(cx + s * 0.7, cy + s * 0.25);
+  ctx.quadraticCurveTo(cx, cy + s * 1.1, cx - s * 0.7, cy + s * 0.25);
+  ctx.lineTo(cx - s * 0.85, cy - s * 0.55);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawArrow2d(ctx, cx, cy, s, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx + s, cy);
+  ctx.lineTo(cx + s * 0.1, cy - s * 0.55);
+  ctx.lineTo(cx + s * 0.1, cy - s * 0.22);
+  ctx.lineTo(cx - s, cy - s * 0.22);
+  ctx.lineTo(cx - s, cy + s * 0.22);
+  ctx.lineTo(cx + s * 0.1, cy + s * 0.22);
+  ctx.lineTo(cx + s * 0.1, cy + s * 0.55);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawSparkle2d(ctx, cx, cy, s, color) {
+  ctx.fillStyle = color;
+  for (const [sx, sy, sc] of [[0, 0, 1], [-0.7, -0.5, 0.45], [0.75, 0.4, 0.4]]) {
+    const r = s * sc;
+    ctx.beginPath();
+    ctx.moveTo(cx + sx * s, cy + sy * s - r);
+    ctx.lineTo(cx + sx * s + r * 0.25, cy + sy * s);
+    ctx.lineTo(cx + sx * s, cy + sy * s + r);
+    ctx.lineTo(cx + sx * s - r * 0.25, cy + sy * s);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawWingBadge2d(ctx, cx, cy, s, color) {
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(2, s * 0.14);
+  ctx.beginPath();
+  ctx.moveTo(cx - s, cy);
+  ctx.quadraticCurveTo(cx - s * 0.2, cy - s * 0.7, cx, cy - s * 0.15);
+  ctx.quadraticCurveTo(cx + s * 0.2, cy - s * 0.7, cx + s, cy);
+  ctx.quadraticCurveTo(cx + s * 0.15, cy + s * 0.35, cx, cy + s * 0.2);
+  ctx.quadraticCurveTo(cx - s * 0.15, cy + s * 0.35, cx - s, cy);
+  ctx.fill();
+}
+
 function drawStickersOnCanvas(ctx, W, H, state, layout) {
   const st = state.stickers || {};
-  const accent = state.colors && state.colors.tail ? state.colors.tail : "#FF6A00";
+  const accent =
+    (state.colors && (state.colors.accent || state.colors.tail)) || "#FF6A00";
   // layout: "decal" (single panel) or "half" with x0 offset for procedural sides
   const xMid = layout.xMid != null ? layout.xMid : W / 2;
   const scale = layout.scale || 1;
+  const x0 = layout.x0 || 0;
 
   if (st.stripe) {
     const sy = layout.stripeY != null ? layout.stripeY : H * 0.82;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(layout.x0 || 0, sy, layout.bandW || W, 8 * scale);
     ctx.fillStyle = accent;
-    ctx.fillRect(layout.x0 || 0, sy + 8 * scale, layout.bandW || W, 6 * scale);
+    ctx.fillRect(x0, sy, layout.bandW || W, 8 * scale);
+    ctx.fillStyle = state.colors && state.colors.tail ? state.colors.tail : "#FF6A00";
+    ctx.fillRect(x0, sy + 8 * scale, layout.bandW || W, 6 * scale);
   }
-  if (st.heart) {
-    drawHeart2d(ctx, xMid - 70 * scale, H * 0.22, 16 * scale, "#dc2840");
-  }
-  if (st.star) {
-    drawStar2d(ctx, xMid + 80 * scale, H * 0.2, 18 * scale, "#ffd24a");
-  }
-  if (st.lightning) {
-    drawLightning2d(ctx, (layout.x0 || 0) + 40 * scale, H * 0.55, 22 * scale, "#ffe566");
-  }
-  if (st.bird) {
-    drawBird2d(ctx, xMid, H * 0.88, 28 * scale, state.textColor || "#FFFFFF");
-  }
-  if (st.roundel) {
-    drawRoundel2d(ctx, (layout.x0 || 0) + W * 0.08 * (layout.bandW ? 1 : 1) + 36 * scale, H * 0.55, 22 * scale);
-  }
-  if (st.chevron) {
-    drawChevron2d(ctx, xMid + 100 * scale, H * 0.55, 20 * scale, "#ffffff");
-  }
-  if (st.checkered) {
-    const bw = layout.bandW || W;
-    const x0 = layout.x0 || 0;
-    drawCheckered2d(ctx, x0, H * 0.05, bw, 18 * scale, 16, "#111111", "#f5f5f5");
-  }
+  if (st.heart) drawHeart2d(ctx, xMid - 70 * scale, H * 0.22, 16 * scale, "#dc2840");
+  if (st.star) drawStar2d(ctx, xMid + 80 * scale, H * 0.2, 18 * scale, "#ffd24a");
+  if (st.lightning) drawLightning2d(ctx, x0 + 40 * scale, H * 0.55, 22 * scale, "#ffe566");
+  if (st.bird) drawBird2d(ctx, xMid, H * 0.88, 28 * scale, state.textColor || "#FFFFFF");
+  if (st.roundel) drawRoundel2d(ctx, x0 + 36 * scale, H * 0.55, 22 * scale);
+  if (st.chevron) drawChevron2d(ctx, xMid + 100 * scale, H * 0.55, 20 * scale, "#ffffff");
+  if (st.checkered) drawCheckered2d(ctx, x0, H * 0.05, layout.bandW || W, 18 * scale, 16, "#111111", "#f5f5f5");
+  if (st.smile) drawSmile2d(ctx, xMid - 110 * scale, H * 0.35, 14 * scale, "#ffd24a");
+  if (st.crown) drawCrown2d(ctx, xMid + 40 * scale, H * 0.18, 14 * scale, "#ffd24a");
+  if (st.diamond) drawDiamond2d(ctx, xMid - 30 * scale, H * 0.65, 12 * scale, "#7ec8ff");
+  if (st.sun) drawSun2d(ctx, x0 + 70 * scale, H * 0.28, 14 * scale, "#ffb020");
+  if (st.moon) drawMoon2d(ctx, xMid + 120 * scale, H * 0.32, 12 * scale, "#d0d8ff");
+  if (st.flag) drawFlag2d(ctx, x0 + 90 * scale, H * 0.7, 14 * scale, accent);
+  if (st.shield) drawShield2d(ctx, xMid - 90 * scale, H * 0.55, 14 * scale, "#3d7cff");
+  if (st.arrow) drawArrow2d(ctx, xMid + 60 * scale, H * 0.72, 16 * scale, "#ffffff");
+  if (st.sparkle) drawSparkle2d(ctx, xMid + 20 * scale, H * 0.4, 12 * scale, "#fff6a8");
+  if (st.wingbadge) drawWingBadge2d(ctx, xMid, H * 0.78, 18 * scale, state.textColor || "#FFFFFF");
 }
 
 function paintDecalCanvas(canvas, state) {
@@ -430,7 +599,9 @@ function paintDecalCanvas(canvas, state) {
   const st = state.stickers || {};
   const anySticker =
     st.stripe || st.heart || st.star || st.lightning || st.bird ||
-    st.roundel || st.chevron || st.checkered;
+    st.roundel || st.chevron || st.checkered || st.smile || st.crown ||
+    st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow ||
+    st.sparkle || st.wingbadge;
   const showText = !!st.text;
 
   if (anySticker) {
@@ -453,7 +624,7 @@ function paintDecalCanvas(canvas, state) {
   const airline = state.airline || "SkinMyBird";
   const airPx = fitFontPx(ctx, airline, maxW, basePx, state, 14);
   ctx.font = resolveFontFace(state, airPx);
-  ctx.fillText(airline, W / 2, H * 0.36);
+  ctx.fillText(airline, W / 2, H * 0.48);
 
   if (state.slogan) {
     const sloganState = { ...state, textStyle: state.textStyle === "bold-italic" || state.textStyle === "italic" ? "italic" : "regular" };
@@ -465,7 +636,7 @@ function paintDecalCanvas(canvas, state) {
     const sState = { ...state, textStyle: sloganStyle };
     const sPx = fitFontPx(ctx, state.slogan, maxW, Math.round(basePx * 0.48), sState, 12);
     ctx.font = resolveFontFace(sState, sPx);
-    ctx.fillText(state.slogan, W / 2, H * 0.36 + airPx * 0.58);
+    ctx.fillText(state.slogan, W / 2, H * 0.48 + airPx * 0.58);
   }
 
   // Registration drawn on primary wrap only when placement is fuselage/belly;
@@ -555,14 +726,62 @@ function raycastBestHit(meshes, origin, dir, raycaster) {
   return null;
 }
 
-function sideMaterialFromTex(baseTex, flipU, sharedMatOpts) {
-  const matMap = baseTex.clone();
-  matMap.userData = baseTex.userData;
-  if (flipU) {
-    matMap.repeat.x = -1;
-    matMap.offset.x = 1;
+/**
+ * Prefer fuselage skin hits (near centerline). Skip wing/outboard hits
+ * that appear when casting from far away at low Y.
+ */
+function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ) {
+  if (!meshes.length) return null;
+  raycaster.set(origin, dir.clone().normalize());
+  const hits = raycaster.intersectObjects(meshes, true);
+  let best = null;
+  let bestScore = Infinity;
+  for (const h of hits) {
+    if (!h.face || !h.object || !h.object.isMesh) continue;
+    if (h.object.userData && h.object.userData.isTextDecal) continue;
+    const az = Math.abs(h.point.z - center.z);
+    if (az > maxAbsZ) continue;
+    // Prefer closer to centerline, then nearer along the ray
+    const score = az * 10 + h.distance;
+    if (score < bestScore) {
+      bestScore = score;
+      best = h;
+    }
   }
-  matMap.needsUpdate = true;
+  return best;
+}
+
+function canvasTextureFromCanvas(canvas) {
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  tex.userData.canvas = canvas;
+  return tex;
+}
+
+/** Horizontally mirror a canvas so left/right fuselage both read L→R from outside. */
+function mirrorCanvasHorizontal(srcCanvas) {
+  const c = document.createElement("canvas");
+  c.width = srcCanvas.width;
+  c.height = srcCanvas.height;
+  const ctx = c.getContext("2d");
+  ctx.translate(c.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(srcCanvas, 0, 0);
+  return c;
+}
+
+function sideMaterialFromTex(baseTex, flipU, sharedMatOpts) {
+  let matMap;
+  if (flipU && baseTex.userData && baseTex.userData.canvas) {
+    matMap = canvasTextureFromCanvas(mirrorCanvasHorizontal(baseTex.userData.canvas));
+  } else {
+    matMap = baseTex.clone();
+    matMap.userData = baseTex.userData;
+    matMap.needsUpdate = true;
+  }
+  matMap.wrapS = THREE.ClampToEdgeWrapping;
+  matMap.wrapT = THREE.ClampToEdgeWrapping;
   return new THREE.MeshBasicMaterial({
     ...sharedMatOpts,
     map: matMap,
@@ -672,7 +891,9 @@ function addTextDecals(craft, state) {
   const st = state.stickers || {};
   const anyVisual =
     st.text || st.stripe || st.heart || st.star || st.lightning ||
-    st.bird || st.roundel || st.chevron || st.checkered;
+    st.bird || st.roundel || st.chevron || st.checkered ||
+    st.smile || st.crown || st.diamond || st.sun || st.moon ||
+    st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge;
   if (!anyVisual) {
     return { tex: null, mat: null, group, regTex: null };
   }
@@ -705,21 +926,33 @@ function addTextDecals(craft, state) {
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
     Math.max(0.55, Math.min(size.y * 0.55, 1.15));
   const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
-  const decalSize = new THREE.Vector3(panelLen, panelH, panelDepth);
 
-  // Sample X along fuselage
-  let xMain = center.x + size.x * 0.02;
-  if (place === "tail") xMain = center.x - size.x * 0.28;
+  // User offsets: textPosX/Y in −50…50, textScale in %
+  const posX = Number(state.textPosX || 0) / 100; // −0.5…0.5 along length
+  const posY = Number(state.textPosY != null ? state.textPosY : -10) / 100;
+  const scalePct = Math.max(0.5, Math.min(1.6, (Number(state.textScale) || 100) / 100));
+  const flipLeft = !!state.textFlipLeft;   // −Z
+  const flipRight = state.textFlipRight !== false; // +Z default on (fixes common mirror)
+  const decalSize = new THREE.Vector3(panelLen * scalePct, panelH * scalePct, panelDepth);
+
+  // Sample X along fuselage (+posX moves aft toward tail if nose=+X mid)
+  let xMain = center.x + size.x * (0.02 - posX * 0.35);
+  if (place === "tail") xMain = center.x - size.x * (0.28 + posX * 0.1);
   else if (place === "wing") xMain = center.x - size.x * 0.02;
 
-  const yWindow = center.y + size.y * 0.02;
+  // Height on body: 0 ≈ mid, negative = lower (user asked lower + free place)
+  const yBelt = center.y + size.y * posY;
   const yAlts = [
-    yWindow,
-    center.y + size.y * 0.08,
-    center.y - size.y * 0.06,
-    center.y + size.y * 0.14,
+    yBelt,
+    yBelt - size.y * 0.04,
+    yBelt + size.y * 0.04,
+    yBelt - size.y * 0.08,
   ];
+  const yWindow = yBelt;
 
+  // Fuselage half-width estimate (NOT wing span)
+  const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
+  const maxFusAbsZ = fusR * 1.65; // reject wing/outboard hits
   const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
 
   function meshesForPlace() {
@@ -730,17 +963,23 @@ function addTextDecals(craft, state) {
       const fus = targets.fuselage.map((t) => t.mesh);
       if (list.length || fus.length) return list.concat(fus);
     }
-    if (targets.fuselage.length) return targets.fuselage.map((t) => t.mesh);
-    // Fallback: prefer meshes near centerline (fuselage), not wing tips
+    // Fuselage / belly: never include wing-role meshes
+    if (targets.fuselage.length) {
+      return targets.fuselage
+        .filter((t) => t.role !== "wings")
+        .map((t) => t.mesh);
+    }
     const cz = center.z;
     const nearCenter = targets.scored
       .filter((s) => {
+        if (s.role === "wings" || s.role === "engines") return false;
         const c = s.box.getCenter(new THREE.Vector3());
-        return Math.abs(c.z - cz) < size.z * 0.22;
+        return Math.abs(c.z - cz) < fusR * 2.2;
       })
       .map((s) => s.mesh);
     if (nearCenter.length) return nearCenter.slice(0, 8);
-    return targets.all.slice(0, 6);
+    // Single-mesh airliners: still ok — hit filter rejects wing Z
+    return targets.all.slice(0, 4);
   }
 
   const meshList = meshesForPlace();
@@ -748,10 +987,11 @@ function addTextDecals(craft, state) {
   function trySideHit(sideSign, x, yCandidates) {
     // sideSign: +1 = +Z (right), −1 = −Z (left)
     for (const y of yCandidates) {
-      let origin, dir;
+      let origin, dir, hit;
       if (place === "belly") {
         origin = new THREE.Vector3(x, center.y - reach, center.z + sideSign * 0.05);
         dir = new THREE.Vector3(0, 1, -sideSign * 0.02).normalize();
+        hit = raycastBestHit(meshList, origin, dir, raycaster);
       } else if (place === "wing") {
         origin = new THREE.Vector3(
           x,
@@ -759,12 +999,19 @@ function addTextDecals(craft, state) {
           center.z + sideSign * size.z * 0.28
         );
         dir = new THREE.Vector3(0, -1, 0);
+        hit = raycastBestHit(meshList, origin, dir, raycaster);
       } else {
-        // Fuselage / tail: from outside toward centerline
-        origin = new THREE.Vector3(x, y, center.z + sideSign * reach);
+        // Fuselage / tail: start JUST outside the body (not past the wing tip)
+        const zDist = fusR * 2.4;
+        origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
         dir = new THREE.Vector3(0, 0, -sideSign);
+        hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ);
+        // Fallback: slightly farther out if body miss
+        if (!hit) {
+          origin = new THREE.Vector3(x, y, center.z + sideSign * (fusR * 3.6));
+          hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ);
+        }
       }
-      const hit = raycastBestHit(meshList, origin, dir, raycaster);
       if (hit) return hit;
     }
     return null;
@@ -777,8 +1024,8 @@ function addTextDecals(craft, state) {
       console.warn("addTextDecals: no hit on side", side, place);
       return;
     }
-    // Flip U on −Z so text still reads L→R from outside
-    const flipU = side < 0;
+    // Per-side mirror toggles (defaults: left off, right on — matches A320 hangar)
+    const flipU = side < 0 ? flipLeft : flipRight;
     const mat = sideMaterialFromTex(tex, flipU, sharedMatOpts);
     const sizeVec =
       place === "belly"
@@ -817,7 +1064,7 @@ function addTextDecals(craft, state) {
     [-1, 1].forEach((side) => {
       const hit = trySideHit(side, regX, regYAlts);
       if (!hit) return;
-      const flipU = side < 0;
+      const flipU = side < 0 ? flipLeft : flipRight;
       const mat = sideMaterialFromTex(regTex, flipU, sharedMatOpts);
       projectDecal(group, hit, regSize, mat, 3);
     });
@@ -855,6 +1102,9 @@ function paintFuselageCanvas(canvas, state, family) {
   const H = canvas.height;
   const fus = state.colors.fuselage || "#FF6A00";
   const tail = state.colors.tail || fus;
+  const nose = state.colors.nose || "#1A1A1A";
+  const bellyCol = state.colors.belly || "#E8E8E8";
+  const accent = state.colors.accent || "#FFFFFF";
   const textColor = state.textColor || "#FFFFFF";
 
   ctx.clearRect(0, 0, W, H);
@@ -863,10 +1113,22 @@ function paintFuselageCanvas(canvas, state, family) {
   ctx.fillStyle = fus;
   ctx.fillRect(0, 0, W, H);
 
+  // Belly zone (lower band)
+  ctx.fillStyle = bellyCol;
+  ctx.globalAlpha = 0.92;
+  ctx.fillRect(0, H * 0.72, W, H * 0.28);
+  ctx.globalAlpha = 1;
+
+  // Nose / cockpit band — forward on each UV half
+  ctx.fillStyle = nose;
+  for (const hx of [0, W / 2]) {
+    ctx.fillRect(hx + W * 0.02, H * 0.28, W * 0.1, H * 0.32);
+  }
+
   // Subtle belly shade
   const belly = ctx.createLinearGradient(0, H * 0.55, 0, H);
   belly.addColorStop(0, "rgba(0,0,0,0)");
-  belly.addColorStop(1, "rgba(0,0,0,0.22)");
+  belly.addColorStop(1, "rgba(0,0,0,0.18)");
   ctx.fillStyle = belly;
   ctx.fillRect(0, 0, W, H);
 
@@ -896,7 +1158,7 @@ function paintFuselageCanvas(canvas, state, family) {
   const st = state.stickers || {};
   if (st.stripe) {
     const sy = H * 0.58;
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = accent;
     ctx.fillRect(0, sy, W, 10);
     ctx.fillStyle = tail;
     ctx.fillRect(0, sy + 10, W, 8);
@@ -927,6 +1189,46 @@ function paintFuselageCanvas(canvas, state, family) {
   if (st.chevron) {
     drawChevron2d(ctx, W * 0.38, H * 0.7, 22, "#ffffff");
     drawChevron2d(ctx, W * 0.88, H * 0.7, 22, "#ffffff");
+  }
+  if (st.smile) {
+    drawSmile2d(ctx, W * 0.2, H * 0.35, 18, "#ffd24a");
+    drawSmile2d(ctx, W * 0.7, H * 0.35, 18, "#ffd24a");
+  }
+  if (st.crown) {
+    drawCrown2d(ctx, W * 0.3, H * 0.2, 16, "#ffd24a");
+    drawCrown2d(ctx, W * 0.8, H * 0.2, 16, "#ffd24a");
+  }
+  if (st.diamond) {
+    drawDiamond2d(ctx, W * 0.22, H * 0.62, 14, "#7ec8ff");
+    drawDiamond2d(ctx, W * 0.72, H * 0.62, 14, "#7ec8ff");
+  }
+  if (st.sun) {
+    drawSun2d(ctx, W * 0.14, H * 0.28, 16, "#ffb020");
+    drawSun2d(ctx, W * 0.64, H * 0.28, 16, "#ffb020");
+  }
+  if (st.moon) {
+    drawMoon2d(ctx, W * 0.36, H * 0.28, 14, "#d0d8ff");
+    drawMoon2d(ctx, W * 0.86, H * 0.28, 14, "#d0d8ff");
+  }
+  if (st.flag) {
+    drawFlag2d(ctx, W * 0.16, H * 0.68, 16, accent);
+    drawFlag2d(ctx, W * 0.66, H * 0.68, 16, accent);
+  }
+  if (st.shield) {
+    drawShield2d(ctx, W * 0.28, H * 0.55, 16, "#3d7cff");
+    drawShield2d(ctx, W * 0.78, H * 0.55, 16, "#3d7cff");
+  }
+  if (st.arrow) {
+    drawArrow2d(ctx, W * 0.4, H * 0.72, 18, "#ffffff");
+    drawArrow2d(ctx, W * 0.9, H * 0.72, 18, "#ffffff");
+  }
+  if (st.sparkle) {
+    drawSparkle2d(ctx, W * 0.34, H * 0.4, 14, "#fff6a8");
+    drawSparkle2d(ctx, W * 0.84, H * 0.4, 14, "#fff6a8");
+  }
+  if (st.wingbadge) {
+    drawWingBadge2d(ctx, W * 0.25, H * 0.8, 22, textColor);
+    drawWingBadge2d(ctx, W * 0.75, H * 0.8, 22, textColor);
   }
 
   // Text / airline / registration — wide halves + auto-shrink + font/style
@@ -1059,6 +1361,7 @@ function buildAirliner(group, family, mats) {
     "narrow-long": { len: 13.0, rad: 0.52, wingSpan: 11.0, wingY: -0.18, engCount: 2, engScale: 1.05, rootChord: 2.15, tipChord: 0.88 },
     widebody: { len: 15.2, rad: 0.78, wingSpan: 14.2, wingY: -0.22, engCount: 2, engScale: 1.35, rootChord: 2.7, tipChord: 1.05 },
     "747": { len: 17.0, rad: 0.82, wingSpan: 16.0, wingY: -0.24, engCount: 4, engScale: 1.12, rootChord: 2.9, tipChord: 1.1 },
+    ga: { len: 7.2, rad: 0.38, wingSpan: 9.0, wingY: -0.05, engCount: 0, engScale: 0.7, rootChord: 1.5, tipChord: 0.7 },
   };
   const s = specs[family] || specs.narrow;
   const half = s.len / 2;
@@ -1218,6 +1521,25 @@ function buildAirliner(group, family, mats) {
     // Pylon (wing → nacelle)
     addBox(group, 0.55, Math.abs(s.wingY - y) * 0.75, 0.1, x + 0.05, (s.wingY + y) / 2, z, mats.wings);
   });
+
+  // Winglet tips (tintable accent zone)
+  const tipZ = s.wingSpan * 0.48;
+  for (const side of [-1, 1]) {
+    const wl = addBox(
+      group,
+      0.35,
+      0.85,
+      0.08,
+      -0.15,
+      s.wingY + 0.35,
+      side * tipZ,
+      mats.winglet || mats.tail,
+      0,
+      0,
+      side * 0.15
+    );
+    wl.name = "winglet";
+  }
 
   // Vertical fin (slight sweep) + horizontal stabilizers at tail
   const finH = family === "747" || family === "widebody" ? 2.9 : 2.25;
@@ -1390,6 +1712,10 @@ function createMaterials(state, fuselageMap) {
   return {
     fuselage: matTextured(fuselageMap, state.colors.fuselage),
     wings: matSolid(state.colors.wings || "#111111", { metalness: 0.4, roughness: 0.5 }),
+    winglet: matSolid(state.colors.winglet || state.colors.tail || "#FF6A00", {
+      metalness: 0.35,
+      roughness: 0.5,
+    }),
     engines: matSolid(eng, { metalness: 0.55, roughness: 0.4 }),
     enginesDark: matSolid(shadeHex(eng, -30), { metalness: 0.6, roughness: 0.35 }),
     tail: matSolid(state.colors.tail || "#FF6A00", { metalness: 0.3, roughness: 0.55 }),
@@ -1701,7 +2027,7 @@ export class Preview3D {
       console.warn("Text decals failed (keeping GLB model):", decalErr);
       try {
         const line = document.getElementById("status-line");
-        if (line) line.innerHTML = "Model GLB OK; text pe piele temporar indisponibil: " + (decalErr && decalErr.message ? decalErr.message : decalErr);
+        if (line) line.innerHTML = "GLB model OK; skin text temporarily unavailable: " + (decalErr && decalErr.message ? decalErr.message : decalErr);
       } catch (e) {}
     }
     this.decalTex = decal.tex;
@@ -1748,6 +2074,11 @@ export class Preview3D {
       ty: state.textStyle,
       tf: state.textFont,
       tp: state.textPlacement,
+      tx: state.textPosX,
+      ty2: state.textPosY,
+      tsc: state.textScale,
+      tfl: state.textFlipLeft,
+      tfr: state.textFlipRight,
       st: state.stickers,
       photo: state.soacraName || null,
       fam: family,
@@ -1759,9 +2090,13 @@ export class Preview3D {
     if (this.modelMode === "glb") {
       const colors = {
         fuselage: hexToThree(state.colors.fuselage || "#FF6A00"),
+        nose: hexToThree(state.colors.nose || "#1A1A1A"),
+        belly: hexToThree(state.colors.belly || "#E8E8E8"),
         wings: hexToThree(state.colors.wings || "#111111"),
+        winglet: hexToThree(state.colors.winglet || "#FF6A00"),
         engines: hexToThree(state.colors.engines || "#222222"),
         tail: hexToThree(state.colors.tail || "#FF6A00"),
+        accent: hexToThree(state.colors.accent || "#FFFFFF"),
       };
       const unique = new Set(this.glbMaterials.map((g) => g.mat));
       if (unique.size <= 1) {
@@ -1804,6 +2139,8 @@ export class Preview3D {
     const mats = this.mats;
     if (!mats) return;
     if (mats.wings) mats.wings.color.copy(hexToThree(state.colors.wings));
+    if (mats.winglet)
+      mats.winglet.color.copy(hexToThree(state.colors.winglet || state.colors.tail));
     if (mats.engines) mats.engines.color.copy(hexToThree(state.colors.engines));
     if (mats.enginesDark)
       mats.enginesDark.color.copy(hexToThree(shadeHex(state.colors.engines, -30)));

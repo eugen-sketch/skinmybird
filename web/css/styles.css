@@ -471,7 +471,7 @@ input[type="text"]:focus {
 }
 .segmented.compact .seg { padding: 0.3rem 0.55rem; font-size: 0.72rem; }
 
-.stickers { display: flex; flex-direction: column; gap: 0.35rem; }
+.stickers { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 0.75rem; }
 .check {
   display: flex;
   align-items: center;
@@ -854,3 +854,21 @@ input[type="text"]:focus {
   font-size: 0.88rem;
 }
 .select:focus-visible { box-shadow: var(--focus); }
+
+.field-group { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.08); }
+.field-group .subhead { font-size: 0.85rem; font-weight: 600; margin: 0 0 0.6rem; color: #c8c8d0; }
+.field input[type="range"] { width: 100%; accent-color: #ff6a00; }
+.field em { float: right; font-style: normal; color: #ff9a4a; font-variant-numeric: tabular-nums; }
+
+/* v0.5.0 */
+.badge.standin {
+  background: rgba(255, 170, 60, 0.18);
+  color: #ffb45a;
+  border: 1px solid rgba(255, 180, 90, 0.35);
+}
+.preview-disclaimer {
+  margin: 0.35rem 0 0.15rem;
+  color: #9a9aa8;
+  line-height: 1.35;
+  max-width: 52rem;
+}

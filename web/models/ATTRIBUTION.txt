@@ -1,17 +1,35 @@
-3D aircraft models
-==================
+3D aircraft models (SkinMyBird hangar preview)
+==============================================
 
-Models by amvlab (https://github.com/amvlab/aircraft-models)
-License: Creative Commons Attribution 4.0 International (CC BY 4.0)
-https://creativecommons.org/licenses/by/4.0/
+1) amvlab airliners (CC BY 4.0)
+   Source: https://github.com/amvlab/aircraft-models
+   License: Creative Commons Attribution 4.0 International
+   https://creativecommons.org/licenses/by/4.0/
+   Files (renamed for SkinMyBird):
+     a320.glb  ← A320_nologo.glb
+     b737.glb  ← B737_nologo.glb
+     b787.glb  ← B787_nologo.glb
+     a350.glb  ← A350_nologo.glb
+   Original LICENSE text from amvlab is in this directory as LICENSE.
 
-Files in this folder (renamed for SkinMyBird):
-  a320.glb  ← A320_nologo.glb
-  b737.glb  ← B737_nologo.glb
-  b787.glb  ← B787_nologo.glb
-  a350.glb  ← A350_nologo.glb
+2) Boeing 747 low-poly (CC BY 3.0)
+   Title: Boeing 747
+   Author: Miha Lunar
+   Source: https://poly.pizza/m/49CLof4tP2V
+   License: Creative Commons Attribution 3.0
+   https://creativecommons.org/licenses/by/3.0/
+   File: b747.glb
+   Resource: https://static.poly.pizza/f9afa9f0-92a5-41c1-afa4-c0b7d3444f35.glb
 
-The original LICENSE text from amvlab/aircraft-models is included as LICENSE
-in this directory. Attribution is also shown in the SkinMyBird preview UI:
-"Modele 3D: amvlab (CC BY 4.0)".
+3) Light GA / Cessna stand-in (CC BY 3.0)
+   Title: Small Airplane (used as light-GA / Cessna preview stand-in)
+   Author: Vojtěch Balák
+   Source: https://poly.pizza/m/7cvx6ex-xfL
+   License: Creative Commons Attribution 3.0
+   https://creativecommons.org/licenses/by/3.0/
+   File: cessna.glb
+   Resource: https://static.poly.pizza/077afae1-24b7-4bac-a31d-53d367002a04.glb
 
+UI credit line: "3D models: amvlab (CC BY 4.0); 747 Miha Lunar; GA Vojtěch Balák (CC BY 3.0 via Poly Pizza)"
+
+Helicopter and balloon previews use procedural geometry (SkinMyBird original; no third-party model).
