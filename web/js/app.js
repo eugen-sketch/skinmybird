@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.5.0 — commercial UI + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.5.1 — commercial UI + 3D hangar preview (Three.js).
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.0";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -80,6 +80,13 @@ const $ = (id) => document.getElementById(id);
       sparkle: false,
       wingbadge: false,
     },
+    stickerSize: "M",
+    flags: {
+      codes: [],
+      placement: "both", // left | right | both | free
+      posX: 0,
+      posY: 10,
+    },
     soacra: null,
     soacraName: null,
     soacraFile: null,
@@ -112,6 +119,16 @@ const $ = (id) => document.getElementById(id);
     elicopter: "🚁",
     balon: "🎈",
   };
+
+  const CAT_LABEL = {
+    avion: "Aircraft",
+    elicopter: "Helicopter",
+    balon: "Balloon",
+  };
+
+  function categoryLabel(cat) {
+    return CAT_LABEL[cat] || "Aircraft";
+  }
 
   function syncInputsFromState() {
     $("c-fuselage").value = state.colors.fuselage;
@@ -156,6 +173,17 @@ const $ = (id) => document.getElementById(id);
     syncSegmented("data-size", state.textSize);
     syncSegmented("data-style", state.textStyle);
     syncSegmented("data-place", state.textPlacement);
+    if ($("sticker-size")) $("sticker-size").value = state.stickerSize || "M";
+    syncSegmented("data-sticker-size", state.stickerSize || "M");
+    document.querySelectorAll(".flag-check").forEach((el) => {
+      el.checked = !!(state.flags && state.flags.codes && state.flags.codes.includes(el.value));
+    });
+    if ($("flag-placement")) $("flag-placement").value = (state.flags && state.flags.placement) || "both";
+    syncSegmented("data-flag-place", (state.flags && state.flags.placement) || "both");
+    if ($("flag-pos-x")) $("flag-pos-x").value = (state.flags && state.flags.posX) ?? 0;
+    if ($("flag-pos-y")) $("flag-pos-y").value = (state.flags && state.flags.posY) ?? 10;
+    if ($("lab-flag-x")) $("lab-flag-x").textContent = String((state.flags && state.flags.posX) ?? 0);
+    if ($("lab-flag-y")) $("lab-flag-y").textContent = String((state.flags && state.flags.posY) ?? 10);
   }
 
   function syncSegmented(attr, value) {
@@ -220,6 +248,15 @@ const $ = (id) => document.getElementById(id);
       const el = $("st-" + k);
       state.stickers[k] = el ? el.checked : !!state.stickers[k];
     });
+    if ($("sticker-size")) state.stickerSize = $("sticker-size").value || "M";
+    // Flags
+    state.flags = state.flags || { codes: [], placement: "both", posX: 0, posY: 10 };
+    state.flags.codes = Array.from(document.querySelectorAll(".flag-check:checked")).map((el) => el.value);
+    if ($("flag-placement")) state.flags.placement = $("flag-placement").value || "both";
+    if ($("flag-pos-x")) state.flags.posX = Number($("flag-pos-x").value) || 0;
+    if ($("flag-pos-y")) state.flags.posY = Number($("flag-pos-y").value) || 10;
+    if ($("lab-flag-x")) $("lab-flag-x").textContent = String(state.flags.posX);
+    if ($("lab-flag-y")) $("lab-flag-y").textContent = String(state.flags.posY);
     updateHexLabels();
   }
 
@@ -356,6 +393,14 @@ const $ = (id) => document.getElementById(id);
       { on: state.stickers.arrow, label: "Arrow", meta: "" },
       { on: state.stickers.sparkle, label: "Sparkle", meta: "" },
       { on: state.stickers.wingbadge, label: "Wing badge", meta: "" },
+      { on: true, label: "Sticker size", meta: state.stickerSize || "M" },
+      {
+        on: !!(state.flags && state.flags.codes && state.flags.codes.length),
+        label: "Flags",
+        meta: (state.flags && state.flags.codes && state.flags.codes.length)
+          ? state.flags.codes.join(", ") + " · " + (state.flags.placement || "both")
+          : "",
+      },
       {
         on: state.stickers.text,
         label: "Text",
@@ -453,7 +498,7 @@ const $ = (id) => document.getElementById(id);
           </div>
           <span class="mc-name">${p.displayName}</span>
           <span class="mc-meta">${p.ui_manufacturer || "—"}</span>
-          <span class="mc-cat">${p.category}</span>
+          <span class="mc-cat">${categoryLabel(p.category)}</span>
         </button>`;
       })
       .join("");
@@ -682,6 +727,8 @@ const $ = (id) => document.getElementById(id);
     state.textStyle = EUGEN.textStyle;
     state.textPlacement = EUGEN.textPlacement;
     state.textFont = EUGEN.textFont || "segoe";
+    state.stickerSize = "M";
+    state.flags = { codes: [], placement: "both", posX: 0, posY: 10 };
     state.stickers = {
       stripe: true,
       heart: false,
@@ -751,6 +798,28 @@ const $ = (id) => document.getElementById(id);
       drawPreview();
     });
   });
+
+  document.querySelectorAll("[data-sticker-size]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.stickerSize = btn.getAttribute("data-sticker-size");
+      if ($("sticker-size")) $("sticker-size").value = state.stickerSize;
+      syncSegmented("data-sticker-size", state.stickerSize);
+      drawPreview();
+    });
+  });
+  document.querySelectorAll("[data-flag-place]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.flags = state.flags || { codes: [], placement: "both", posX: 0, posY: 10 };
+      state.flags.placement = btn.getAttribute("data-flag-place");
+      if ($("flag-placement")) $("flag-placement").value = state.flags.placement;
+      syncSegmented("data-flag-place", state.flags.placement);
+      drawPreview();
+    });
+  });
+  document.querySelectorAll(".flag-check").forEach((el) => {
+    el.addEventListener("change", drawPreview);
+  });
+
   document.querySelectorAll("[data-style]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.textStyle = btn.getAttribute("data-style");

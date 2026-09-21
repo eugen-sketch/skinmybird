@@ -872,3 +872,21 @@ input[type="text"]:focus {
   line-height: 1.35;
   max-width: 52rem;
 }
+
+/* Flags tab */
+.flag-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem 0.6rem;
+  max-height: 42vh;
+  overflow: auto;
+  padding-right: 0.25rem;
+  margin-top: 0.5rem;
+}
+.flag-item .flag-code {
+  font-style: normal;
+  font-weight: 700;
+  font-size: 0.72rem;
+  opacity: 0.75;
+  margin-right: 0.2rem;
+}

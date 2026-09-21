@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview — real airliner GLBs + procedural helo/balloon.
+ * SkinMyBird 3D hangar preview v0.5.1 — real airliner GLBs + procedural helo/balloon.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -131,7 +131,7 @@ export function resolveGlbUrl(profile) {
 
 /**
  * Resolve GLB URL + whether the mesh is a licensed stand-in (not exact type).
- * 747 uses a distinct Poly Pizza CC-BY GLB; A330 still borrows A350; Cessna uses GA stand-in.
+ * 747 uses FetchCFD Boeing 747-3B5 (CC BY 4.0); A330 still borrows A350; Cessna uses c172 GLB.
  */
 export function resolveGlbMeta(profile) {
   if (!profile) return null;
@@ -161,12 +161,12 @@ export function resolveGlbMeta(profile) {
     return {
       url: "/models/cessna.glb",
       standIn: true,
-      note: "Light GA preview stand-in (not a Cessna UV map)",
+      note: "Cessna 172 preview (CC BY 4.0; not an MSFS UV map)",
     };
   }
 
   if (blob.includes("747")) {
-    return { url: "/models/b747.glb", standIn: false, note: "747 low-poly (Miha Lunar / Poly Pizza)" };
+    return { url: "/models/b747.glb", standIn: false, note: "747-3B5 (FetchCFD CC BY 4.0)" };
   }
 
   if (blob.includes("787") || blob.includes("dreamliner"))
@@ -555,13 +555,299 @@ function drawWingBadge2d(ctx, cx, cy, s, color) {
   ctx.fill();
 }
 
+
+/** Simplified international flags (geometric only — no copyrighted logos). */
+const FLAG_CATALOG = {
+  US: { name: "United States", bars: ["#B22234", "#FFFFFF", "#B22234", "#FFFFFF", "#B22234", "#FFFFFF", "#B22234"], canton: "#3C3B6E" },
+  GB: { name: "United Kingdom", type: "uk" },
+  RO: { name: "Romania", stripes: "v", colors: ["#002B7F", "#FCD116", "#CE1126"] },
+  DE: { name: "Germany", stripes: "h", colors: ["#000000", "#DD0000", "#FFCE00"] },
+  FR: { name: "France", stripes: "v", colors: ["#002395", "#FFFFFF", "#ED2939"] },
+  IT: { name: "Italy", stripes: "v", colors: ["#009246", "#FFFFFF", "#CE2B37"] },
+  ES: { name: "Spain", stripes: "h", colors: ["#AA151B", "#F1BF00", "#AA151B"], ratios: [1, 2, 1] },
+  PT: { name: "Portugal", stripes: "v", colors: ["#006600", "#FF0000"], ratios: [2, 3], disc: "#FFFF00" },
+  NL: { name: "Netherlands", stripes: "h", colors: ["#AE1C28", "#FFFFFF", "#21468B"] },
+  BE: { name: "Belgium", stripes: "v", colors: ["#000000", "#FAE042", "#ED2939"] },
+  PL: { name: "Poland", stripes: "h", colors: ["#FFFFFF", "#DC143C"] },
+  UA: { name: "Ukraine", stripes: "h", colors: ["#0057B7", "#FFD700"] },
+  TR: { name: "Turkey", type: "tr" },
+  GR: { name: "Greece", type: "gr" },
+  SE: { name: "Sweden", type: "cross", bg: "#006AA7", cross: "#FECC00" },
+  NO: { name: "Norway", type: "cross", bg: "#EF2B2D", cross: "#FFFFFF", cross2: "#002868" },
+  FI: { name: "Finland", type: "cross", bg: "#FFFFFF", cross: "#003580" },
+  DK: { name: "Denmark", type: "cross", bg: "#C8102E", cross: "#FFFFFF" },
+  IE: { name: "Ireland", stripes: "v", colors: ["#169B62", "#FFFFFF", "#FF883E"] },
+  CH: { name: "Switzerland", type: "ch" },
+  AT: { name: "Austria", stripes: "h", colors: ["#ED2939", "#FFFFFF", "#ED2939"] },
+  JP: { name: "Japan", type: "jp" },
+  KR: { name: "South Korea", type: "kr" },
+  CN: { name: "China", type: "cn" },
+  IN: { name: "India", stripes: "h", colors: ["#FF9933", "#FFFFFF", "#138808"], disc: "#000080" },
+  BR: { name: "Brazil", type: "br" },
+  MX: { name: "Mexico", stripes: "v", colors: ["#006847", "#FFFFFF", "#CE1126"] },
+  AU: { name: "Australia", type: "au" },
+  NZ: { name: "New Zealand", type: "nz" },
+  AE: { name: "United Arab Emirates", stripes: "h", colors: ["#00732F", "#FFFFFF", "#000000", "#FF0000"], hoist: "#FF0000" },
+  SA: { name: "Saudi Arabia", type: "sa" },
+  CA: { name: "Canada", stripes: "v", colors: ["#FF0000", "#FFFFFF", "#FF0000"], ratios: [1, 2, 1] },
+  CZ: { name: "Czechia", type: "cz" },
+};
+
+function drawSimpleFlag(ctx, x, y, w, h, code) {
+  const def = FLAG_CATALOG[code];
+  if (!def) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  // default white base
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(x, y, w, h);
+
+    if (def.bars && def.canton) {
+    const n = def.bars.length;
+    const hh = h / n;
+    def.bars.forEach((c, bi) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(x, y + bi * hh, w, hh + 0.5);
+    });
+    ctx.fillStyle = def.canton;
+    ctx.fillRect(x, y, w * 0.4, h * 0.54);
+  } else if (def.stripes === "h") {
+    const cols = def.colors;
+    const ratios = def.ratios || cols.map(() => 1);
+    const sum = ratios.reduce((a, b) => a + b, 0);
+    let yy = y;
+    cols.forEach((c, i) => {
+      const hh = (h * ratios[i]) / sum;
+      ctx.fillStyle = c;
+      ctx.fillRect(x, yy, w, hh + 0.5);
+      yy += hh;
+    });
+    if (def.disc) {
+      ctx.fillStyle = def.disc;
+      ctx.beginPath();
+      ctx.arc(x + w / 2, y + h / 2, Math.min(w, h) * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (def.hoist) {
+      ctx.fillStyle = def.hoist;
+      ctx.fillRect(x, y, w * 0.25, h);
+    }
+  } else if (def.stripes === "v") {
+    const cols = def.colors;
+    const ratios = def.ratios || cols.map(() => 1);
+    const sum = ratios.reduce((a, b) => a + b, 0);
+    let xx = x;
+    cols.forEach((c, i) => {
+      const ww = (w * ratios[i]) / sum;
+      ctx.fillStyle = c;
+      ctx.fillRect(xx, y, ww + 0.5, h);
+      xx += ww;
+    });
+    if (def.disc) {
+      ctx.fillStyle = def.disc;
+      ctx.beginPath();
+      ctx.arc(x + w * 0.35, y + h / 2, Math.min(w, h) * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (def.type === "uk") {
+    ctx.fillStyle = "#012169";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "#FFFFFF";
+    ctx.lineWidth = h * 0.2;
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x + w, y + h);
+    ctx.moveTo(x + w, y); ctx.lineTo(x, y + h);
+    ctx.stroke();
+    ctx.strokeStyle = "#C8102E";
+    ctx.lineWidth = h * 0.08;
+    ctx.stroke();
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(x, y + h * 0.35, w, h * 0.3);
+    ctx.fillRect(x + w * 0.4, y, w * 0.2, h);
+    ctx.fillStyle = "#C8102E";
+    ctx.fillRect(x, y + h * 0.42, w, h * 0.16);
+    ctx.fillRect(x + w * 0.44, y, w * 0.12, h);
+  } else if (def.type === "cross") {
+    ctx.fillStyle = def.bg;
+    ctx.fillRect(x, y, w, h);
+    const t = h * 0.22;
+    ctx.fillStyle = def.cross;
+    ctx.fillRect(x, y + (h - t) / 2, w, t);
+    ctx.fillRect(x + w * 0.32, y, t * 0.9, h);
+    if (def.cross2) {
+      const t2 = t * 0.45;
+      ctx.fillStyle = def.cross2;
+      ctx.fillRect(x, y + (h - t2) / 2, w, t2);
+      ctx.fillRect(x + w * 0.32 + (t * 0.9 - t2) / 2, y, t2, h);
+    }
+  } else if (def.type === "jp") {
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#BC002D";
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + h / 2, h * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (def.type === "ch") {
+    ctx.fillStyle = "#FF0000";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#FFFFFF";
+    const t = h * 0.18;
+    ctx.fillRect(x + w * 0.2, y + (h - t) / 2, w * 0.6, t);
+    ctx.fillRect(x + (w - t) / 2, y + h * 0.2, t, h * 0.6);
+  } else if (def.type === "tr") {
+    ctx.fillStyle = "#E30A17";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.beginPath();
+    ctx.arc(x + w * 0.4, y + h / 2, h * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#E30A17";
+    ctx.beginPath();
+    ctx.arc(x + w * 0.46, y + h / 2, h * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (def.type === "cn") {
+    ctx.fillStyle = "#DE2910";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#FFDE00";
+    // simplified stars as circles
+    ctx.beginPath();
+    ctx.arc(x + w * 0.18, y + h * 0.3, h * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (def.type === "br") {
+    ctx.fillStyle = "#009C3B";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#FFDF00";
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2, y + h * 0.12);
+    ctx.lineTo(x + w * 0.88, y + h / 2);
+    ctx.lineTo(x + w / 2, y + h * 0.88);
+    ctx.lineTo(x + w * 0.12, y + h / 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#002776";
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + h / 2, h * 0.18, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (def.type === "sa") {
+    ctx.fillStyle = "#005430";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(x + w * 0.2, y + h * 0.55, w * 0.6, h * 0.08);
+  } else if (def.type === "gr") {
+    ctx.fillStyle = "#0D5EAF";
+    ctx.fillRect(x, y, w, h);
+    for (let i = 0; i < 9; i++) {
+      if (i % 2 === 1) {
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(x, y + (h / 9) * i, w, h / 9 + 0.5);
+      }
+    }
+    ctx.fillStyle = "#0D5EAF";
+    ctx.fillRect(x, y, w * 0.35, h * (5 / 9));
+    ctx.fillStyle = "#FFFFFF";
+    const t = h * 0.08;
+    ctx.fillRect(x, y + h * 0.18, w * 0.35, t);
+    ctx.fillRect(x + w * 0.14, y, t, h * (5 / 9));
+  } else if (def.type === "kr" || def.type === "au" || def.type === "nz" || def.type === "cz") {
+    // simplified stand-ins
+    if (def.type === "kr") {
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = "#CD2E3A";
+      ctx.beginPath();
+      ctx.arc(x + w / 2, y + h / 2, h * 0.22, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = "#0047A0";
+      ctx.beginPath();
+      ctx.arc(x + w / 2, y + h / 2, h * 0.22, 0, Math.PI);
+      ctx.fill();
+    } else if (def.type === "cz") {
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(x, y, w, h / 2);
+      ctx.fillStyle = "#D7141A";
+      ctx.fillRect(x, y + h / 2, w, h / 2);
+      ctx.fillStyle = "#11457E";
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + w * 0.45, y + h / 2);
+      ctx.lineTo(x, y + h);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      // AU / NZ blue with canton hint
+      ctx.fillStyle = "#00008B";
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = "#012169";
+      ctx.fillRect(x, y, w * 0.45, h * 0.5);
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(x + w * 0.18, y + h * 0.08, w * 0.05, h * 0.34);
+      ctx.fillRect(x + w * 0.08, y + h * 0.2, w * 0.25, h * 0.08);
+    }
+  } else if (def.bars && def.canton) {
+    const n = def.bars.length;
+    const hh = h / n;
+    def.bars.forEach((c, i) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(x, y + i * hh, w, hh + 0.5);
+    });
+    ctx.fillStyle = def.canton;
+    ctx.fillRect(x, y, w * 0.4, h * 0.54);
+  }
+  // thin border
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.restore();
+}
+
+function drawCountryFlagsOnCanvas(ctx, W, H, state, layout) {
+  const flags = state.flags || {};
+  const codes = flags.codes || [];
+  if (!codes.length) return;
+  const scale = (layout && layout.scale) || stickerSizeMul(state);
+  const fw = Math.max(36, 52 * scale * 0.55);
+  const fh = fw * 0.62;
+  const place = flags.placement || "both";
+  const posX = Number(flags.posX != null ? flags.posX : 0) / 100;
+  const posY = Number(flags.posY != null ? flags.posY : 10) / 100;
+  const baseY = H * (0.55 + posY * 0.35);
+  const mid = layout && layout.xMid != null ? layout.xMid : W / 2;
+  const gap = fw * 1.15;
+  const totalW = codes.length * gap;
+  const startX = mid - totalW / 2 + fw * 0.1 + posX * W * 0.25;
+
+  function paintRow(x0) {
+    codes.forEach((code, i) => {
+      drawSimpleFlag(ctx, x0 + i * gap, baseY - fh / 2, fw, fh, code);
+    });
+  }
+  if (place === "left" || place === "both" || place === "free") {
+    paintRow(startX);
+  }
+  if (place === "right") {
+    // Single-panel decal: still draw once; dual UV: offset to other half
+    paintRow(layout && layout.dual ? startX + W * 0.5 : startX);
+  } else if (place === "both" && layout && layout.dual) {
+    paintRow(startX + W * 0.5);
+  }
+}
+
+function stickerSizeMul(state) {
+  const k = String((state && state.stickerSize) || "M").toUpperCase();
+  if (k === "S") return 1.6;
+  if (k === "L") return 3.0;
+  return 2.2; // M — visibly larger than pre-0.5.1 defaults
+}
+
 function drawStickersOnCanvas(ctx, W, H, state, layout) {
   const st = state.stickers || {};
   const accent =
     (state.colors && (state.colors.accent || state.colors.tail)) || "#FF6A00";
   // layout: "decal" (single panel) or "half" with x0 offset for procedural sides
   const xMid = layout.xMid != null ? layout.xMid : W / 2;
-  const scale = layout.scale || 1;
+  const scale = (layout.scale || 1) * stickerSizeMul(state);
   const x0 = layout.x0 || 0;
 
   if (st.stripe) {
@@ -603,11 +889,17 @@ function paintDecalCanvas(canvas, state) {
     st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow ||
     st.sparkle || st.wingbadge;
   const showText = !!st.text;
+  const flagCodes = (state.flags && state.flags.codes) || [];
+  const hasFlags = flagCodes.length > 0;
 
   if (anySticker) {
-    drawStickersOnCanvas(ctx, W, H, state, { xMid: W / 2, scale: 1.2 });
+    drawStickersOnCanvas(ctx, W, H, state, { xMid: W / 2, scale: 1.55 });
+  }
+  if (hasFlags) {
+    drawCountryFlagsOnCanvas(ctx, W, H, state, { xMid: W / 2, scale: stickerSizeMul(state) });
   }
 
+  if (!showText && !hasFlags && !anySticker) return;
   if (!showText) return;
 
   const textColor = state.textColor || "#FFFFFF";
@@ -889,11 +1181,13 @@ function addTextDecals(craft, state) {
   craft.updateMatrixWorld(true);
 
   const st = state.stickers || {};
+  const flagCodes = (state.flags && state.flags.codes) || [];
   const anyVisual =
     st.text || st.stripe || st.heart || st.star || st.lightning ||
     st.bird || st.roundel || st.chevron || st.checkered ||
     st.smile || st.crown || st.diamond || st.sun || st.moon ||
-    st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge;
+    st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge ||
+    flagCodes.length > 0;
   if (!anyVisual) {
     return { tex: null, mat: null, group, regTex: null };
   }
@@ -931,9 +1225,13 @@ function addTextDecals(craft, state) {
   const posX = Number(state.textPosX || 0) / 100; // −0.5…0.5 along length
   const posY = Number(state.textPosY != null ? state.textPosY : -10) / 100;
   const scalePct = Math.max(0.5, Math.min(1.6, (Number(state.textScale) || 100) / 100));
+  // Stickers / flags share the decal panel — bump projection size with stickerSize
+  const stickerBoost = flagCodes.length || (st.stripe || st.heart || st.star || st.lightning || st.bird || st.roundel || st.chevron || st.checkered || st.smile || st.crown || st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge)
+    ? (0.85 + 0.2 * stickerSizeMul(state))
+    : 1;
   const flipLeft = !!state.textFlipLeft;   // −Z
   const flipRight = state.textFlipRight !== false; // +Z default on (fixes common mirror)
-  const decalSize = new THREE.Vector3(panelLen * scalePct, panelH * scalePct, panelDepth);
+  const decalSize = new THREE.Vector3(panelLen * scalePct * Math.min(stickerBoost, 1.55), panelH * scalePct * Math.min(stickerBoost, 1.55), panelDepth);
 
   // Sample X along fuselage (+posX moves aft toward tail if nose=+X mid)
   let xMain = center.x + size.x * (0.02 - posX * 0.35);
@@ -1167,68 +1465,80 @@ function paintFuselageCanvas(canvas, state, family) {
     drawCheckered2d(ctx, 0, H * 0.04, W, 16, 24, "#111111", "#f5f5f5");
   }
   if (st.heart) {
-    drawHeart2d(ctx, W * 0.18, H * 0.26, 26, "#dc2840");
-    drawHeart2d(ctx, W * 0.68, H * 0.26, 26, "#dc2840");
+    drawHeart2d(ctx, W * 0.18, H * 0.26, 26 * sm, "#dc2840");
+    drawHeart2d(ctx, W * 0.68, H * 0.26, 26 * sm, "#dc2840");
   }
   if (st.star) {
-    drawStar2d(ctx, W * 0.32, H * 0.26, 22, "#ffd24a");
-    drawStar2d(ctx, W * 0.82, H * 0.26, 22, "#ffd24a");
+    drawStar2d(ctx, W * 0.32, H * 0.26, 22 * sm, "#ffd24a");
+    drawStar2d(ctx, W * 0.82, H * 0.26, 22 * sm, "#ffd24a");
   }
   if (st.lightning) {
-    drawLightning2d(ctx, W * 0.12, H * 0.7, 26, "#ffe566");
-    drawLightning2d(ctx, W * 0.62, H * 0.7, 26, "#ffe566");
+    drawLightning2d(ctx, W * 0.12, H * 0.7, 26 * sm, "#ffe566");
+    drawLightning2d(ctx, W * 0.62, H * 0.7, 26 * sm, "#ffe566");
   }
   if (st.bird) {
-    drawBird2d(ctx, W * 0.25, H * 0.78, 32, textColor);
-    drawBird2d(ctx, W * 0.75, H * 0.78, 32, textColor);
+    drawBird2d(ctx, W * 0.25, H * 0.78, 32 * sm, textColor);
+    drawBird2d(ctx, W * 0.75, H * 0.78, 32 * sm, textColor);
   }
   if (st.roundel) {
-    drawRoundel2d(ctx, W * 0.1, H * 0.7, 24);
-    drawRoundel2d(ctx, W * 0.6, H * 0.7, 24);
+    drawRoundel2d(ctx, W * 0.1, H * 0.7, 24 * sm);
+    drawRoundel2d(ctx, W * 0.6, H * 0.7, 24 * sm);
   }
   if (st.chevron) {
-    drawChevron2d(ctx, W * 0.38, H * 0.7, 22, "#ffffff");
-    drawChevron2d(ctx, W * 0.88, H * 0.7, 22, "#ffffff");
+    drawChevron2d(ctx, W * 0.38, H * 0.7, 22 * sm, "#ffffff");
+    drawChevron2d(ctx, W * 0.88, H * 0.7, 22 * sm, "#ffffff");
   }
   if (st.smile) {
-    drawSmile2d(ctx, W * 0.2, H * 0.35, 18, "#ffd24a");
-    drawSmile2d(ctx, W * 0.7, H * 0.35, 18, "#ffd24a");
+    drawSmile2d(ctx, W * 0.2, H * 0.35, 18 * sm, "#ffd24a");
+    drawSmile2d(ctx, W * 0.7, H * 0.35, 18 * sm, "#ffd24a");
   }
   if (st.crown) {
-    drawCrown2d(ctx, W * 0.3, H * 0.2, 16, "#ffd24a");
-    drawCrown2d(ctx, W * 0.8, H * 0.2, 16, "#ffd24a");
+    drawCrown2d(ctx, W * 0.3, H * 0.2, 16 * sm, "#ffd24a");
+    drawCrown2d(ctx, W * 0.8, H * 0.2, 16 * sm, "#ffd24a");
   }
   if (st.diamond) {
-    drawDiamond2d(ctx, W * 0.22, H * 0.62, 14, "#7ec8ff");
-    drawDiamond2d(ctx, W * 0.72, H * 0.62, 14, "#7ec8ff");
+    drawDiamond2d(ctx, W * 0.22, H * 0.62, 14 * sm, "#7ec8ff");
+    drawDiamond2d(ctx, W * 0.72, H * 0.62, 14 * sm, "#7ec8ff");
   }
   if (st.sun) {
-    drawSun2d(ctx, W * 0.14, H * 0.28, 16, "#ffb020");
-    drawSun2d(ctx, W * 0.64, H * 0.28, 16, "#ffb020");
+    drawSun2d(ctx, W * 0.14, H * 0.28, 16 * sm, "#ffb020");
+    drawSun2d(ctx, W * 0.64, H * 0.28, 16 * sm, "#ffb020");
   }
   if (st.moon) {
-    drawMoon2d(ctx, W * 0.36, H * 0.28, 14, "#d0d8ff");
-    drawMoon2d(ctx, W * 0.86, H * 0.28, 14, "#d0d8ff");
+    drawMoon2d(ctx, W * 0.36, H * 0.28, 14 * sm, "#d0d8ff");
+    drawMoon2d(ctx, W * 0.86, H * 0.28, 14 * sm, "#d0d8ff");
   }
   if (st.flag) {
-    drawFlag2d(ctx, W * 0.16, H * 0.68, 16, accent);
-    drawFlag2d(ctx, W * 0.66, H * 0.68, 16, accent);
+    drawFlag2d(ctx, W * 0.16, H * 0.68, 16 * sm, accent);
+    drawFlag2d(ctx, W * 0.66, H * 0.68, 16 * sm, accent);
   }
   if (st.shield) {
-    drawShield2d(ctx, W * 0.28, H * 0.55, 16, "#3d7cff");
-    drawShield2d(ctx, W * 0.78, H * 0.55, 16, "#3d7cff");
+    drawShield2d(ctx, W * 0.28, H * 0.55, 16 * sm, "#3d7cff");
+    drawShield2d(ctx, W * 0.78, H * 0.55, 16 * sm, "#3d7cff");
   }
   if (st.arrow) {
-    drawArrow2d(ctx, W * 0.4, H * 0.72, 18, "#ffffff");
-    drawArrow2d(ctx, W * 0.9, H * 0.72, 18, "#ffffff");
+    drawArrow2d(ctx, W * 0.4, H * 0.72, 18 * sm, "#ffffff");
+    drawArrow2d(ctx, W * 0.9, H * 0.72, 18 * sm, "#ffffff");
   }
   if (st.sparkle) {
-    drawSparkle2d(ctx, W * 0.34, H * 0.4, 14, "#fff6a8");
-    drawSparkle2d(ctx, W * 0.84, H * 0.4, 14, "#fff6a8");
+    drawSparkle2d(ctx, W * 0.34, H * 0.4, 14 * sm, "#fff6a8");
+    drawSparkle2d(ctx, W * 0.84, H * 0.4, 14 * sm, "#fff6a8");
   }
   if (st.wingbadge) {
-    drawWingBadge2d(ctx, W * 0.25, H * 0.8, 22, textColor);
-    drawWingBadge2d(ctx, W * 0.75, H * 0.8, 22, textColor);
+    drawWingBadge2d(ctx, W * 0.25, H * 0.8, 22 * sm, textColor);
+    drawWingBadge2d(ctx, W * 0.75, H * 0.8, 22 * sm, textColor);
+  }
+
+  // Country flags (both UV halves)
+  const flagCodes = (state.flags && state.flags.codes) || [];
+  if (flagCodes.length) {
+    const sm = stickerSizeMul(state);
+    drawCountryFlagsOnCanvas(ctx, W / 2, H, state, { xMid: W * 0.25, scale: sm * 0.85, dual: false });
+    // right half: temporarily shift by drawing into full W with dual layout
+    ctx.save();
+    ctx.translate(W / 2, 0);
+    drawCountryFlagsOnCanvas(ctx, W / 2, H, state, { xMid: W * 0.25, scale: sm * 0.85, dual: false });
+    ctx.restore();
   }
 
   // Text / airline / registration — wide halves + auto-shrink + font/style
@@ -1360,7 +1670,7 @@ function buildAirliner(group, family, mats) {
     "narrow-short": { len: 9.6, rad: 0.5, wingSpan: 9.4, wingY: -0.16, engCount: 2, engScale: 0.92, rootChord: 1.9, tipChord: 0.8 },
     "narrow-long": { len: 13.0, rad: 0.52, wingSpan: 11.0, wingY: -0.18, engCount: 2, engScale: 1.05, rootChord: 2.15, tipChord: 0.88 },
     widebody: { len: 15.2, rad: 0.78, wingSpan: 14.2, wingY: -0.22, engCount: 2, engScale: 1.35, rootChord: 2.7, tipChord: 1.05 },
-    "747": { len: 17.0, rad: 0.82, wingSpan: 16.0, wingY: -0.24, engCount: 4, engScale: 1.12, rootChord: 2.9, tipChord: 1.1 },
+    "747": { len: 18.6, rad: 0.86, wingSpan: 16.8, wingY: -0.22, engCount: 4, engScale: 1.18, rootChord: 3.1, tipChord: 1.15 },
     ga: { len: 7.2, rad: 0.38, wingSpan: 9.0, wingY: -0.05, engCount: 0, engScale: 0.7, rootChord: 1.5, tipChord: 0.7 },
   };
   const s = specs[family] || specs.narrow;
@@ -1409,24 +1719,33 @@ function buildAirliner(group, family, mats) {
   );
   glass.name = "cockpit";
 
-  // 747 upper-deck hump (recognizable "hump" ahead of wing)
+  // 747 upper-deck hump — longer bubble from nose to ahead of wing (classic jumbo silhouette)
   if (family === "747") {
     const humpPts = [
-      new THREE.Vector2(0.001, s.len * 0.16),
-      new THREE.Vector2(R * 0.42, s.len * 0.14),
-      new THREE.Vector2(R * 0.58, s.len * 0.08),
-      new THREE.Vector2(R * 0.62, 0),
-      new THREE.Vector2(R * 0.55, -s.len * 0.06),
-      new THREE.Vector2(R * 0.28, -s.len * 0.12),
-      new THREE.Vector2(0.001, -s.len * 0.14),
+      new THREE.Vector2(0.001, s.len * 0.22),
+      new THREE.Vector2(R * 0.48, s.len * 0.2),
+      new THREE.Vector2(R * 0.72, s.len * 0.14),
+      new THREE.Vector2(R * 0.78, s.len * 0.04),
+      new THREE.Vector2(R * 0.75, -s.len * 0.04),
+      new THREE.Vector2(R * 0.55, -s.len * 0.12),
+      new THREE.Vector2(R * 0.22, -s.len * 0.18),
+      new THREE.Vector2(0.001, -s.len * 0.2),
     ];
-    const hump = new THREE.Mesh(new THREE.LatheGeometry(humpPts, 28), mats.fuselage);
+    const hump = new THREE.Mesh(new THREE.LatheGeometry(humpPts, 32), mats.fuselage);
     hump.rotation.z = -Math.PI / 2;
-    hump.position.set(half * 0.22, R * 0.55, 0);
-    hump.scale.set(1, 0.85, 1);
+    // Sit on top of forward fuselage (nose = +X)
+    hump.position.set(half * 0.38, R * 0.62, 0);
+    hump.scale.set(1.05, 0.95, 1.0);
     hump.name = "hump";
     hump.castShadow = true;
     group.add(hump);
+    // Fairing blend into main deck
+    const fair = addCyl(
+      group, R * 0.95, R * 0.7, s.len * 0.08,
+      half * 0.05, R * 0.35, 0,
+      mats.fuselage, 0, 0, Math.PI / 2, 24
+    );
+    fair.name = "humpFairing";
   }
 
   // Wings: thin airfoil-ish boxes, sweep-back ~25°, dihedral, root>tip chord, upward winglets
@@ -1542,7 +1861,7 @@ function buildAirliner(group, family, mats) {
   }
 
   // Vertical fin (slight sweep) + horizontal stabilizers at tail
-  const finH = family === "747" || family === "widebody" ? 2.9 : 2.25;
+  const finH = family === "747" ? 3.35 : family === "widebody" ? 2.9 : 2.25;
   const finRootX = -half + s.len * 0.12;
   const fin = addBox(
     group,
@@ -2052,7 +2371,7 @@ export class Preview3D {
       try {
         const line = document.getElementById("status-line");
         if (line) {
-          line.innerHTML = "<strong style=\"color:#ff8a7a\">GLB eșuat</strong> (" + url + "): " + (err && err.message ? err.message : err) + " — forma simplă temporar.";
+          line.innerHTML = "<strong style=\"color:#ff8a7a\">GLB failed</strong> (" + url + "): " + (err && err.message ? err.message : err) + " — temporary simple shape.";
         }
         window.dispatchEvent(new CustomEvent("skinmybird-model-mode",{detail:{mode:"procedural",error:String(err)}}));
       } catch (e) {}
@@ -2080,6 +2399,8 @@ export class Preview3D {
       tfl: state.textFlipLeft,
       tfr: state.textFlipRight,
       st: state.stickers,
+      ss: state.stickerSize,
+      fl: state.flags,
       photo: state.soacraName || null,
       fam: family,
       mode: this.modelMode,
@@ -2130,21 +2451,42 @@ export class Preview3D {
       return;
     }
 
-    // Procedural path
+    // Procedural path — fuselage UV paint + same mesh-projected decals as GLB
     if (this.fuselageTex && this.fuselageTex.userData.canvas) {
       paintFuselageCanvas(this.fuselageTex.userData.canvas, state, family);
       this.fuselageTex.needsUpdate = true;
     }
 
     const mats = this.mats;
-    if (!mats) return;
-    if (mats.wings) mats.wings.color.copy(hexToThree(state.colors.wings));
-    if (mats.winglet)
-      mats.winglet.color.copy(hexToThree(state.colors.winglet || state.colors.tail));
-    if (mats.engines) mats.engines.color.copy(hexToThree(state.colors.engines));
-    if (mats.enginesDark)
-      mats.enginesDark.color.copy(hexToThree(shadeHex(state.colors.engines, -30)));
-    if (mats.tail) mats.tail.color.copy(hexToThree(state.colors.tail));
+    if (mats) {
+      if (mats.wings) mats.wings.color.copy(hexToThree(state.colors.wings));
+      if (mats.winglet)
+        mats.winglet.color.copy(hexToThree(state.colors.winglet || state.colors.tail));
+      if (mats.engines) mats.engines.color.copy(hexToThree(state.colors.engines));
+      if (mats.enginesDark)
+        mats.enginesDark.color.copy(hexToThree(shadeHex(state.colors.engines, -30)));
+      if (mats.tail) mats.tail.color.copy(hexToThree(state.colors.tail));
+    }
+
+    const craft = this.root.getObjectByName("aircraft");
+    if (craft) {
+      removeNamedGroup(craft, "textDecals");
+      if (this.decalTex) {
+        this.decalTex.dispose();
+        this.decalTex = null;
+      }
+      if (this.regTex) {
+        this.regTex.dispose();
+        this.regTex = null;
+      }
+      try {
+        const decal = addTextDecals(craft, state);
+        this.decalTex = decal.tex;
+        this.regTex = decal.regTex || null;
+      } catch (err) {
+        console.warn("Procedural decals failed:", err);
+      }
+    }
   }
 
   setProfile(profile, state) {

@@ -14,7 +14,15 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 
 ---
 
-## Models v0.5 (selector)
+
+### v0.5.1 notes
+- English category badges: **Aircraft / Helicopter / Balloon** (no Romanian leftovers)
+- Stickers default larger + **S / M / L** size control (canvas + GLB decals)
+- **Flags** tab: ~33 country flags, placement left / right / both / free
+- Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
+- 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
+
+## Models v0.5.1 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -24,7 +32,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 | 4 | LatinVFR A330-900 | whole-albedo stub | a350.glb *(stand-in)* |
 | 5 | FlyByWire A320neo | whole-albedo stub | a320.glb |
 | 6 | Asobo Boeing 787-10 | whole-albedo stub | b787.glb |
-| 7 | Asobo Boeing 747-8i | whole-albedo stub | **b747.glb** (distinct) |
+| 7 | Asobo Boeing 747-8i | whole-albedo stub | **b747.glb** (FetchCFD 747-3B5 CC BY 4.0) |
 | 8 | PMDG 737-600 | whole-albedo stub | b737.glb |
 | 9 | HPG Hot Air Balloon | whole-albedo stub | procedural |
 | 10 | HPG Airbus H135 | whole-albedo stub | procedural |
@@ -35,8 +43,8 @@ Profile JSON: `profiles/*.json`. UV / stub details: `ASSUMPTIONS.md`.
 ### 3D model attribution
 
 - **amvlab** A320 / 737 / 787 / A350 — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — https://github.com/amvlab/aircraft-models
-- **Boeing 747** by Miha Lunar via Poly Pizza — [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) — https://poly.pizza/m/49CLof4tP2V
-- **Small Airplane** (Cessna / light-GA stand-in) by Vojtěch Balák via Poly Pizza — [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) — https://poly.pizza/m/7cvx6ex-xfL
+- **Boeing 747-3B5** via FetchCFD — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — https://www.fetchcfd.com/view/4833-boeing-747-3b5-3d-model
+- **Cessna 172** (light-GA) — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — https://github.com/bilawalsidhu/gods-eye-view
 
 Full notes: `web/models/ATTRIBUTION.txt`.
 
@@ -62,7 +70,7 @@ Optional env vars:
 ### UI flow (English)
 
 1. **Choose aircraft** (cards)
-2. **Colors / Stickers / Identity** (registration, airline, logo)
+2. **Colors / Text / Stickers / Flags / Identity** (registration, airline, logo, country flags)
 3. **Export ZIP (DDS)** → download Community package
 4. **Install** → copy into Community (Windows only when path is set)
 
@@ -129,4 +137,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.5.0 — multi-aircraft English UI
+© SkinMyBird v0.5.1 — multi-aircraft English UI · flags · larger stickers

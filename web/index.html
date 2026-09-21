@@ -15,7 +15,7 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=0.5.0"></script>
+  <script type="module" src="js/app.js?v=0.5.1"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -77,6 +77,7 @@
           <button type="button" class="tab active" data-tab="colors" role="tab">Colors</button>
           <button type="button" class="tab" data-tab="text" role="tab">Text</button>
           <button type="button" class="tab" data-tab="stickers" role="tab">Stickers</button>
+          <button type="button" class="tab" data-tab="flags" role="tab">Flags</button>
           <button type="button" class="tab" data-tab="identity" role="tab">Identity</button>
         </nav>
 
@@ -245,6 +246,18 @@
 
           <div class="tab-panel" id="tab-stickers" role="tabpanel" hidden>
             <h2>Decor</h2>
+
+            <div class="field-row">
+              <label class="field grow">
+                <span>Sticker size</span>
+                <div class="segmented" role="group" aria-label="Sticker size">
+                  <button type="button" class="seg" data-sticker-size="S">S</button>
+                  <button type="button" class="seg active" data-sticker-size="M">M</button>
+                  <button type="button" class="seg" data-sticker-size="L">L</button>
+                </div>
+                <input type="hidden" id="sticker-size" value="M" />
+              </label>
+            </div>
             <div class="stickers">
               <label class="check"><input type="checkbox" id="st-stripe" checked /><span>Team stripe</span></label>
               <label class="check"><input type="checkbox" id="st-heart" /><span>Heart</span></label>
@@ -273,6 +286,68 @@
               <span class="file-hint">PNG, JPG · ~2 MB recommended</span>
             </label>
             <button type="button" class="btn ghost slim" id="btn-clear-photo" hidden>Remove photo</button>
+          </div>
+
+          
+          <div class="tab-panel" id="tab-flags" role="tabpanel" hidden>
+            <h2>National flags</h2>
+            <p class="hint">Simplified geometric flags (no logos). Works on every aircraft family via the same decal pipeline.</p>
+            <label class="field">
+              <span>Placement</span>
+              <div class="segmented wrap" role="group" aria-label="Flag placement">
+                <button type="button" class="seg" data-flag-place="left">Left</button>
+                <button type="button" class="seg active" data-flag-place="both">Both</button>
+                <button type="button" class="seg" data-flag-place="right">Right</button>
+                <button type="button" class="seg" data-flag-place="free">Free</button>
+              </div>
+              <input type="hidden" id="flag-placement" value="both" />
+            </label>
+            <div class="field-group" id="flag-custom-pos">
+              <h3 class="subhead">Free position</h3>
+              <label class="field">
+                <span>Nose ← → Tail <em id="lab-flag-x">0</em></span>
+                <input type="range" id="flag-pos-x" min="-50" max="50" value="0" step="1" />
+              </label>
+              <label class="field">
+                <span>Low ← → High <em id="lab-flag-y">10</em></span>
+                <input type="range" id="flag-pos-y" min="-50" max="50" value="10" step="1" />
+              </label>
+            </div>
+            <div class="flag-grid">
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="US" /><span><em class="flag-code">US</em> United States</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="GB" /><span><em class="flag-code">GB</em> United Kingdom</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="RO" /><span><em class="flag-code">RO</em> Romania</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="DE" /><span><em class="flag-code">DE</em> Germany</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="FR" /><span><em class="flag-code">FR</em> France</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="IT" /><span><em class="flag-code">IT</em> Italy</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="ES" /><span><em class="flag-code">ES</em> Spain</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="PT" /><span><em class="flag-code">PT</em> Portugal</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="NL" /><span><em class="flag-code">NL</em> Netherlands</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="BE" /><span><em class="flag-code">BE</em> Belgium</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="PL" /><span><em class="flag-code">PL</em> Poland</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="UA" /><span><em class="flag-code">UA</em> Ukraine</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="TR" /><span><em class="flag-code">TR</em> Turkey</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="GR" /><span><em class="flag-code">GR</em> Greece</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="SE" /><span><em class="flag-code">SE</em> Sweden</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="NO" /><span><em class="flag-code">NO</em> Norway</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="FI" /><span><em class="flag-code">FI</em> Finland</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="DK" /><span><em class="flag-code">DK</em> Denmark</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="IE" /><span><em class="flag-code">IE</em> Ireland</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="CH" /><span><em class="flag-code">CH</em> Switzerland</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="AT" /><span><em class="flag-code">AT</em> Austria</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="JP" /><span><em class="flag-code">JP</em> Japan</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="KR" /><span><em class="flag-code">KR</em> South Korea</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="CN" /><span><em class="flag-code">CN</em> China</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="IN" /><span><em class="flag-code">IN</em> India</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="BR" /><span><em class="flag-code">BR</em> Brazil</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="MX" /><span><em class="flag-code">MX</em> Mexico</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="AU" /><span><em class="flag-code">AU</em> Australia</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="NZ" /><span><em class="flag-code">NZ</em> New Zealand</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="AE" /><span><em class="flag-code">AE</em> UAE</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="SA" /><span><em class="flag-code">SA</em> Saudi Arabia</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="CA" /><span><em class="flag-code">CA</em> Canada</span></label>
+              <label class="check flag-item"><input type="checkbox" class="flag-check" value="CZ" /><span><em class="flag-code">CZ</em> Czechia</span></label>
+            </div>
           </div>
 
           <div class="tab-panel" id="tab-identity" role="tabpanel" hidden>
@@ -325,7 +400,7 @@
         <p class="preview-disclaimer fineprint" id="preview-disclaimer">
           3D hangar preview is approximate — for orientation only. The real MSFS look comes from the exported DDS livery.
         </p>
-        <p class="model-credit fineprint">3D models: amvlab (CC BY 4.0); 747 Miha Lunar; GA Vojtěch Balák (CC BY 3.0 via Poly Pizza)</p>
+        <p class="model-credit fineprint">3D models: amvlab (CC BY 4.0); 747 FetchCFD CC BY 4.0; Cessna 172 CC BY 4.0</p>
         <p class="status-line" id="status-line">Pick colors and text, then <strong>Export ZIP</strong>.</p>
         <pre class="status-log" id="status-log" hidden></pre>
       </section>
@@ -360,7 +435,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.5.0 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
+      <span>v0.5.1 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
     </footer>
   </div>
 </body>
