@@ -1,0 +1,20 @@
+{
+  "id": "huculeaks_air",
+  "name": "HUCULEAKS AIR",
+  "registration": "YR-HUC",
+  "airline": "HUCULEAKS AIR",
+  "icao": "HUC",
+  "colors": {
+    "fuselage": "#1A1A1A",
+    "wings": "#0A0A0A",
+    "engines": "#2A2A2A",
+    "tail": "#0D0D0D",
+    "accent": "#E85A00"
+  },
+  "stickers": [
+    { "type": "custom_text", "enabled": true, "text": "HUCULEAKS AIR" }
+  ],
+  "logo": "work/huculeaks_logo.png",
+  "font": "assets/fonts/SpecialElite-Regular.ttf",
+  "soacraPhoto": null
+}

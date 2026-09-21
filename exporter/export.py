@@ -48,6 +48,32 @@ TEXTURE_STEMS = [
     "A320NEO_AIRFRAME_LIVERY_TEXTS_ALBD",
 ]
 
+
+# ---------------------------------------------------------------------------
+# Official Asobo A320neo LIVERY_TEXTS UV rects (2048²), measured from
+# work/official_ref/A320NEO_AIRFRAME_LIVERY_TEXTS_ALBD.PNG.png alpha blobs.
+# Titles + logos MUST go here — never fake fuselage-top UV.
+# Rects are (x0, y0, x1, y1) inclusive-ish pixel bounds.
+# ---------------------------------------------------------------------------
+A320NEO_TEXTS_UV = {
+    # Tail "neo" logo slots → port + starboard vertical stabilizer
+    "neo_logo_band": (95, 14, 1991, 552),
+    "neo_logo_upper": (95, 14, 1991, 283),
+    "neo_logo_lower": (95, 284, 1991, 552),
+    # Fuselage SIDE titles ("AIRBUS A320" / "unbeatable fuel efficiency")
+    "side_title_band": (52, 603, 1560, 1031),
+    "side_title_upper": (52, 603, 1560, 817),
+    "side_title_lower": (52, 818, 1560, 1031),
+    # Smaller Official glyph bands — leave empty unless placing registration
+    "small_glyph_a": (42, 1062, 1679, 1257),
+    "small_glyph_b": (57, 1311, 1640, 1444),
+    "reg_slot": (12, 1509, 980, 1672),
+    "small_glyph_c": (255, 1777, 784, 1875),
+}
+
+# Thumbnail card target (Official Asobo list preview aspect)
+ASOBO_THUMB_SIZE = (1618, 582)
+
 DDS_JSON_TEMPLATE = {
     "Version": 2,
     "SourceFileName": "",  # filled per file
@@ -103,7 +129,7 @@ def _font(size: int, bold: bool = False) -> ImageFont.ImageFont:
 def make_fuselage(
     colors: dict, stickers: list, registration: str, photo_path: Path | None
 ) -> Image.Image:
-    """Simplified UV mock: body fill + aft tail band + stickers/decal."""
+    """Fuselage albedo fill only. Titles/logos go on LIVERY_TEXTS UV (sides/tail), not here."""
     img = Image.new("RGBA", (TEX_SIZE, TEX_SIZE), (*hex_to_rgb(colors["fuselage"]), 255))
     draw = ImageDraw.Draw(img)
     tail = (*hex_to_rgb(colors["tail"]), 255)
@@ -140,9 +166,8 @@ def make_fuselage(
                 fill=(220, 40, 60, 255),
             )
         elif t == "custom_text":
-            text = st.get("text") or registration
-            font = _font(96, bold=True)
-            draw.text((320, 200), text, fill=(255, 255, 255, 255), font=font)
+            # Titles belong on LIVERY_TEXTS side UV — painting here lands on the roof/top.
+            continue
 
     if photo_path and photo_path.exists():
         try:
@@ -181,58 +206,104 @@ def make_livery_layer(stickers: list, registration: str) -> Image.Image:
     return img
 
 
-def make_texts_layer(registration: str) -> Image.Image:
+def make_texts_layer(registration: str, airline: str | None = None) -> Image.Image:
+    """Paint titles/registration into Official LIVERY_TEXTS UV slots (fuselage SIDES).
+
+    Never place large titles on the fuselage albedo — that maps to the roof/top.
+    Tail logos belong in neo_logo_upper/lower; side titles in side_title_*.
+    """
     img = Image.new("RGBA", (TEX_SIZE, TEX_SIZE), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    font = _font(120, bold=True)
-    draw.text((96, TEX_SIZE // 2 - 60), registration, fill=(255, 255, 255, 255), font=font)
+    title = (airline or registration or "SkinMyBird").strip()
+    # Side-title UV copies (L/R). Keep text inside measured rects.
+    for key, mirror in (("side_title_upper", False), ("side_title_lower", True)):
+        x0, y0, x1, y1 = A320NEO_TEXTS_UV[key]
+        rw, rh = x1 - x0, y1 - y0
+        layer = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
+        ld = ImageDraw.Draw(layer)
+        font = _font(max(28, min(110, rh // 2)), bold=True)
+        bbox = ld.textbbox((0, 0), title, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        # shrink if needed
+        while tw > rw * 0.92 and font.size > 24:  # type: ignore[attr-defined]
+            font = _font(font.size - 4, bold=True)  # type: ignore[attr-defined]
+            bbox = ld.textbbox((0, 0), title, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        tx = (rw - tw) // 2 - bbox[0]
+        ty = (rh - th) // 2 - bbox[1]
+        ld.text((tx, ty), title, fill=(255, 255, 255, 255), font=font)
+        if mirror:
+            from PIL import ImageOps
+            layer = ImageOps.mirror(layer)
+        img.paste(layer, (x0, y0), layer)
+    # Registration in dedicated small slot
+    x0, y0, x1, y1 = A320NEO_TEXTS_UV["reg_slot"]
+    font = _font(64, bold=True)
+    draw.text((x0 + 40, y0 + (y1 - y0) // 3), registration, fill=(255, 255, 255, 240), font=font)
     return img
 
 
 def make_thumbnails(colors: dict, name: str, registration: str) -> tuple[Image.Image, Image.Image]:
-    """Side-profile style preview used as MSFS list thumbnails."""
-    W, H = 720, 404
-    img = Image.new("RGB", (W, H), (10, 16, 28))
-    draw = ImageDraw.Draw(img)
-    # runway glow
-    for i in range(80):
-        a = int(20 * (1 - i / 80))
-        draw.rectangle([0, H - 80 + i, W, H - 79 + i], fill=(20 + a, 40 + a, 55 + a))
+    """Asobo-style list card: 3/4 aircraft on light studio background (not black silhouette).
 
-    y = H // 2 + 20
+    MSFS Community list previews match Official cards (~1618x582 light gray studio
+    + soft ground shadow). Dark-on-dark graphic silhouettes look wrong next to Asobo.
+    """
+    W, H = ASOBO_THUMB_SIZE
+    # Light studio gradient
+    img = Image.new("RGB", (W, H), (210, 212, 216))
+    draw = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y / max(H - 1, 1)
+        # subtle top→floor gradient
+        r = int(225 + (245 - 225) * t)
+        g = int(226 + (246 - 226) * t)
+        b = int(230 + (248 - 230) * t)
+        draw.line([(0, y), (W, y)], fill=(r, g, b))
+
     fus = hex_to_rgb(colors.get("fuselage", "#FF6A00"))
     wing = hex_to_rgb(colors.get("wings", "#111111"))
     eng = hex_to_rgb(colors.get("engines", "#222222"))
     tail = hex_to_rgb(colors.get("tail", "#FF6A00"))
 
-    # far wing
-    draw.polygon([(280, y - 10), (120, y - 90), (140, y - 70), (320, y + 5)], fill=wing)
-    # near wing
-    draw.polygon([(300, y + 8), (520, y + 35), (540, y + 48), (280, y + 28)], fill=wing)
-    # engines
-    draw.rounded_rectangle([300, y + 18, 380, y + 58], radius=16, fill=eng)
-    draw.rounded_rectangle([400, y + 24, 470, y + 55], radius=14, fill=eng)
-    # fuselage
-    draw.rounded_rectangle([90, y - 36, 560, y + 36], radius=28, fill=fus)
-    # nose
-    draw.ellipse([60, y - 28, 130, y + 28], fill=fus)
-    # cockpit
-    draw.rounded_rectangle([120, y - 24, 175, y - 6], radius=5, fill=(25, 35, 55))
-    for i in range(10):
-        x = 200 + i * 28
-        draw.rounded_rectangle([x, y - 14, x + 14, y - 2], radius=3, fill=(25, 35, 55))
-    # stripe
-    draw.rectangle([160, y + 8, 500, y + 14], fill=(255, 255, 255))
-    draw.rectangle([160, y + 14, 500, y + 20], fill=tail)
-    # tail
-    draw.polygon([(500, y - 36), (530, y - 140), (590, y - 140), (560, y - 36)], fill=tail)
-    draw.polygon([(520, y - 8), (640, y - 22), (640, y - 4), (530, y + 8)], fill=tail)
-    # shadow
-    draw.ellipse([180, H - 55, 520, H - 35], fill=(5, 8, 14))
+    # Soft ground shadow
+    draw.ellipse([int(W * 0.18), int(H * 0.78), int(W * 0.82), int(H * 0.92)], fill=(180, 182, 186))
 
-    font = _font(22, bold=True)
-    draw.text((24, 18), f"{name}  ·  {registration}", fill=(230, 236, 250), font=font)
-    draw.text((24, H - 36), "SkinMyBird", fill=(140, 160, 190), font=_font(16))
+    # Simplified 3/4 aircraft (nose-right) — readable on light bg
+    cx, cy = int(W * 0.52), int(H * 0.52)
+    # far wing
+    draw.polygon(
+        [(cx - 40, cy - 10), (cx - 280, cy - 120), (cx - 250, cy - 95), (cx + 20, cy + 5)],
+        fill=wing,
+    )
+    # fuselage tube
+    draw.ellipse([cx - 420, cy - 55, cx - 300, cy + 55], fill=fus)  # nose
+    draw.rounded_rectangle([cx - 360, cy - 50, cx + 280, cy + 50], radius=40, fill=fus)
+    # near wing + engines
+    draw.polygon(
+        [(cx - 20, cy + 10), (cx + 260, cy + 70), (cx + 290, cy + 95), (cx - 40, cy + 40)],
+        fill=wing,
+    )
+    draw.rounded_rectangle([cx - 30, cy + 28, cx + 70, cy + 78], radius=18, fill=eng)
+    draw.rounded_rectangle([cx + 100, cy + 38, cx + 190, cy + 82], radius=16, fill=eng)
+    # cockpit windows
+    draw.rounded_rectangle([cx - 340, cy - 38, cx - 270, cy - 8], radius=6, fill=(40, 48, 60))
+    for i in range(12):
+        x = cx - 230 + i * 36
+        draw.rounded_rectangle([x, cy - 22, x + 18, cy - 4], radius=4, fill=(40, 48, 60))
+    # vertical stabilizer
+    draw.polygon(
+        [(cx + 200, cy - 48), (cx + 240, cy - 200), (cx + 320, cy - 200), (cx + 290, cy - 48)],
+        fill=tail,
+    )
+    draw.polygon(
+        [(cx + 230, cy - 10), (cx + 400, cy - 30), (cx + 400, cy - 2), (cx + 250, cy + 14)],
+        fill=tail,
+    )
+
+    font = _font(26, bold=True)
+    draw.text((28, 22), f"{name}  ·  {registration}", fill=(50, 54, 62), font=font)
+    draw.text((28, H - 40), "SkinMyBird", fill=(110, 118, 130), font=_font(18))
 
     small = img.resize((256, 144), Image.Resampling.LANCZOS)
     return img, small
@@ -301,7 +372,7 @@ def manifest_json(cfg: dict, package_title: str) -> dict:
                 "LastUpdate": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                 "OlderHistory": (
                     "v0.2: BC7 *.PNG.DDS albedo + JSON sidecars + thumbnails. "
-                    "UV layout still approximate until paintkit editor."
+                    "LIVERY_TEXTS UV slots for side titles + neo/tail logos; Asobo-style light thumbnails."
                 ),
             }
         },
@@ -496,7 +567,9 @@ def export_package(
             colors.get("engines", "#222222"), "ENGINES"
         ),
         "A320NEO_AIRFRAME_LIVERY_ALBD": make_livery_layer(stickers, registration),
-        "A320NEO_AIRFRAME_LIVERY_TEXTS_ALBD": make_texts_layer(registration),
+        "A320NEO_AIRFRAME_LIVERY_TEXTS_ALBD": make_texts_layer(
+            registration, cfg.get("airline") or cfg.get("name")
+        ),
     }
 
     texconv = None if force_png else find_texconv()

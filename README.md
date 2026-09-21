@@ -95,8 +95,14 @@ Dimensiuni tipice DDS: **~2–6 MB / mapă** (2048² BC7 + mips). Nu commităm t
 
 ---
 
-## Asumpții
-Vezi `ASSUMPTIONS.md`. Pe scurt: UV-urile generate sunt aproximative până la un editor pe paintkit; DDS + sidecars + thumbnail = obligatorii pentru MSFS 2020.
+## Asumpții / reguli UV (v0.3)
+Vezi `ASSUMPTIONS.md`. Pe scurt:
+
+- **Titlurile** (ex. HUCULEAKS AIR) → pe **`LIVERY_TEXTS`** UV (laterale fuselaj), **nu** pe albedo-ul de fuselaj (ajung pe plafon/top).
+- **Logo-uri pe coadă** → sloturile Official **neo** (`neo_logo_upper` / `neo_logo_lower`) pe `LIVERY_TEXTS`.
+- **Thumbnail-uri** → carduri stil Asobo: avion 3/4 pe fundal studio deschis (~1618×582), **nu** siluete pe negru.
+- Constante UV: `exporter.export.A320NEO_TEXTS_UV`.
+- DDS + sidecars + thumbnail = obligatorii pentru MSFS 2020.
 
 ---
 

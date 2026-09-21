@@ -1,3 +1,12 @@
+/**
+ * SkinMyBird web editor — A320neo livery preview + browser ZIP export.
+ *
+ * UV RULES (see ASSUMPTIONS.md / exporter.export.A320NEO_TEXTS_UV):
+ * - Airline titles → LIVERY_TEXTS side-title slots (NOT fuselage albedo / roof).
+ * - Tail logos → LIVERY_TEXTS neo_logo_upper/lower slots.
+ * - List thumbnails → Asobo-style 3/4 aircraft on light studio background.
+ * Browser ZIP still emits PNG; convert to BC7 *.PNG.DDS before flight.
+ */
 /* SkinMyBird web UI — Canva-like editor, live A320neo preview, Community ZIP */
 (function () {
   const $ = (id) => document.getElementById(id);
