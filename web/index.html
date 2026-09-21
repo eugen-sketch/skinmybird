@@ -6,7 +6,15 @@
   <title>SkinMyBird — Canva pentru avioane MSFS</title>
   <link rel="icon" type="image/png" href="icon.png" />
   <link rel="stylesheet" href="css/styles.css" />
-  <script src="js/app.js" defer></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="js/app.js"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -209,17 +217,18 @@
             <p class="sub" id="preview-sub">Alege un model</p>
           </div>
           <div class="preview-controls">
-            <div class="segmented compact" role="group" aria-label="Unghi">
-              <button type="button" class="seg active" data-view="side" id="view-side">Lateral</button>
-              <button type="button" class="seg" data-view="threeq" id="view-threeq">3/4</button>
-            </div>
+            <button type="button" class="btn ghost cam-reset" id="btn-reset-camera" title="Resetează unghiul camerei">Reset cameră</button>
             <span class="badge" id="mode-badge">MSFS 2020</span>
           </div>
         </div>
 
         <div class="stage" id="stage">
-          <canvas id="preview" width="1200" height="640" aria-label="Previzualizare livery"></canvas>
-          <div class="stage-empty" id="stage-empty" hidden>
+          <canvas id="preview3d" aria-label="Previzualizare 3D livery"></canvas>
+          <div class="stage-hint" id="stage-hint">Trage pentru a roti · scroll zoom · click-dreapta pan</div>
+          <div class="stage-fallback" id="stage-fallback" hidden>
+            <p>WebGL indisponibil — previzualizarea 3D nu poate porni pe acest dispozitiv.</p>
+          </div>
+          <div class="stage-empty" id="stage-empty">
             <p>Selectează un model pentru a începe</p>
           </div>
         </div>
@@ -265,7 +274,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.4 UI · multi-aircraft · DDS BC7</span>
+      <span>v0.4.1 · 3D preview · multi-aircraft · DDS BC7</span>
     </footer>
   </div>
 </body>

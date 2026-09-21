@@ -12,7 +12,7 @@ if exist ".venv\Scripts\python.exe" (
 )
 
 echo.
-echo  SkinMyBird v0.3 — http://127.0.0.1:5173
+echo  SkinMyBird v0.4.1 — http://127.0.0.1:5173
 echo  Community: %SKINMYBIRD_COMMUNITY%
 echo  texconv:   %SKINMYBIRD_TEXCONV%
 echo.
