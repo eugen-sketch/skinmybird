@@ -11,19 +11,15 @@
      b787.glb  ← B787_nologo.glb
      a350.glb  ← A350_nologo.glb
    Original LICENSE text from amvlab is in this directory as LICENSE.
+   Audit v0.5.4: amvlab ships plain / nologo variants (no airline liveries).
+   prepareGlbForSkinning still neutralizes materials as a safety net.
 
-2) Boeing 747-3B5 (CC BY 4.0) — v0.5.1
-   Title: Boeing 747-3B5
-   Source: https://fetchcfd.com/threeDViewGltf/4833-boeing-747-3b5-3d-model
-   File URL: https://s3-eu-west-1.amazonaws.com/fetchcfd/original/file-1733297350006.glb
-   License: Creative Commons Attribution 4.0 International
-   https://creativecommons.org/licenses/by/4.0/
-   File: b747.glb (~9 MB — real upper-deck hump + 4 engines)
-   Replaces earlier low-poly Poly Pizza stand-in (Miha Lunar CC BY 3.0).
-   v0.5.3 note: source GLB includes baked Korean Air brand meshes/colors.
-   SkinMyBird hangar runtime hides embossed titles (Mesh12*) and neutralizes
-   brand-colored materials so the preview shows a clean blank airframe for
-   user paint. Model file and CC BY 4.0 attribution unchanged.
+2) Boeing 747 — procedural hangar (v0.5.4)
+   The FetchCFD Boeing 747-3B5 GLB (Korean Air baked livery / embossed titles)
+   was REMOVED in v0.5.4. Hangar no longer serves b747.glb.
+   Preview uses SkinMyBird procedural 747: clear upper-deck hump, 4 under-wing
+   engines, tall fin, horizontal stabilizer, civilized proportions.
+   No third-party 747 mesh is bundled.
 
 3) Cessna 172 / light GA (CC BY 4.0) — v0.5.1
    Title: Cessna 172 (c172.glb)
@@ -31,9 +27,7 @@
    License: Creative Commons Attribution 4.0 International
    https://creativecommons.org/licenses/by/4.0/
    File: cessna.glb
-   Replaces earlier Poly Pizza "Small Airplane" stand-in.
 
-UI credit line: "3D models: amvlab (CC BY 4.0); 747 FetchCFD CC BY 4.0; Cessna 172 CC BY 4.0"
+UI credit line: "3D models: amvlab (CC BY 4.0); 747 procedural hangar; Cessna 172 CC BY 4.0"
 
 Helicopter and balloon previews use procedural geometry (SkinMyBird original; no third-party model).
-Procedural 747 fallback (hump + 4 engines) is used if the GLB fails to load.

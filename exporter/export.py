@@ -1045,7 +1045,7 @@ def install_to_community(
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="SkinMyBird MSFS Community package exporter")
     p.add_argument("--config", type=Path, help="Path to livery config JSON")
-    p.add_argument("--preset", type=str, help="Preset id (e.g. eugen-orange)")
+    p.add_argument("--preset", type=str, help="Preset id (e.g. two-tone)")
     p.add_argument("--profile", type=str, help="Aircraft profile id")
     p.add_argument("--out", type=Path, default=DEFAULT_OUTPUT, help="Output directory")
     p.add_argument("--zip", action="store_true", help="Also write a .zip next to the folder")

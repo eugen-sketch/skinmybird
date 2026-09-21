@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.5.3 — real airliner GLBs + procedural helo/balloon.
+ * SkinMyBird 3D hangar preview v0.5.4 — real airliner GLBs + procedural helo/balloon.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -74,8 +74,9 @@ function stripAndNeutralizeMaterial(m) {
 }
 
 /**
- * Blank liveried GLBs (esp. 747 Korean Air): hide embossed titles/logos,
- * clear baked albedo maps, reset materials to neutral so zone colors show clean.
+ * Neutralize any residual baked livery on GLBs (amvlab are nologo; keep as safety net).
+ * Hide embossed titles/logos, clear baked albedo maps, reset materials to zone colors.
+ * Note: Korean Air 747 GLB was removed in v0.5.4 — 747 hangar is procedural only.
  */
 function prepareGlbForSkinning(model) {
   model.updateMatrixWorld(true);
@@ -233,7 +234,7 @@ export function resolveGlbUrl(profile) {
 
 /**
  * Resolve GLB URL + whether the mesh is a licensed stand-in (not exact type).
- * 747 uses FetchCFD Boeing 747-3B5 (CC BY 4.0); A330 still borrows A350; Cessna uses c172 GLB.
+ * 747 is procedural only (Korean Air GLB removed v0.5.4); A330 borrows A350; Cessna uses c172 GLB.
  */
 export function resolveGlbMeta(profile) {
   if (!profile) return null;
@@ -267,8 +268,10 @@ export function resolveGlbMeta(profile) {
     };
   }
 
+  // v0.5.4: FetchCFD Korean Air 747 GLB removed — hangar uses improved procedural
+  // (upper-deck hump + 4 engines + tall fin). No b747.glb is served.
   if (blob.includes("747")) {
-    return { url: "/models/b747.glb", standIn: false, note: "747-3B5 (FetchCFD CC BY 4.0)" };
+    return null;
   }
 
   if (blob.includes("787") || blob.includes("dreamliner"))
@@ -380,7 +383,10 @@ function classifyMeshRole(name, box, craftBox) {
   if (/engine|nacelle|motor|fan|pylon/.test(n)) return "engines";
   if (/winglet|sharklet/.test(n)) return "winglet";
   if (/wing|aileron|flap|slat/.test(n)) return "wings";
-  if (/tail|fin|rudder|stabil|elevator|htail|vtail/.test(n)) return "tail";
+  if (/stabil|elevator|htail|h-?stab|horiz/.test(n)) return "stabilizer";
+  if (/tail|fin|rudder|vtail|v-?stab/.test(n)) return "tail";
+  if (/door|exit|hatch|outline/.test(n)) return "doors";
+  if (/window|cabin.?band|cheat|windowband/.test(n)) return "windowband";
   if (/nose|cockpit|radome/.test(n)) return "nose";
   if (/belly|underside|keel/.test(n)) return "belly";
   if (/fusel|body|hull|cabin/.test(n)) return "fuselage";
@@ -1515,11 +1521,13 @@ function paintFuselageCanvas(canvas, state, family) {
   const W = canvas.width;
   const H = canvas.height;
   prepareCanvas2d(ctx, W, H);
-  const fus = state.colors.fuselage || "#d4d8dc";
+  const fus = state.colors.fuselage || "#f2f4f7";
   const tail = state.colors.tail || fus;
-  const nose = state.colors.nose || "#c8cdd3";
-  const bellyCol = state.colors.belly || "#aeb4bc";
-  const accent = state.colors.accent || "#5b7c99";
+  const nose = state.colors.nose || fus;
+  const bellyCol = state.colors.belly || fus;
+  const accent = state.colors.accent || fus;
+  const windowBand = state.colors.windowband || fus;
+  const doorsCol = state.colors.doors || fus;
   const textColor = state.textColor || "#FFFFFF";
 
   ctx.clearRect(0, 0, W, H);
@@ -1554,17 +1562,33 @@ function paintFuselageCanvas(canvas, state, family) {
   ctx.fillStyle = top;
   ctx.fillRect(0, 0, W, H);
 
-  // Window row (skip balloon)
+  // Cabin window band + window row (skip balloon/helo)
   if (family !== "balloon" && family !== "helicopter") {
+    const winY = H * 0.40;
+    const winH = H * 0.09;
+    // Soft band behind windows (tintable zone)
+    ctx.fillStyle = windowBand;
+    ctx.globalAlpha = 0.88;
+    ctx.fillRect(0, winY - H * 0.01, W, winH + H * 0.02);
+    ctx.globalAlpha = 1;
+    // Door / outline accents (forward + aft each side)
+    ctx.strokeStyle = doorsCol;
+    ctx.lineWidth = 3;
+    for (const hx of [0, W / 2]) {
+      for (const dx of [W * 0.12, W * 0.38]) {
+        const dx0 = hx + dx;
+        ctx.strokeRect(dx0, H * 0.34, W * 0.035, H * 0.28);
+      }
+    }
+    // Window panes
     ctx.fillStyle = "#152030";
-    const winY = H * 0.42;
-    const winH = H * 0.055;
     const cols = family === "widebody" || family === "747" ? 28 : 18;
+    const paneH = H * 0.055;
     for (let half = 0; half < 2; half++) {
       const x0 = half * (W / 2) + W * 0.08;
       for (let i = 0; i < cols; i++) {
         const wx = x0 + i * ((W * 0.38) / cols);
-        ctx.fillRect(wx, winY, 10, winH);
+        ctx.fillRect(wx, winY + H * 0.015, 10, paneH);
       }
     }
   }
@@ -1796,7 +1820,7 @@ function buildAirliner(group, family, mats) {
     "narrow-short": { len: 9.6, rad: 0.5, wingSpan: 9.4, wingY: -0.16, engCount: 2, engScale: 0.92, rootChord: 1.9, tipChord: 0.8 },
     "narrow-long": { len: 13.0, rad: 0.52, wingSpan: 11.0, wingY: -0.18, engCount: 2, engScale: 1.05, rootChord: 2.15, tipChord: 0.88 },
     widebody: { len: 15.2, rad: 0.78, wingSpan: 14.2, wingY: -0.22, engCount: 2, engScale: 1.35, rootChord: 2.7, tipChord: 1.05 },
-    "747": { len: 18.6, rad: 0.86, wingSpan: 16.8, wingY: -0.22, engCount: 4, engScale: 1.18, rootChord: 3.1, tipChord: 1.15 },
+    "747": { len: 18.8, rad: 0.88, wingSpan: 17.2, wingY: -0.24, engCount: 4, engScale: 1.22, rootChord: 3.2, tipChord: 1.18 },
     ga: { len: 7.2, rad: 0.38, wingSpan: 9.0, wingY: -0.05, engCount: 0, engScale: 0.7, rootChord: 1.5, tipChord: 0.7 },
   };
   const s = specs[family] || specs.narrow;
@@ -1845,33 +1869,40 @@ function buildAirliner(group, family, mats) {
   );
   glass.name = "cockpit";
 
-  // 747 upper-deck hump — longer bubble from nose to ahead of wing (classic jumbo silhouette)
+  // 747 upper-deck hump — clear forward bubble (classic jumbo, not a tube)
   if (family === "747") {
     const humpPts = [
-      new THREE.Vector2(0.001, s.len * 0.22),
-      new THREE.Vector2(R * 0.48, s.len * 0.2),
-      new THREE.Vector2(R * 0.72, s.len * 0.14),
-      new THREE.Vector2(R * 0.78, s.len * 0.04),
-      new THREE.Vector2(R * 0.75, -s.len * 0.04),
-      new THREE.Vector2(R * 0.55, -s.len * 0.12),
-      new THREE.Vector2(R * 0.22, -s.len * 0.18),
-      new THREE.Vector2(0.001, -s.len * 0.2),
+      new THREE.Vector2(0.001, s.len * 0.26),
+      new THREE.Vector2(R * 0.55, s.len * 0.24),
+      new THREE.Vector2(R * 0.88, s.len * 0.16),
+      new THREE.Vector2(R * 0.98, s.len * 0.06),
+      new THREE.Vector2(R * 0.95, -s.len * 0.02),
+      new THREE.Vector2(R * 0.72, -s.len * 0.12),
+      new THREE.Vector2(R * 0.35, -s.len * 0.2),
+      new THREE.Vector2(0.001, -s.len * 0.24),
     ];
-    const hump = new THREE.Mesh(new THREE.LatheGeometry(humpPts, 32), mats.fuselage);
+    const hump = new THREE.Mesh(new THREE.LatheGeometry(humpPts, 36), mats.fuselage);
     hump.rotation.z = -Math.PI / 2;
     // Sit on top of forward fuselage (nose = +X)
-    hump.position.set(half * 0.38, R * 0.62, 0);
-    hump.scale.set(1.05, 0.95, 1.0);
+    hump.position.set(half * 0.42, R * 0.78, 0);
+    hump.scale.set(1.08, 1.05, 1.02);
     hump.name = "hump";
     hump.castShadow = true;
     group.add(hump);
-    // Fairing blend into main deck
+    // Fairing blend into main deck (aft of hump)
     const fair = addCyl(
-      group, R * 0.95, R * 0.7, s.len * 0.08,
-      half * 0.05, R * 0.35, 0,
-      mats.fuselage, 0, 0, Math.PI / 2, 24
+      group, R * 1.05, R * 0.65, s.len * 0.1,
+      half * 0.02, R * 0.42, 0,
+      mats.fuselage, 0, 0, Math.PI / 2, 28
     );
     fair.name = "humpFairing";
+    // Distinct radome tip (nose zone — solid so nose swatch is obvious)
+    const radome = addCyl(
+      group, R * 0.08, R * 0.55, s.len * 0.07,
+      half - s.len * 0.045, 0, 0,
+      mats.nose || mats.fuselage, 0, 0, Math.PI / 2, 20
+    );
+    radome.name = "nose";
   }
 
   // Wings: thin airfoil-ish boxes, sweep-back ~25°, dihedral, root>tip chord, upward winglets
@@ -1986,14 +2017,14 @@ function buildAirliner(group, family, mats) {
     wl.name = "winglet";
   }
 
-  // Vertical fin (slight sweep) + horizontal stabilizers at tail
-  const finH = family === "747" ? 3.35 : family === "widebody" ? 2.9 : 2.25;
+  // Vertical fin (tall on 747) + horizontal stabilizer (own paint zone)
+  const finH = family === "747" ? 3.65 : family === "widebody" ? 2.9 : 2.25;
   const finRootX = -half + s.len * 0.12;
   const fin = addBox(
     group,
-    1.55,
+    1.65,
     finH,
-    0.11,
+    0.12,
     finRootX,
     finH * 0.42,
     0,
@@ -2004,22 +2035,23 @@ function buildAirliner(group, family, mats) {
   );
   fin.name = "fin";
   // Cap / fairing hint
-  addBox(group, 0.45, 0.18, 0.12, finRootX - 0.35, finH * 0.85, 0, mats.tail, 0, 0, -0.22);
+  addBox(group, 0.5, 0.2, 0.13, finRootX - 0.4, finH * 0.88, 0, mats.tail, 0, 0, -0.22);
 
-  const stabSpan = family === "widebody" || family === "747" ? 5.4 : 3.9;
-  addBox(
+  const stabSpan = family === "widebody" || family === "747" ? 5.6 : 3.9;
+  const stab = addBox(
     group,
-    1.15,
-    0.07,
+    1.2,
+    0.08,
     stabSpan,
     -half + s.len * 0.08,
     R * 0.55,
     0,
-    mats.tail,
+    mats.stabilizer || mats.tail,
     0,
     0,
     -0.12
   );
+  stab.name = "stabilizer";
 
   // Simple grounded landing gear
   const gearY = -R - 0.15;
@@ -2153,17 +2185,23 @@ function buildBalloon(group, mats) {
 }
 
 function createMaterials(state, fuselageMap) {
-  const eng = state.colors.engines || "#222222";
+  const eng = state.colors.engines || "#1b2430";
+  const fus = state.colors.fuselage || "#f2f4f7";
   return {
-    fuselage: matTextured(fuselageMap, state.colors.fuselage),
-    wings: matSolid(state.colors.wings || "#111111", { metalness: 0.4, roughness: 0.5 }),
-    winglet: matSolid(state.colors.winglet || state.colors.tail || "#1e1e1e", {
+    fuselage: matTextured(fuselageMap, fus),
+    nose: matSolid(state.colors.nose || fus, { metalness: 0.28, roughness: 0.55 }),
+    wings: matSolid(state.colors.wings || "#1b2430", { metalness: 0.4, roughness: 0.5 }),
+    winglet: matSolid(state.colors.winglet || state.colors.wings || "#1b2430", {
       metalness: 0.35,
       roughness: 0.5,
     }),
     engines: matSolid(eng, { metalness: 0.55, roughness: 0.4 }),
     enginesDark: matSolid(shadeHex(eng, -30), { metalness: 0.6, roughness: 0.35 }),
-    tail: matSolid(state.colors.tail || "#1e1e1e", { metalness: 0.3, roughness: 0.55 }),
+    tail: matSolid(state.colors.tail || fus, { metalness: 0.3, roughness: 0.55 }),
+    stabilizer: matSolid(
+      state.colors.stabilizer || state.colors.tail || fus,
+      { metalness: 0.32, roughness: 0.52 }
+    ),
     glass: new THREE.MeshStandardMaterial({
       color: 0x152030,
       metalness: 0.8,
@@ -2548,14 +2586,17 @@ export class Preview3D {
 
     if (this.modelMode === "glb") {
       const colors = {
-        fuselage: hexToThree(state.colors.fuselage || "#d4d8dc"),
-        nose: hexToThree(state.colors.nose || "#c8cdd3"),
-        belly: hexToThree(state.colors.belly || "#aeb4bc"),
-        wings: hexToThree(state.colors.wings || "#4a4e56"),
-        winglet: hexToThree(state.colors.winglet || "#5a5f68"),
-        engines: hexToThree(state.colors.engines || "#6a7078"),
-        tail: hexToThree(state.colors.tail || "#c0c5cc"),
-        accent: hexToThree(state.colors.accent || "#5b7c99"),
+        fuselage: hexToThree(state.colors.fuselage || "#f2f4f7"),
+        nose: hexToThree(state.colors.nose || state.colors.fuselage || "#f2f4f7"),
+        belly: hexToThree(state.colors.belly || state.colors.fuselage || "#f2f4f7"),
+        wings: hexToThree(state.colors.wings || "#1b2430"),
+        winglet: hexToThree(state.colors.winglet || state.colors.wings || "#1b2430"),
+        engines: hexToThree(state.colors.engines || "#1b2430"),
+        tail: hexToThree(state.colors.tail || state.colors.fuselage || "#f2f4f7"),
+        stabilizer: hexToThree(state.colors.stabilizer || state.colors.tail || "#f2f4f7"),
+        doors: hexToThree(state.colors.doors || state.colors.fuselage || "#f2f4f7"),
+        windowband: hexToThree(state.colors.windowband || state.colors.fuselage || "#f2f4f7"),
+        accent: hexToThree(state.colors.accent || state.colors.fuselage || "#f2f4f7"),
       };
       const unique = new Set(this.glbMaterials.map((g) => g.mat));
       if (unique.size <= 1) {
@@ -2597,13 +2638,21 @@ export class Preview3D {
 
     const mats = this.mats;
     if (mats) {
+      if (mats.nose)
+        mats.nose.color.copy(hexToThree(state.colors.nose || state.colors.fuselage));
       if (mats.wings) mats.wings.color.copy(hexToThree(state.colors.wings));
       if (mats.winglet)
-        mats.winglet.color.copy(hexToThree(state.colors.winglet || state.colors.tail));
+        mats.winglet.color.copy(
+          hexToThree(state.colors.winglet || state.colors.wings || state.colors.tail)
+        );
       if (mats.engines) mats.engines.color.copy(hexToThree(state.colors.engines));
       if (mats.enginesDark)
         mats.enginesDark.color.copy(hexToThree(shadeHex(state.colors.engines, -30)));
       if (mats.tail) mats.tail.color.copy(hexToThree(state.colors.tail));
+      if (mats.stabilizer)
+        mats.stabilizer.color.copy(
+          hexToThree(state.colors.stabilizer || state.colors.tail)
+        );
     }
 
     const craft = this.root.getObjectByName("aircraft");

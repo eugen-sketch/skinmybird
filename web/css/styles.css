@@ -1,4 +1,4 @@
-/* SkinMyBird v0.5.3 — commercial app shell · anthracite + orange · 3D hangar */
+/* SkinMyBird v0.5.4 — commercial app shell · anthracite + orange · 3D hangar */
 :root {
   --bg: #0b0b0d;
   --bg-elev: #121214;
@@ -387,6 +387,22 @@ button:focus-visible, input:focus-visible, .tab:focus-visible, .seg:focus-visibl
   font-weight: 700;
 }
 .tab-panel h2:first-child { margin-top: 0.15rem; }
+
+
+.zone-group {
+  margin: 0 0 0.85rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.zone-group:last-of-type { border-bottom: none; padding-bottom: 0; }
+.zone-group-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  font-weight: 700;
+}
 
 .color-grid {
   display: grid;

@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SkinMyBird — Canva for MSFS liveries</title>
   <link rel="icon" type="image/png" href="icon.png" />
-  <link rel="stylesheet" href="css/styles.css?v=0.5.3" />
+  <link rel="stylesheet" href="css/styles.css?v=0.5.4" />
   <script type="importmap">
   {
     "imports": {
@@ -15,7 +15,7 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=0.5.3"></script>
+  <script type="module" src="js/app.js?v=0.5.4"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -40,7 +40,6 @@
         <div class="menu-wrap">
           <button type="button" class="btn ghost icon-btn" id="btn-more" aria-haspopup="true" aria-expanded="false" title="More">⋯</button>
           <div class="dropdown" id="more-menu" hidden>
-            <button type="button" class="dropdown-item" id="btn-preset">🍊 Eugen Orange — 3 colors</button>
             <button type="button" class="dropdown-item" id="btn-advanced">⚙ Advanced / Config JSON</button>
           </div>
         </div>
@@ -84,65 +83,104 @@
         <div class="tab-scroll">
           <div class="tab-panel active" id="tab-colors" role="tabpanel">
             <h2>Paint zones</h2>
-            <div class="color-grid">
-              <label class="color-field">
-                <span>Fuselage / body</span>
-                <span class="color-row">
-                  <input type="color" id="c-fuselage" value="#d4d8dc" />
-                  <code class="hex" id="hex-fuselage">#d4d8dc</code>
-                </span>
-              </label>
-              <label class="color-field">
-                <span>Nose / cockpit band</span>
-                <span class="color-row">
-                  <input type="color" id="c-nose" value="#c8cdd3" />
-                  <code class="hex" id="hex-nose">#c8cdd3</code>
-                </span>
-              </label>
-              <label class="color-field">
-                <span>Belly</span>
-                <span class="color-row">
-                  <input type="color" id="c-belly" value="#aeb4bc" />
-                  <code class="hex" id="hex-belly">#aeb4bc</code>
-                </span>
-              </label>
-              <label class="color-field">
-                <span>Wings / rotor</span>
-                <span class="color-row">
-                  <input type="color" id="c-wings" value="#4a4e56" />
-                  <code class="hex" id="hex-wings">#4a4e56</code>
-                </span>
-              </label>
-              <label class="color-field">
-                <span>Winglet tip</span>
-                <span class="color-row">
-                  <input type="color" id="c-winglet" value="#5a5f68" />
-                  <code class="hex" id="hex-winglet">#5a5f68</code>
-                </span>
-              </label>
-              <label class="color-field">
-                <span>Engines</span>
-                <span class="color-row">
-                  <input type="color" id="c-engines" value="#6a7078" />
-                  <code class="hex" id="hex-engines">#6a7078</code>
-                </span>
-              </label>
-              <label class="color-field">
-                <span>Tail</span>
-                <span class="color-row">
-                  <input type="color" id="c-tail" value="#c0c5cc" />
-                  <code class="hex" id="hex-tail">#c0c5cc</code>
-                </span>
-              </label>
-              <label class="color-field">
-                <span>Stripe accent</span>
-                <span class="color-row">
-                  <input type="color" id="c-accent" value="#5b7c99" />
-                  <code class="hex" id="hex-accent">#5b7c99</code>
-                </span>
-              </label>
+
+            <div class="zone-group">
+              <h3 class="zone-group-title">Body</h3>
+              <div class="color-grid">
+                <label class="color-field">
+                  <span>Fuselage / body</span>
+                  <span class="color-row">
+                    <input type="color" id="c-fuselage" value="#f2f4f7" />
+                    <code class="hex" id="hex-fuselage">#f2f4f7</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Nose / radome</span>
+                  <span class="color-row">
+                    <input type="color" id="c-nose" value="#f2f4f7" />
+                    <code class="hex" id="hex-nose">#f2f4f7</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Belly / underside</span>
+                  <span class="color-row">
+                    <input type="color" id="c-belly" value="#f2f4f7" />
+                    <code class="hex" id="hex-belly">#f2f4f7</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Tail / fin</span>
+                  <span class="color-row">
+                    <input type="color" id="c-tail" value="#f2f4f7" />
+                    <code class="hex" id="hex-tail">#f2f4f7</code>
+                  </span>
+                </label>
+              </div>
             </div>
-            <p class="hint">Changes appear instantly in the hangar.</p>
+
+            <div class="zone-group">
+              <h3 class="zone-group-title">Flying surfaces</h3>
+              <div class="color-grid">
+                <label class="color-field">
+                  <span>Wings / rotor</span>
+                  <span class="color-row">
+                    <input type="color" id="c-wings" value="#1b2430" />
+                    <code class="hex" id="hex-wings">#1b2430</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Winglets / tips</span>
+                  <span class="color-row">
+                    <input type="color" id="c-winglet" value="#1b2430" />
+                    <code class="hex" id="hex-winglet">#1b2430</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Horizontal stabilizer</span>
+                  <span class="color-row">
+                    <input type="color" id="c-stabilizer" value="#f2f4f7" />
+                    <code class="hex" id="hex-stabilizer">#f2f4f7</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Engines / nacelles</span>
+                  <span class="color-row">
+                    <input type="color" id="c-engines" value="#1b2430" />
+                    <code class="hex" id="hex-engines">#1b2430</code>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div class="zone-group">
+              <h3 class="zone-group-title">Details</h3>
+              <div class="color-grid">
+                <label class="color-field">
+                  <span>Doors / outline</span>
+                  <span class="color-row">
+                    <input type="color" id="c-doors" value="#f2f4f7" />
+                    <code class="hex" id="hex-doors">#f2f4f7</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Cabin window band</span>
+                  <span class="color-row">
+                    <input type="color" id="c-windowband" value="#f2f4f7" />
+                    <code class="hex" id="hex-windowband">#f2f4f7</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Stripe / cheatline</span>
+                  <span class="color-row">
+                    <input type="color" id="c-accent" value="#f2f4f7" />
+                    <code class="hex" id="hex-accent">#f2f4f7</code>
+                  </span>
+                </label>
+              </div>
+              <p class="hint">Stripe is off by default — enable <em>Team stripe</em> under Stickers to use the cheatline color.</p>
+            </div>
+
+            <p class="hint">Changes appear instantly in the hangar. Default is a two-color demo (body + flying surfaces).</p>
           </div>
 
           <div class="tab-panel" id="tab-text" role="tabpanel" hidden>
@@ -259,7 +297,7 @@
               </label>
             </div>
             <div class="stickers">
-              <label class="check"><input type="checkbox" id="st-stripe" checked /><span>Team stripe</span></label>
+              <label class="check"><input type="checkbox" id="st-stripe" /><span>Team stripe</span></label>
               <label class="check"><input type="checkbox" id="st-heart" /><span>Heart</span></label>
               <label class="check"><input type="checkbox" id="st-star" /><span>Star</span></label>
               <label class="check"><input type="checkbox" id="st-lightning" /><span>Lightning</span></label>
@@ -354,7 +392,7 @@
             <h2>MSFS package</h2>
             <label class="field">
               <span>Livery name</span>
-              <input type="text" id="livery-name" value="Pearl Grey" maxlength="40" />
+              <input type="text" id="livery-name" value="Two-Tone" maxlength="40" />
             </label>
             <p class="hint">Shown in the MSFS list and on the thumbnail.</p>
             <div class="id-summary" id="id-summary"></div>
@@ -400,7 +438,7 @@
         <p class="preview-disclaimer fineprint" id="preview-disclaimer">
           3D hangar preview is approximate — for orientation only. The real MSFS look comes from the exported DDS livery.
         </p>
-        <p class="model-credit fineprint">3D models: amvlab (CC BY 4.0); 747 FetchCFD CC BY 4.0; Cessna 172 CC BY 4.0</p>
+        <p class="model-credit fineprint">3D models: amvlab (CC BY 4.0); 747 procedural hangar; Cessna 172 CC BY 4.0</p>
         <p class="status-line" id="status-line">Pick colors and text, then <strong>Export ZIP</strong>.</p>
         <pre class="status-log" id="status-log" hidden></pre>
       </section>
@@ -435,7 +473,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.5.3 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
+      <span>v0.5.4 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
     </footer>
   </div>
 </body>

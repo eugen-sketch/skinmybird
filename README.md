@@ -15,6 +15,13 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.5.4 notes
+- **747**: FetchCFD Korean Air GLB **removed** — hangar uses **improved procedural 747** only (clear upper-deck hump, 4 engines, tall fin). No `b747.glb` is served; Korean Air branding cannot appear.
+- Cold-start **Two-Tone** defaults: primary `#f2f4f7` (fuselage/nose/belly/tail/stab/doors/windowband/accent) + secondary `#1b2430` (wings/winglet/engines); **Team stripe OFF**
+- **Eugen Orange preset removed** (UI button, `EUGEN` object, `presets/eugen-orange.json`)
+- More paint zones grouped **Body / Flying surfaces / Details**: fuselage, nose, belly, tail, wings, winglets, horizontal stabilizer, engines, doors, cabin window band, stripe accent
+- Cache-bust `?v=0.5.4`
+
 ### v0.5.3 notes
 - **747 clean airframe**: FetchCFD 747 GLB still used (hump + 4 engines); at load we hide embossed Korean Air titles/logos and neutralize brand-colored materials so hangar paint is a blank canvas
 - Cold-start **Pearl Grey** defaults (soft silver fuselage, charcoal wings, soft-blue accent) — no matte-black Graphite
@@ -36,7 +43,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.5.3 (selector)
+## Models v0.5.4 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -46,7 +53,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 | 4 | LatinVFR A330-900 | whole-albedo stub | a350.glb *(stand-in)* |
 | 5 | FlyByWire A320neo | whole-albedo stub | a320.glb |
 | 6 | Asobo Boeing 787-10 | whole-albedo stub | b787.glb |
-| 7 | Asobo Boeing 747-8i | whole-albedo stub | **b747.glb** (FetchCFD 747-3B5 CC BY 4.0) |
+| 7 | Asobo Boeing 747-8i | whole-albedo stub | **procedural 747** (hump + 4 engines; Korean Air GLB removed) |
 | 8 | PMDG 737-600 | whole-albedo stub | b737.glb |
 | 9 | HPG Hot Air Balloon | whole-albedo stub | procedural |
 | 10 | HPG Airbus H135 | whole-albedo stub | procedural |
@@ -57,7 +64,7 @@ Profile JSON: `profiles/*.json`. UV / stub details: `ASSUMPTIONS.md`.
 ### 3D model attribution
 
 - **amvlab** A320 / 737 / 787 / A350 — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — https://github.com/amvlab/aircraft-models
-- **Boeing 747-3B5** via FetchCFD — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — https://www.fetchcfd.com/view/4833-boeing-747-3b5-3d-model
+- **Boeing 747** hangar — SkinMyBird procedural (FetchCFD Korean Air GLB removed in v0.5.4)
 - **Cessna 172** (light-GA) — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — https://github.com/bilawalsidhu/gods-eye-view
 
 Full notes: `web/models/ATTRIBUTION.txt`.
@@ -107,8 +114,8 @@ Or: `./scripts/start_dev.sh` · `npm start`
 
 ```bash
 python -m exporter.export --list-profiles
-python -m exporter.export --preset eugen-orange --profile asobo-aircraft-a320-neo --zip
-python -m exporter.export --preset eugen-orange --profile hpg-airbus-h135 --zip --force-png
+python -m exporter.export --preset two-tone --profile asobo-aircraft-a320-neo --zip
+python -m exporter.export --preset two-tone --profile hpg-airbus-h135 --zip --force-png
 ```
 
 ---
@@ -151,4 +158,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.5.3 — clean 747 · Pearl Grey · wide Free flags · Eugen 3-color · HQ text
+© SkinMyBird v0.5.4 — procedural 747 · Two-Tone · more paint zones · Eugen preset removed

@@ -1,0 +1,37 @@
+{
+  "id": "two-tone",
+  "name": "Two-Tone",
+  "registration": "YR-SMB",
+  "airline": "SkinMyBird",
+  "icao": "SMB",
+  "colors": {
+    "fuselage": "#f2f4f7",
+    "nose": "#f2f4f7",
+    "belly": "#f2f4f7",
+    "tail": "#f2f4f7",
+    "stabilizer": "#f2f4f7",
+    "doors": "#f2f4f7",
+    "windowband": "#f2f4f7",
+    "accent": "#f2f4f7",
+    "wings": "#1b2430",
+    "winglet": "#1b2430",
+    "engines": "#1b2430"
+  },
+  "stickers": [
+    {
+      "type": "team_stripe",
+      "enabled": false
+    },
+    {
+      "type": "heart",
+      "enabled": false
+    },
+    {
+      "type": "custom_text",
+      "enabled": true,
+      "text": "YR-SMB"
+    }
+  ],
+  "soacraPhoto": null,
+  "profile": "asobo-aircraft-a320-neo"
+}

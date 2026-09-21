@@ -1,13 +1,13 @@
 {
   "name": "skinmybird",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "private": true,
   "description": "SkinMyBird \u2014 English multi-aircraft livery editor + BC7 DDS Community exporter for MSFS 2020",
   "scripts": {
     "start": "python3 server.py",
     "start:static": "python3 -m http.server 5173 --directory web",
-    "export": "python3 -m exporter.export --preset eugen-orange --profile asobo-aircraft-a320-neo",
-    "export:zip": "python3 -m exporter.export --preset eugen-orange --profile asobo-aircraft-a320-neo --zip",
+    "export": "python3 -m exporter.export --preset two-tone --profile asobo-aircraft-a320-neo",
+    "export:zip": "python3 -m exporter.export --preset two-tone --profile asobo-aircraft-a320-neo --zip",
     "list-profiles": "python3 -m exporter.export --list-profiles"
   }
 }

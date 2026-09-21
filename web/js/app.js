@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.5.3 — commercial UI + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.5.4 — commercial UI + 3D hangar preview (Three.js).
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.3";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.4";
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,16 +35,19 @@ const $ = (id) => document.getElementById(id);
     profiles: [],
     profile: null,
     colors: {
-      fuselage: "#d4d8dc",
-      nose: "#c8cdd3",
-      belly: "#aeb4bc",
-      wings: "#4a4e56",
-      winglet: "#5a5f68",
-      engines: "#6a7078",
-      tail: "#c0c5cc",
-      accent: "#5b7c99",
+      fuselage: "#f2f4f7",
+      nose: "#f2f4f7",
+      belly: "#f2f4f7",
+      wings: "#1b2430",
+      winglet: "#1b2430",
+      engines: "#1b2430",
+      tail: "#f2f4f7",
+      stabilizer: "#f2f4f7",
+      doors: "#f2f4f7",
+      windowband: "#f2f4f7",
+      accent: "#f2f4f7",
     },
-    name: "Pearl Grey",
+    name: "Two-Tone",
     registration: "YR-EUG",
     airline: "SkinMyBird",
     slogan: "",
@@ -60,7 +63,7 @@ const $ = (id) => document.getElementById(id);
     textFlipLeft: false,
     textFlipRight: true,
     stickers: {
-      stripe: true,
+      stripe: false,
       heart: false,
       text: true,
       star: false,
@@ -93,26 +96,6 @@ const $ = (id) => document.getElementById(id);
     lastPackage: null,
   };
 
-  const EUGEN = {
-    fuselage: "#ff6a00",
-    nose: "#ff6a00",
-    belly: "#e55f00",
-    wings: "#1a1a1a",
-    winglet: "#1a1a1a",
-    engines: "#1a1a1a",
-    tail: "#1a1a1a",
-    accent: "#fff5e6",
-    name: "Eugen Orange",
-    registration: "YR-EUG",
-    airline: "SkinMyBird",
-    slogan: "Fly Orange",
-    stickerText: "Fly Orange",
-    textColor: "#FFFFFF",
-    textSize: "M",
-    textStyle: "bold",
-    textFont: "segoe",
-    textPlacement: "fuselage",
-  };
 
   const CAT_ICON = {
     avion: "✈️",
@@ -132,13 +115,16 @@ const $ = (id) => document.getElementById(id);
 
   function syncInputsFromState() {
     $("c-fuselage").value = state.colors.fuselage;
-    if ($("c-nose")) $("c-nose").value = state.colors.nose || "#111111";
-    if ($("c-belly")) $("c-belly").value = state.colors.belly || "#3d3d3d";
+    if ($("c-nose")) $("c-nose").value = state.colors.nose || "#f2f4f7";
+    if ($("c-belly")) $("c-belly").value = state.colors.belly || "#f2f4f7";
     $("c-wings").value = state.colors.wings;
-    if ($("c-winglet")) $("c-winglet").value = state.colors.winglet || "#4a4a4a";
+    if ($("c-winglet")) $("c-winglet").value = state.colors.winglet || "#1b2430";
     $("c-engines").value = state.colors.engines;
     $("c-tail").value = state.colors.tail;
-    if ($("c-accent")) $("c-accent").value = state.colors.accent || "#b0b0b0";
+    if ($("c-stabilizer")) $("c-stabilizer").value = state.colors.stabilizer || state.colors.tail || "#f2f4f7";
+    if ($("c-doors")) $("c-doors").value = state.colors.doors || state.colors.fuselage || "#f2f4f7";
+    if ($("c-windowband")) $("c-windowband").value = state.colors.windowband || state.colors.fuselage || "#f2f4f7";
+    if ($("c-accent")) $("c-accent").value = state.colors.accent || "#f2f4f7";
     $("livery-name").value = state.name;
     $("registration").value = state.registration;
     $("airline").value = state.airline;
@@ -217,6 +203,9 @@ const $ = (id) => document.getElementById(id);
       winglet: "hex-winglet",
       engines: "hex-engines",
       tail: "hex-tail",
+      stabilizer: "hex-stabilizer",
+      doors: "hex-doors",
+      windowband: "hex-windowband",
       accent: "hex-accent",
     };
     Object.keys(map).forEach((k) => {
@@ -227,13 +216,16 @@ const $ = (id) => document.getElementById(id);
 
   function readInputs() {
     state.colors.fuselage = $("c-fuselage").value;
-    state.colors.nose = $("c-nose") ? $("c-nose").value : (state.colors.nose || "#1A1A1A");
-    state.colors.belly = $("c-belly") ? $("c-belly").value : (state.colors.belly || "#E8E8E8");
+    state.colors.nose = $("c-nose") ? $("c-nose").value : (state.colors.nose || "#f2f4f7");
+    state.colors.belly = $("c-belly") ? $("c-belly").value : (state.colors.belly || "#f2f4f7");
     state.colors.wings = $("c-wings").value;
-    state.colors.winglet = $("c-winglet") ? $("c-winglet").value : (state.colors.winglet || "#4a4a4a");
+    state.colors.winglet = $("c-winglet") ? $("c-winglet").value : (state.colors.winglet || "#1b2430");
     state.colors.engines = $("c-engines").value;
     state.colors.tail = $("c-tail").value;
-    state.colors.accent = $("c-accent") ? $("c-accent").value : (state.colors.accent || "#FFFFFF");
+    state.colors.stabilizer = $("c-stabilizer") ? $("c-stabilizer").value : (state.colors.stabilizer || state.colors.tail || "#f2f4f7");
+    state.colors.doors = $("c-doors") ? $("c-doors").value : (state.colors.doors || state.colors.fuselage || "#f2f4f7");
+    state.colors.windowband = $("c-windowband") ? $("c-windowband").value : (state.colors.windowband || state.colors.fuselage || "#f2f4f7");
+    state.colors.accent = $("c-accent") ? $("c-accent").value : (state.colors.accent || "#f2f4f7");
     state.name = $("livery-name").value.trim() || "Custom";
     state.registration = $("registration").value.trim() || "SMB-001";
     state.airline = $("airline").value.trim() || "SkinMyBird";
@@ -370,8 +362,11 @@ const $ = (id) => document.getElementById(id);
       ["Belly", state.colors.belly],
       ["Wings", state.colors.wings],
       ["Winglet", state.colors.winglet],
+      ["Stab", state.colors.stabilizer],
       ["Engines", state.colors.engines],
       ["Tail", state.colors.tail],
+      ["Doors", state.colors.doors],
+      ["Windows", state.colors.windowband],
       ["Accent", state.colors.accent],
     ];
     el.innerHTML = entries
@@ -394,8 +389,11 @@ const $ = (id) => document.getElementById(id);
       { on: true, label: "Belly", meta: state.colors.belly, color: state.colors.belly },
       { on: true, label: "Wings", meta: state.colors.wings, color: state.colors.wings },
       { on: true, label: "Winglet", meta: state.colors.winglet, color: state.colors.winglet },
+      { on: true, label: "Stabilizer", meta: state.colors.stabilizer, color: state.colors.stabilizer },
       { on: true, label: "Engines", meta: state.colors.engines, color: state.colors.engines },
       { on: true, label: "Tail", meta: state.colors.tail, color: state.colors.tail },
+      { on: true, label: "Doors", meta: state.colors.doors, color: state.colors.doors },
+      { on: true, label: "Window band", meta: state.colors.windowband, color: state.colors.windowband },
       { on: true, label: "Accent", meta: state.colors.accent, color: state.colors.accent },
       { on: state.stickers.stripe, label: "Team stripe", meta: "" },
       { on: state.stickers.heart, label: "Heart", meta: "" },
@@ -728,56 +726,6 @@ const $ = (id) => document.getElementById(id);
     URL.revokeObjectURL(a.href);
   }
 
-  function applyEugen() {
-    Object.assign(state.colors, {
-      fuselage: EUGEN.fuselage,
-      nose: EUGEN.nose,
-      belly: EUGEN.belly,
-      wings: EUGEN.wings,
-      winglet: EUGEN.winglet,
-      engines: EUGEN.engines,
-      tail: EUGEN.tail,
-      accent: EUGEN.accent,
-    });
-    state.name = EUGEN.name;
-    state.registration = EUGEN.registration;
-    state.airline = EUGEN.airline;
-    state.slogan = EUGEN.slogan;
-    state.stickerText = EUGEN.stickerText;
-    state.textColor = EUGEN.textColor;
-    state.textSize = EUGEN.textSize;
-    state.textStyle = EUGEN.textStyle;
-    state.textPlacement = EUGEN.textPlacement;
-    state.textFont = EUGEN.textFont || "segoe";
-    state.stickerSize = "M";
-    state.flags = { codes: [], placement: "both", posX: 0, posY: 10 };
-    state.stickers = {
-      stripe: true,
-      heart: false,
-      text: true,
-      star: false,
-      lightning: false,
-      bird: false,
-      roundel: false,
-      chevron: false,
-      checkered: false,
-      smile: false,
-      crown: false,
-      diamond: false,
-      sun: false,
-      moon: false,
-      flag: false,
-      shield: false,
-      arrow: false,
-      sparkle: false,
-      wingbadge: false,
-    };
-    syncInputsFromState();
-    drawPreview();
-    closeMoreMenu();
-    setStatus("Preset <strong>Eugen Orange — 3 colors</strong> applied (orange · charcoal · cream).");
-  }
-
   function openAdvanced() {
     closeMoreMenu();
     $("advanced-drawer").hidden = false;
@@ -882,6 +830,9 @@ const $ = (id) => document.getElementById(id);
     "c-winglet",
     "c-engines",
     "c-tail",
+    "c-stabilizer",
+    "c-doors",
+    "c-windowband",
     "c-accent",
     "livery-name",
     "registration",
@@ -991,7 +942,6 @@ const $ = (id) => document.getElementById(id);
     }
   });
 
-  $("btn-preset").addEventListener("click", applyEugen);
   $("btn-advanced").addEventListener("click", openAdvanced);
   $("btn-close-advanced").addEventListener("click", closeAdvanced);
   $("advanced-backdrop").addEventListener("click", closeAdvanced);
