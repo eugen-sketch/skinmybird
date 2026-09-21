@@ -9,122 +9,264 @@
   <script src="js/app.js" defer></script>
 </head>
 <body>
-  <div class="bg-grid" aria-hidden="true"></div>
-
-  <header class="top">
-    <div class="brand">
-      <img src="icon.png" alt="SkinMyBird" class="logo" width="52" height="52" />
-      <div>
-        <h1>SkinMyBird</h1>
-        <p class="tag">Canva pentru avioane · MSFS 2020 · <span class="price">€9.99</span></p>
-      </div>
-    </div>
-    <div class="header-actions">
-      <button type="button" class="btn ghost" id="btn-preset">🍊 Eugen Orange</button>
-      <button type="button" class="btn secondary" id="btn-config">Config JSON</button>
-      <button type="button" class="btn primary" id="btn-export">Export ZIP (DDS)</button>
-      <button type="button" class="btn accent" id="btn-install">Instalează în Community</button>
-    </div>
-  </header>
-
-  <!-- Step 1: model selector -->
-  <section class="selector" id="selector" aria-label="Alege modelul">
-    <div class="selector-head">
-      <h2>1. Alege modelul</h2>
-      <p class="sub">10 profile v1 — A320neo cu UV, restul whole-albedo stub</p>
-    </div>
-    <div class="model-grid" id="model-grid">
-      <p class="hint-block">Se încarcă profilele…</p>
-    </div>
-  </section>
-
-  <main class="layout canva" id="editor" hidden>
-    <aside class="panel tools" aria-label="Instrumente">
-      <div class="selected-model" id="selected-model-label"></div>
-      <nav class="tool-tabs" role="tablist">
-        <button type="button" class="tab active" data-tab="culori" role="tab">Culori</button>
-        <button type="button" class="tab" data-tab="stickere" role="tab">Stickere</button>
-        <button type="button" class="tab" data-tab="identitate" role="tab">Identitate</button>
-      </nav>
-
-      <div class="tab-panel active" id="tab-culori" role="tabpanel">
-        <h2>Zone pe aparat</h2>
-        <div class="color-grid">
-          <label>Fuselaj / corp <input type="color" id="c-fuselage" value="#FF6A00" /></label>
-          <label>Aripi / rotor <input type="color" id="c-wings" value="#111111" /></label>
-          <label>Motoare <input type="color" id="c-engines" value="#222222" /></label>
-          <label>Coadă <input type="color" id="c-tail" value="#FF6A00" /></label>
+  <div class="app" id="app">
+    <header class="app-header">
+      <div class="brand">
+        <img src="icon.png" alt="" class="logo" width="40" height="40" />
+        <div class="brand-text">
+          <strong class="brand-name">SkinMyBird</strong>
+          <span class="brand-tag">Canva pentru MSFS · <em>€9.99</em></span>
         </div>
-        <p class="hint-block">Schimbările apar instant în previzualizare.</p>
       </div>
 
-      <div class="tab-panel" id="tab-stickere" role="tabpanel" hidden>
-        <h2>Stickere</h2>
-        <div class="stickers">
-          <label class="check"><input type="checkbox" id="st-stripe" checked /> Bandă echipă</label>
-          <label class="check"><input type="checkbox" id="st-heart" /> Inimă</label>
-          <label class="check"><input type="checkbox" id="st-text" checked /> Text / titlu</label>
+      <div class="header-center" id="header-model" hidden>
+        <button type="button" class="chip-btn" id="btn-change-model" title="Schimbă modelul">
+          <span class="chip-icon" id="header-model-icon">✈️</span>
+          <span id="header-model-name">—</span>
+          <span class="chip-chevron">▾</span>
+        </button>
+      </div>
+
+      <div class="header-actions">
+        <div class="menu-wrap">
+          <button type="button" class="btn ghost icon-btn" id="btn-more" aria-haspopup="true" aria-expanded="false" title="Mai multe">⋯</button>
+          <div class="dropdown" id="more-menu" hidden>
+            <button type="button" class="dropdown-item" id="btn-preset">🍊 Preset Eugen Orange</button>
+            <button type="button" class="dropdown-item" id="btn-advanced">⚙ Avansat / Config JSON</button>
+          </div>
         </div>
-        <label class="field-block">Text sticker
-          <input type="text" id="sticker-text" value="YR-EUG" maxlength="24" />
-        </label>
-        <h2>Logo / poză</h2>
-        <label class="file-drop">
-          <input type="file" id="soacra" accept="image/*" />
-          <span id="soacra-label">Încarcă logo sau poză</span>
-        </label>
-        <button type="button" class="btn ghost slim" id="btn-clear-photo" hidden>Șterge poza</button>
+        <button type="button" class="btn primary" id="btn-export">Export ZIP</button>
+        <button type="button" class="btn accent" id="btn-install">Instalează</button>
       </div>
+    </header>
 
-      <div class="tab-panel" id="tab-identitate" role="tabpanel" hidden>
-        <h2>Identitate</h2>
-        <label class="field-block">Nume livery
-          <input type="text" id="livery-name" value="Eugen Orange" maxlength="40" />
-        </label>
-        <label class="field-block">Înmatriculare
-          <input type="text" id="registration" value="YR-EUG" maxlength="10" />
-        </label>
-        <label class="field-block">Companie (airline)
-          <input type="text" id="airline" value="SkinMyBird" maxlength="40" />
-        </label>
-        <p class="hint-block">Apare în lista MSFS și pe thumbnail.</p>
-        <button type="button" class="btn ghost slim" id="btn-change-model">← Schimbă modelul</button>
+    <!-- Step 1: model selector -->
+    <section class="selector" id="selector" aria-label="Alege modelul">
+      <div class="selector-hero">
+        <div>
+          <p class="eyebrow">Pasul 1</p>
+          <h1>Alege aeronava</h1>
+          <p class="lead">Selectează modelul, pictează livrea și exportă pachetul Community gata de MSFS.</p>
+        </div>
+        <div class="selector-meta">
+          <span class="pill">10 profile</span>
+          <span class="pill muted">DDS BC7</span>
+        </div>
       </div>
+      <div class="model-grid" id="model-grid">
+        <div class="empty-state">
+          <div class="empty-icon">✈</div>
+          <p>Se încarcă profilele…</p>
+        </div>
+      </div>
+    </section>
 
-      <div class="tools-foot">
-        <p class="fineprint" id="paint-mode-note">
-          Exportul server produce <strong>*.PNG.DDS</strong> BC7 + JSON.
-        </p>
+    <!-- Editor -->
+    <main class="editor" id="editor" hidden>
+      <aside class="tools-panel" aria-label="Instrumente">
+        <nav class="tool-tabs" role="tablist">
+          <button type="button" class="tab active" data-tab="culori" role="tab">Culori</button>
+          <button type="button" class="tab" data-tab="text" role="tab">Text</button>
+          <button type="button" class="tab" data-tab="stickere" role="tab">Stickere</button>
+          <button type="button" class="tab" data-tab="identitate" role="tab">Identitate</button>
+        </nav>
+
+        <div class="tab-scroll">
+          <div class="tab-panel active" id="tab-culori" role="tabpanel">
+            <h2>Zone pe aparat</h2>
+            <div class="color-grid">
+              <label class="color-field">
+                <span>Fuselaj / corp</span>
+                <span class="color-row">
+                  <input type="color" id="c-fuselage" value="#FF6A00" />
+                  <code class="hex" id="hex-fuselage">#FF6A00</code>
+                </span>
+              </label>
+              <label class="color-field">
+                <span>Aripi / rotor</span>
+                <span class="color-row">
+                  <input type="color" id="c-wings" value="#111111" />
+                  <code class="hex" id="hex-wings">#111111</code>
+                </span>
+              </label>
+              <label class="color-field">
+                <span>Motoare</span>
+                <span class="color-row">
+                  <input type="color" id="c-engines" value="#222222" />
+                  <code class="hex" id="hex-engines">#222222</code>
+                </span>
+              </label>
+              <label class="color-field">
+                <span>Coadă</span>
+                <span class="color-row">
+                  <input type="color" id="c-tail" value="#FF6A00" />
+                  <code class="hex" id="hex-tail">#FF6A00</code>
+                </span>
+              </label>
+            </div>
+            <p class="hint">Schimbările apar instant în hangar.</p>
+          </div>
+
+          <div class="tab-panel" id="tab-text" role="tabpanel" hidden>
+            <h2>Text pe aeronavă</h2>
+            <label class="field">
+              <span>Companie / airline</span>
+              <input type="text" id="airline" value="SkinMyBird" maxlength="40" placeholder="ex. Huculeaks Air" />
+            </label>
+            <label class="field">
+              <span>Înmatriculare</span>
+              <input type="text" id="registration" value="YR-EUG" maxlength="10" placeholder="YR-…" />
+            </label>
+            <label class="field">
+              <span>Slogan / linia 2 <em>(opțional)</em></span>
+              <input type="text" id="slogan" value="" maxlength="32" placeholder="ex. Fly Orange" />
+            </label>
+
+            <div class="field-row">
+              <label class="field shrink">
+                <span>Culoare text</span>
+                <input type="color" id="text-color" value="#FFFFFF" />
+              </label>
+              <label class="field grow">
+                <span>Mărime</span>
+                <div class="segmented" role="group" aria-label="Mărime text">
+                  <button type="button" class="seg" data-size="S">S</button>
+                  <button type="button" class="seg active" data-size="M">M</button>
+                  <button type="button" class="seg" data-size="L">L</button>
+                </div>
+                <input type="hidden" id="text-size" value="M" />
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Stil</span>
+              <div class="segmented" role="group" aria-label="Stil text">
+                <button type="button" class="seg" data-style="normal">Normal</button>
+                <button type="button" class="seg active" data-style="bold">Bold</button>
+              </div>
+              <input type="hidden" id="text-style" value="bold" />
+            </label>
+
+            <label class="field">
+              <span>Plasare</span>
+              <div class="segmented wrap" role="group" aria-label="Plasare text">
+                <button type="button" class="seg active" data-place="fuselage">Fuselaj</button>
+                <button type="button" class="seg" data-place="tail">Coadă</button>
+                <button type="button" class="seg" data-place="belly">Burtă</button>
+              </div>
+              <input type="hidden" id="text-placement" value="fuselage" />
+            </label>
+
+            <label class="check">
+              <input type="checkbox" id="st-text" checked />
+              <span>Afișează text pe livrea (export)</span>
+            </label>
+            <p class="hint">Airline + înregistrare merg la export. Sloganul → sticker <code>custom_text</code>.</p>
+          </div>
+
+          <div class="tab-panel" id="tab-stickere" role="tabpanel" hidden>
+            <h2>Decor</h2>
+            <div class="stickers">
+              <label class="check">
+                <input type="checkbox" id="st-stripe" checked />
+                <span>Bandă echipă</span>
+              </label>
+              <label class="check">
+                <input type="checkbox" id="st-heart" />
+                <span>Inimă</span>
+              </label>
+            </div>
+            <h2>Logo / poză</h2>
+            <label class="file-drop" id="file-drop">
+              <input type="file" id="soacra" accept="image/*" />
+              <span class="file-ico">🖼</span>
+              <span id="soacra-label">Trage sau click — logo / poză</span>
+              <span class="file-hint">PNG, JPG · max ~2 MB recomandat</span>
+            </label>
+            <button type="button" class="btn ghost slim" id="btn-clear-photo" hidden>Șterge poza</button>
+          </div>
+
+          <div class="tab-panel" id="tab-identitate" role="tabpanel" hidden>
+            <h2>Pachet MSFS</h2>
+            <label class="field">
+              <span>Nume livery</span>
+              <input type="text" id="livery-name" value="Eugen Orange" maxlength="40" />
+            </label>
+            <p class="hint">Apare în lista MSFS și pe thumbnail.</p>
+            <div class="id-summary" id="id-summary"></div>
+          </div>
+        </div>
+
+        <div class="tools-foot">
+          <p class="fineprint" id="paint-mode-note">Export → <strong>*.PNG.DDS</strong> BC7 + JSON.</p>
+        </div>
+      </aside>
+
+      <section class="preview-panel" aria-label="Previzualizare">
+        <div class="preview-toolbar">
+          <div class="preview-title">
+            <h2>Hangar live</h2>
+            <p class="sub" id="preview-sub">Alege un model</p>
+          </div>
+          <div class="preview-controls">
+            <div class="segmented compact" role="group" aria-label="Unghi">
+              <button type="button" class="seg active" data-view="side" id="view-side">Lateral</button>
+              <button type="button" class="seg" data-view="threeq" id="view-threeq">3/4</button>
+            </div>
+            <span class="badge" id="mode-badge">MSFS 2020</span>
+          </div>
+        </div>
+
+        <div class="stage" id="stage">
+          <canvas id="preview" width="1200" height="640" aria-label="Previzualizare livery"></canvas>
+          <div class="stage-empty" id="stage-empty" hidden>
+            <p>Selectează un model pentru a începe</p>
+          </div>
+        </div>
+
+        <div class="preview-footer">
+          <div class="swatches" id="swatches"></div>
+          <div class="preview-cta">
+            <button type="button" class="btn primary" id="btn-export-2">Export ZIP</button>
+            <button type="button" class="btn accent" id="btn-install-2">Instalează</button>
+          </div>
+        </div>
+        <p class="status-line" id="status-line">Alege culorile și textul, apoi <strong>Export ZIP</strong>.</p>
+        <pre class="status-log" id="status-log" hidden></pre>
+      </section>
+
+      <aside class="layers-panel" aria-label="Straturi" id="layers-panel">
+        <h2>Rezumat</h2>
+        <ul class="layer-list" id="layer-list">
+          <li class="layer empty">Niciun model selectat</li>
+        </ul>
+        <div class="price-card">
+          <span class="price-label">SkinMyBird</span>
+          <strong class="price-value">€9.99</strong>
+          <span class="price-note">Licență unică · Windows desktop în curând</span>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Advanced drawer -->
+    <div class="drawer-backdrop" id="advanced-backdrop" hidden></div>
+    <aside class="drawer" id="advanced-drawer" hidden aria-label="Avansat">
+      <div class="drawer-head">
+        <h2>Avansat</h2>
+        <button type="button" class="btn ghost icon-btn" id="btn-close-advanced" aria-label="Închide">✕</button>
       </div>
+      <p class="hint">Config JSON pentru debugging și reutilizare. Nu e necesar pentru uz normal.</p>
+      <button type="button" class="btn secondary" id="btn-config">Descarcă Config JSON</button>
+      <pre class="config-preview" id="config-preview">{}</pre>
+      <p class="fineprint" id="advanced-notes">
+        Note tehnice: profilele fără UV folosesc whole-albedo stub. Vezi ASSUMPTIONS.md.
+      </p>
     </aside>
 
-    <section class="panel preview" aria-label="Previzualizare">
-      <div class="preview-head">
-        <div>
-          <h2>2. Pictează · 3. Previzualizare</h2>
-          <p class="sub" id="preview-sub">Profil selectat</p>
-        </div>
-        <span class="badge" id="mode-badge">MSFS 2020</span>
-      </div>
-      <div class="stage">
-        <canvas id="preview" width="1000" height="480" aria-label="Previzualizare livery"></canvas>
-      </div>
-      <div class="swatches" id="swatches"></div>
-      <div class="preview-actions">
-        <button type="button" class="btn primary" id="btn-export-2">Export ZIP (DDS)</button>
-        <button type="button" class="btn accent" id="btn-install-2">Instalează în Community</button>
-        <button type="button" class="btn ghost" id="btn-preset-2">Preset Eugen Orange</button>
-      </div>
-      <p class="assume" id="status-line">
-        Alege culorile, apoi <strong>Export ZIP</strong>. Pe Windows poți <strong>Instalează în Community</strong>.
-      </p>
-      <pre class="status-log" id="status-log" hidden></pre>
-    </section>
-  </main>
-
-  <footer class="foot">
-    <span>SkinMyBird · bird-pilot · €9.99</span>
-    <span>v0.3 · multi-aircraft · DDS BC7</span>
-  </footer>
+    <footer class="app-foot">
+      <span>SkinMyBird · bird-pilot · €9.99</span>
+      <span>v0.4 UI · multi-aircraft · DDS BC7</span>
+    </footer>
+  </div>
 </body>
 </html>
