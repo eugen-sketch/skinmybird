@@ -22,17 +22,51 @@
       582
     ]
   },
-  "textures": [],
+  "textures": [
+    {
+      "stem": "PMDG_NG3_F1_ALBD",
+      "role": "fuselage"
+    },
+    {
+      "stem": "PMDG_NG3_F2_ALBD",
+      "role": "fuselage"
+    },
+    {
+      "stem": "PMDG_NG3_F3_ALBD",
+      "role": "fuselage"
+    },
+    {
+      "stem": "PMDG_NG3_TAIL_ALBD",
+      "role": "tail"
+    },
+    {
+      "stem": "PMDG_NG3_ENG_ALBD",
+      "role": "engines"
+    },
+    {
+      "stem": "PMDG_NG3_WINFR_ALBD",
+      "role": "fuselage"
+    },
+    {
+      "stem": "PMDG_NG3_WINGL_ALBD",
+      "role": "wings"
+    },
+    {
+      "stem": "PMDG_NG3_WINGR_ALBD",
+      "role": "wings"
+    }
+  ],
   "uv_rects": null,
   "texture_fallbacks": [
     "..\\..\\PMDG 737-600\\texture.vc",
     "..\\..\\PMDG 737-600\\texture.common",
     "..\\..\\PMDG 737-600\\texture.600"
   ],
-  "notes": "base_container and fallbacks from official PMDG 737 Paint Kit HowTo (MSFS). Exterior ALBD stem list NOT verified — previous B737_* guesses removed. Run Scan-MSFS-Textures.ps1 on Official Steam pmdg-aircraft-736 and fill textures[]. Liveries often live under Community pmdg-aircraft-737-liveries.",
+  "notes": "PC scan 2026-09-21: folder PMDG 737-600. Exterior paint in texture.PMDG: PMDG_NG3_F1/F2/F3_ALBD, TAIL, ENG, WINFR. Wings in texture.common: WINGL/WINGR. Fallbacks vc/common/600 unchanged.",
   "verification": {
-    "source": "PMDG_737_Paint_Kit_HowTo.pdf",
-    "pc_scan": false,
-    "stems_pending": true
+    "source": "PC scan Eugen MSFS Official pmdg-aircraft-736 2026-09-21",
+    "pc_scan": true,
+    "scanned_at": "2026-09-21",
+    "stems_pending": false
   }
 }

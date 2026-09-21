@@ -3,9 +3,9 @@
   "displayName": "LatinVFR A330-900",
   "category": "avion",
   "simObjectType": "Airplanes",
-  "base_container": "..\\lvfr-a330-900",
+  "base_container": "..\\A330-900",
   "package_path_hint": "Official\\\\Steam\\\\lvfr-a330-900",
-  "airplane_folder": null,
+  "airplane_folder": "A330-900",
   "ui_manufacturer": "Airbus",
   "ui_type": "A330-900",
   "ui_typerole": "Commercial Airliner",
@@ -22,17 +22,47 @@
       582
     ]
   },
-  "textures": [],
+  "textures": [
+    {
+      "stem": "A330N1MAPPING_ALBEDO",
+      "role": "fuselage"
+    },
+    {
+      "stem": "A330N2MAPPING_ALBEDO",
+      "role": "fuselage"
+    },
+    {
+      "stem": "A330N3MAPPING_ALBEDO",
+      "role": "fuselage"
+    },
+    {
+      "stem": "A330TAIL_ALBEDO",
+      "role": "tail"
+    },
+    {
+      "stem": "330NEOENGINE_ALBEDO",
+      "role": "engines"
+    },
+    {
+      "stem": "330NEOENGINE_ALBEDO_RIGHT",
+      "role": "engines"
+    },
+    {
+      "stem": "330NWINGLETS_ALBEDO",
+      "role": "wings"
+    }
+  ],
   "uv_rects": null,
   "texture_fallbacks": [
+    "..\\..\\A330-900\\texture",
     "..\\..\\..\\..\\texture",
-    "..\\texture",
-    "..\\..\\lvfr-a330-900\\texture"
+    "..\\texture"
   ],
-  "notes": "STEMS PENDING PC SCAN of Official Steam lvfr-a330-900. LVFR A319 uses FUSELAGE19/TAIL19 pattern — A321/A330 likely similar but not confirmed. Empty textures[] until Scan-MSFS-Textures.ps1 fills them. base_container may be a short folder name like lvfr-319-cfm was for A319.",
+  "notes": "PC scan 2026-09-21: airplane folders A330-900 and lvfr-339-rr. Paint overlays use A330N1/N2/N3MAPPING, A330TAIL, 330NEOENGINE(+_RIGHT), 330NWINGLETS. base_container=..\\\\A330-900. Sibling folder lvfr-339-rr not used as base.",
   "verification": {
-    "source": null,
-    "pc_scan": false,
-    "stems_pending": true
+    "source": "PC scan Eugen MSFS Official lvfr-a330-900 2026-09-21",
+    "pc_scan": true,
+    "scanned_at": "2026-09-21",
+    "stems_pending": false
   }
 }

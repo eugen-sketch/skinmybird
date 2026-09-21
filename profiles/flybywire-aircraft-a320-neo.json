@@ -52,9 +52,10 @@
     "..\\..\\..\\..\\texture\\Interiors",
     "..\\..\\..\\..\\texture"
   ],
-  "notes": "VERIFIED from flybywiresim/aircraft (_FlyByWire_A320_NEO-LIVERY). Same Asobo A320NEO_AIRFRAME_* stems (no separate TAIL). base_container=..\\FlyByWire_A320_NEO. Package folder flybywire-aircraft-a320-neo. paint_mode whole_albedo until FBW UV measured (can reuse Asobo LIVERY_TEXTS later).",
+  "notes": "PC scan 2026-09-21: folder FlyByWire_A320_NEO; TEXTURE stems confirmed A320NEO_AIRFRAME_{FUSELAGE,WINGS,ENGINES,LIVERY,LIVERY_TEXTS}_ALBD. base_container=..\\\\FlyByWire_A320_NEO. paint_mode whole_albedo until FBW UV measured.",
   "verification": {
-    "source": "github:flybywiresim/aircraft",
-    "pc_scan": false
+    "source": "PC scan Eugen MSFS Community flybywire-aircraft-a320-neo 2026-09-21",
+    "pc_scan": true,
+    "scanned_at": "2026-09-21"
   }
 }

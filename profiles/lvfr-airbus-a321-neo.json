@@ -3,9 +3,9 @@
   "displayName": "LatinVFR A321neo",
   "category": "avion",
   "simObjectType": "Airplanes",
-  "base_container": "..\\lvfr-airbus-a321-neo",
+  "base_container": "..\\A321neoLEAP",
   "package_path_hint": "Official\\\\Steam\\\\lvfr-airbus-a321-neo",
-  "airplane_folder": null,
+  "airplane_folder": "A321neoLEAP",
   "ui_manufacturer": "Airbus",
   "ui_type": "A321neo",
   "ui_typerole": "Commercial Airliner",
@@ -22,17 +22,39 @@
       582
     ]
   },
-  "textures": [],
+  "textures": [
+    {
+      "stem": "A320NEO_AIRFRAME_FUSELAGE_ALBD",
+      "role": "fuselage"
+    },
+    {
+      "stem": "A321FUSELAGEDETAIL",
+      "role": "fuselage"
+    },
+    {
+      "stem": "A321FUSELAGEDETAIL2",
+      "role": "fuselage"
+    },
+    {
+      "stem": "A321FUSELAGEDETAIL3_B",
+      "role": "fuselage"
+    },
+    {
+      "stem": "ELEVATORWING_ALBEDO",
+      "role": "wings"
+    }
+  ],
   "uv_rects": null,
   "texture_fallbacks": [
+    "..\\..\\A321neoLEAP\\texture",
     "..\\..\\..\\..\\texture",
-    "..\\texture",
-    "..\\..\\lvfr-airbus-a321-neo\\texture"
+    "..\\texture"
   ],
-  "notes": "STEMS PENDING PC SCAN of Official Steam lvfr-airbus-a321-neo. LVFR A319 uses FUSELAGE19/TAIL19 pattern — A321/A330 likely similar but not confirmed. Empty textures[] until Scan-MSFS-Textures.ps1 fills them. base_container may be a short folder name like lvfr-319-cfm was for A319.",
+  "notes": "PC scan 2026-09-21: primary folder A321neoLEAP (also PW/LR variants). Paint-relevant stems for whole_albedo MVP: A320NEO_AIRFRAME_FUSELAGE_ALBD + A321FUSELAGEDETAIL{,2,3_B} + ELEVATORWING_ALBEDO. Many Community liveries are thumbnail-only (fallback to base). No dedicated TAIL/WING stems found beyond elevator wing.",
   "verification": {
-    "source": null,
-    "pc_scan": false,
-    "stems_pending": true
+    "source": "PC scan Eugen MSFS Official lvfr-airbus-a321-neo 2026-09-21",
+    "pc_scan": true,
+    "scanned_at": "2026-09-21",
+    "stems_pending": false
   }
 }

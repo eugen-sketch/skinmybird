@@ -57,9 +57,10 @@
     "..\\..\\..\\..\\texture\\Gauges",
     "..\\texture"
   ],
-  "notes": "Stems from Project-Mega-Pack 747 template (ENGINEBODY/WING/BELLY/LIVERY). Fuselage uses post-SU name FUSELAGE_ALBD (old templates had HULL_ALBD — that name no longer loads). Verify on Official Steam package that FUSELAGE exists (not HULL).",
+  "notes": "PC scan 2026-09-21: Asobo_B747_8i\\\\TEXTURE — FUSELAGE confirmed (not HULL). Stems: FUSELAGE, BELLY (kept from prior profile), ENGINEBODY, WING, WINGFLAPS, LIVERY. BELLYDECAL skipped (belly-only).",
   "verification": {
-    "source": "github:Project-Mega-Pack/base-livery-templates + MSFS forum HULL→FUSELAGE",
-    "pc_scan": false
+    "source": "PC scan Eugen MSFS Official Asobo_B747_8i 2026-09-21",
+    "pc_scan": true,
+    "scanned_at": "2026-09-21"
   }
 }

@@ -57,9 +57,12 @@
     "..\\..\\..\\..\\texture",
     "..\\texture"
   ],
-  "notes": "VERIFIED stems from Project-Mega-Pack/base-livery-templates + community 787 Azur ZIP. Official base folder Asobo_B787_10. Newlight is lighting FX, not the airframe. Confirm Official Steam package folder name on PC (asobo-aircraft-b787-10*).",
+  "notes": "PC scan 2026-09-21 PARTIAL: base package MISSING on this PC (only liveries). KLM livery ships only 787_10_AIRFRAME_LIVERY1_ALBD (+ LOD6). Kept public stems FUSELAGE1/2/TAIL/WINGS/ENGINE/LIVERY1. Liveries use Asobo_B787_10_Livery_*; airplane_folder stays Asobo_B787_10 for exports.",
   "verification": {
-    "source": "github:Project-Mega-Pack/base-livery-templates + avsim 787 Azur",
-    "pc_scan": false
+    "source": "PC scan Eugen MSFS 2026-09-21 (liveries only; base missing) + Project-Mega-Pack templates",
+    "pc_scan": false,
+    "pc_scan_partial": true,
+    "scanned_at": "2026-09-21",
+    "note": "base package not installed; liveries use Asobo_B787_10_Livery_*"
   }
 }

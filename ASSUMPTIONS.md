@@ -1,4 +1,4 @@
-# Assumptions (v0.3.1 — texture stems from packages / public verification)
+# Assumptions (v0.3.2 — PC scan 2026-09-21)
 
 ## General MSFS 2020
 1. Community textures must be **`*.PNG.DDS` (BC7_UNORM + mips)** + **`*.PNG.DDS.json`** + **`thumbnail.jpg` / `thumbnail_small.jpg`** + **`texture.cfg`**. Plain PNG → white/blue default.
@@ -29,53 +29,55 @@ Exporter path: `SimObjects/{simObjectType}/{aircraft_folder}/texture.{slug}/` �
 - Stem-uri: `FUSELAGE19`, `TAIL19`, `CFM56D`, aripi…
 - UV din `work/build_a319_huculeaks.py` / preset `huculeaks-air-a319-lvfr.json`
 
-## FlyByWire A320neo (`flybywire-aircraft-a320-neo`) — VERIFIED
+## FlyByWire A320neo (`flybywire-aircraft-a320-neo`) — PC SCAN 2026-09-21
 - Package: `D:\MSFS2020\Community\flybywire-aircraft-a320-neo`
 - Airplane folder: **`FlyByWire_A320_NEO`**
 - `base_container = ..\FlyByWire_A320_NEO`
-- Stems (same Asobo names): `A320NEO_AIRFRAME_FUSELAGE_ALBD`, `WINGS`, `ENGINES`, `LIVERY`, `LIVERY_TEXTS` — **no separate TAIL**
-- Source: `flybywiresim/aircraft` `_FlyByWire_A320_NEO-LIVERY/TEXTURE.FBW`
+- Stems confirmed: `A320NEO_AIRFRAME_FUSELAGE_ALBD`, `WINGS`, `ENGINES`, `LIVERY`, `LIVERY_TEXTS` — **no separate TAIL**
 - `texture.cfg` fallback.1=`..\..\FlyByWire_A320_NEO\TEXTURE`
 - paint_mode still `whole_albedo` (UV can later reuse Asobo LIVERY_TEXTS)
 
-## Asobo 787-10 (`asobo-boeing-787-10`) — VERIFIED (public templates)
-- Airplane folder: **`Asobo_B787_10`**
+## Asobo 787-10 (`asobo-boeing-787-10`) — PC SCAN PARTIAL 2026-09-21
+- Airplane folder: **`Asobo_B787_10`** (export pattern kept)
 - `base_container = ..\Asobo_B787_10`
-- Stems: `787_10_AIRFRAME_FUSELAGE1_ALBD`, `FUSELAGE2`, `TAIL`, `WINGS`, `ENGINE`, `LIVERY1`
-- Official Steam package may be named `asobo-aircraft-b787-10*` (confirm on PC); Newlight packages are lighting FX, not the airframe
-- Source: Project-Mega-Pack/base-livery-templates + community Azur ZIP
+- Stems (public templates, kept): `787_10_AIRFRAME_FUSELAGE1_ALBD`, `FUSELAGE2`, `TAIL`, `WINGS`, `ENGINE`, `LIVERY1`
+- **Base package missing on this PC**; only liveries present (`Asobo_B787_10_Livery_*`). KLM ships `LIVERY1_ALBD` (+ LOD6) only → `verification.pc_scan_partial: true`
 
-## Asobo 747-8i (`asobo-aircraft-b7478i`) — VERIFIED (public templates + forum rename)
-- Package hint: `...\Official\Steam\asobo-aircraft-b7478i`
+## Asobo 747-8i (`asobo-aircraft-b7478i`) — PC SCAN 2026-09-21
 - Airplane folder: **`Asobo_B747_8i`**
 - `base_container = ..\Asobo_B747_8i`
-- Stems: `747_8I_AIRFRAME_FUSELAGE_ALBD` (post-SU; old kits used `HULL_ALBD`), `BELLY`, `ENGINEBODY`, `WING`, `WINGFLAPS`, `LIVERY`
-- Confirm on PC that Official uses **FUSELAGE** not **HULL**
+- **FUSELAGE confirmed** (not HULL): `747_8I_AIRFRAME_FUSELAGE_ALBD`, plus `ENGINEBODY`, `WING`, `WINGFLAPS`, `LIVERY`; `BELLY` kept from prior profile; BELLYDECAL skipped
 
-## HPG H135 (`hpg-airbus-h135`) — PARTIAL
+## HPG H135 (`hpg-airbus-h135`) — PC SCAN 2026-09-21
 - Package: `D:\MSFS2020\Community\hpg-airbus-h135`
-- **`simObjectType = Airplanes`** (NOT Rotorcraft — community liveries prove this)
-- Main exterior stem: **`H135_ID1_DIFFUSE`**
-- `base_container` / exact airplane folder name under `SimObjects\Airplanes\` **must be confirmed on PC** (varies by HPG build)
-- Additional `H135_ID*` maps likely — PC scan required
+- **`simObjectType = Airplanes`** (path uses `Simobjects\Airplanes`)
+- Airplane folders: **`H-135 DEV SERIES PROJECT`** (main) + `H-135 DEV HIGH SKIDS`
+- `airplane_folder` / `base_container = ..\H-135 DEV SERIES PROJECT`
+- Main exterior stem: **`H135_ID1_DIFFUSE`** (texture.HPG, texture.POLICE, …)
+- Fallback: `..\..\H-135 DEV SERIES PROJECT\texture`
 
-## HPG Hot Air Balloon (`hpg-hotair-balloon`) — PARTIAL
+## HPG Hot Air Balloon (`hpg-hotair-balloon`) — PC SCAN 2026-09-21
 - Package: `D:\MSFS2020\Community\hpg-hotair-balloon`
-- Official guide: `base_container` → `hpg-hotair-balloon`; fallback `..\..\hpg-hotair-balloon\texture`
-- Tentative envelope stem: `BALLON_ENVELOPE_ALBEDO` (spelling BALLON) — **confirm on PC**
-- `simObjectType` set to Airplanes pending PC confirm (was Misc stub)
+- `Airplanes\hpg-hotair-balloon`; `base_container = ..\hpg-hotair-balloon`
+- Envelope stem **CONFIRMED**: `BALLON_ENVELOPE_ALBEDO` (spelling BALLON); optional `BASKET_ALBEDO`
 - Night: emissive layer required (paintkit Multiply workflow)
 
-## PMDG 737-600 (`pmdg-aircraft-736`) — PARTIAL
-- Package: `...\Official\Steam\pmdg-aircraft-736`
+## PMDG 737-600 (`pmdg-aircraft-736`) — PC SCAN 2026-09-21
 - Airplane folder / base: **`PMDG 737-600`**
-- Fallbacks (official HowTo): `texture.vc`, `texture.common`, `texture.600`
-- **`textures[]` empty** until PC scan — do not guess ALBD stems
+- Fallbacks: `texture.vc`, `texture.common`, `texture.600`
+- Exterior (texture.PMDG): `PMDG_NG3_F1_ALBD`, `F2`, `F3`, `TAIL`, `ENG`, `WINFR`
+- Wings (texture.common): `PMDG_NG3_WINGL_ALBD`, `WINGR`
 
-## LatinVFR A321neo / A330-900 — PENDING PC
-- Packages under Official Steam: `lvfr-airbus-a321-neo`, `lvfr-a330-900`
-- **`textures[]` empty** until PC scan (A319 pattern FUSELAGE19 is not assumed for neo/330)
-- `base_container` may be a short SimObjects folder name (cf. A319 `lvfr-319-cfm`)
+## LatinVFR A330-900 (`lvfr-a330-900`) — PC SCAN 2026-09-21
+- Airplane folders: **`A330-900`**, `lvfr-339-rr`
+- `base_container = ..\A330-900`
+- Paint: `A330N1MAPPING_ALBEDO`, `N2`, `N3`, `A330TAIL_ALBEDO`, `330NEOENGINE_ALBEDO` (+ `_RIGHT`), `330NWINGLETS_ALBEDO`
+
+## LatinVFR A321neo (`lvfr-airbus-a321-neo`) — PC SCAN 2026-09-21
+- Primary folder: **`A321neoLEAP`** (also PW/LR variants)
+- `base_container = ..\A321neoLEAP`
+- Paint-relevant MVP stems: `A320NEO_AIRFRAME_FUSELAGE_ALBD`, `A321FUSELAGEDETAIL`, `DETAIL2`, `DETAIL3_B`, `ELEVATORWING_ALBEDO`
+- Many Community liveries are thumbnail-only (fallback to base)
 
 ## Browser vs server
 - UI pe `python server.py` apelează `/api/export` → DDS real.
@@ -85,4 +87,4 @@ Exporter path: `SimObjects/{simObjectType}/{aircraft_folder}/texture.{slug}/` �
 Card stil Asobo (siluetă airliner / helicopter / balloon pe fundal studio deschis).
 
 ## PC access note (2026-09-21)
-Executor subagent was **box-scoped** (no `machineId` / ListMachines / CopyToBox). Profiles above for FBW/787/747/H135/Balloon/PMDG use public package/docs verification where possible; **LVFR A321/A330 + PMDG ALBD stems + exact H135/Balloon airplane folders still need Desktop PC scan**. Sync to `C:\Users\eugen\Desktop\SkinMyBird\profiles` also requires machine tools.
+Executor subagent was **box-scoped** (no `machineId` / ListMachines / CopyFromBox). Profile updates below come from a **real PC scan of Eugen's MSFS packages** relayed by the parent (confirmed facts). Desktop sync of `profiles/` is left to the parent (`CopyFromBox`).

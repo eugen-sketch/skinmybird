@@ -3,9 +3,9 @@
   "displayName": "HPG Airbus H135",
   "category": "elicopter",
   "simObjectType": "Airplanes",
-  "base_container": "..\\hpg-airbus-h135",
+  "base_container": "..\\H-135 DEV SERIES PROJECT",
   "package_path_hint": "D:\\\\MSFS2020\\\\Community\\\\hpg-airbus-h135",
-  "airplane_folder": null,
+  "airplane_folder": "H-135 DEV SERIES PROJECT",
   "ui_manufacturer": "Airbus Helicopters",
   "ui_type": "H135",
   "ui_typerole": "Helicopter",
@@ -30,13 +30,14 @@
   ],
   "uv_rects": null,
   "texture_fallbacks": [
-    "..\\..\\hpg-airbus-h135\\texture",
+    "..\\..\\H-135 DEV SERIES PROJECT\\texture",
     "..\\..\\..\\..\\texture",
     "..\\texture"
   ],
-  "notes": "CRITICAL: HPG H135 uses SimObjects/Airplanes (NOT Rotorcraft). Main exterior albedo is H135_ID1_DIFFUSE (community liveries). base_container and airplane_folder must match the actual folder under SimObjects\\\\Airplanes inside the package — VERIFY on PC (name varies by HPG build). Additional H135_ID* maps may exist; PC scan required.",
+  "notes": "PC scan 2026-09-21: SimObjects\\\\Airplanes (NOT Rotorcraft). Main folder H-135 DEV SERIES PROJECT (+ sibling H-135 DEV HIGH SKIDS). Liveries override H135_ID1_DIFFUSE (texture.HPG, texture.POLICE, …). base_container=..\\\\H-135 DEV SERIES PROJECT.",
   "verification": {
-    "source": "flightsim.to H135 liveries (Bristow layout) + HPG forums",
-    "pc_scan": false
+    "source": "PC scan Eugen MSFS Community hpg-airbus-h135 2026-09-21",
+    "pc_scan": true,
+    "scanned_at": "2026-09-21"
   }
 }
