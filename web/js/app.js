@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.5.1 — commercial UI + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.5.2 — commercial UI + 3D hangar preview (Three.js).
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.1";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.2";
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,20 +35,20 @@ const $ = (id) => document.getElementById(id);
     profiles: [],
     profile: null,
     colors: {
-      fuselage: "#FF6A00",
-      nose: "#1A1A1A",
-      belly: "#E8E8E8",
-      wings: "#111111",
-      winglet: "#FF6A00",
-      engines: "#222222",
-      tail: "#FF6A00",
-      accent: "#FFFFFF",
+      fuselage: "#2a2a2a",
+      nose: "#111111",
+      belly: "#3d3d3d",
+      wings: "#141414",
+      winglet: "#4a4a4a",
+      engines: "#1a1a1a",
+      tail: "#1e1e1e",
+      accent: "#b0b0b0",
     },
-    name: "Eugen Orange",
+    name: "Graphite",
     registration: "YR-EUG",
     airline: "SkinMyBird",
     slogan: "",
-    stickerText: "YR-EUG",
+    stickerText: "",
     textColor: "#FFFFFF",
     textSize: "M",
     textStyle: "bold",
@@ -106,7 +106,7 @@ const $ = (id) => document.getElementById(id);
     registration: "YR-EUG",
     airline: "SkinMyBird",
     slogan: "Fly Orange",
-    stickerText: "YR-EUG",
+    stickerText: "Fly Orange",
     textColor: "#FFFFFF",
     textSize: "M",
     textStyle: "bold",
@@ -132,13 +132,13 @@ const $ = (id) => document.getElementById(id);
 
   function syncInputsFromState() {
     $("c-fuselage").value = state.colors.fuselage;
-    if ($("c-nose")) $("c-nose").value = state.colors.nose || "#1A1A1A";
-    if ($("c-belly")) $("c-belly").value = state.colors.belly || "#E8E8E8";
+    if ($("c-nose")) $("c-nose").value = state.colors.nose || "#111111";
+    if ($("c-belly")) $("c-belly").value = state.colors.belly || "#3d3d3d";
     $("c-wings").value = state.colors.wings;
-    if ($("c-winglet")) $("c-winglet").value = state.colors.winglet || "#FF6A00";
+    if ($("c-winglet")) $("c-winglet").value = state.colors.winglet || "#4a4a4a";
     $("c-engines").value = state.colors.engines;
     $("c-tail").value = state.colors.tail;
-    if ($("c-accent")) $("c-accent").value = state.colors.accent || "#FFFFFF";
+    if ($("c-accent")) $("c-accent").value = state.colors.accent || "#b0b0b0";
     $("livery-name").value = state.name;
     $("registration").value = state.registration;
     $("airline").value = state.airline;
@@ -184,12 +184,27 @@ const $ = (id) => document.getElementById(id);
     if ($("flag-pos-y")) $("flag-pos-y").value = (state.flags && state.flags.posY) ?? 10;
     if ($("lab-flag-x")) $("lab-flag-x").textContent = String((state.flags && state.flags.posX) ?? 0);
     if ($("lab-flag-y")) $("lab-flag-y").textContent = String((state.flags && state.flags.posY) ?? 10);
+    syncFlagCustomPos();
   }
 
   function syncSegmented(attr, value) {
     document.querySelectorAll(`[${attr}]`).forEach((btn) => {
       const v = btn.getAttribute(attr);
       btn.classList.toggle("active", v === value);
+    });
+  }
+
+  /** Show Free X/Y sliders only when flag placement is "free". */
+  function syncFlagCustomPos() {
+    const box = $("flag-custom-pos");
+    if (!box) return;
+    const place = (state.flags && state.flags.placement) || "both";
+    const isFree = place === "free";
+    box.hidden = !isFree;
+    box.setAttribute("aria-hidden", isFree ? "false" : "true");
+    ["flag-pos-x", "flag-pos-y"].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !isFree;
     });
   }
 
@@ -215,7 +230,7 @@ const $ = (id) => document.getElementById(id);
     state.colors.nose = $("c-nose") ? $("c-nose").value : (state.colors.nose || "#1A1A1A");
     state.colors.belly = $("c-belly") ? $("c-belly").value : (state.colors.belly || "#E8E8E8");
     state.colors.wings = $("c-wings").value;
-    state.colors.winglet = $("c-winglet") ? $("c-winglet").value : (state.colors.winglet || "#FF6A00");
+    state.colors.winglet = $("c-winglet") ? $("c-winglet").value : (state.colors.winglet || "#4a4a4a");
     state.colors.engines = $("c-engines").value;
     state.colors.tail = $("c-tail").value;
     state.colors.accent = $("c-accent") ? $("c-accent").value : (state.colors.accent || "#FFFFFF");
@@ -233,8 +248,8 @@ const $ = (id) => document.getElementById(id);
     state.textScale = $("text-scale") ? Number($("text-scale").value) : 100;
     state.textFlipLeft = $("text-flip-left") ? $("text-flip-left").checked : false;
     state.textFlipRight = $("text-flip-right") ? $("text-flip-right").checked : true;
-    // custom_text payload: slogan if set, else registration (legacy sticker-text behaviour)
-    state.stickerText = state.slogan || state.registration;
+    // custom_text payload: slogan only — registration is its own field (avoid double paint)
+    state.stickerText = state.slogan || "";
     state.stickers.stripe = $("st-stripe").checked;
     state.stickers.heart = $("st-heart").checked;
     state.stickers.text = $("st-text").checked;
@@ -253,10 +268,17 @@ const $ = (id) => document.getElementById(id);
     state.flags = state.flags || { codes: [], placement: "both", posX: 0, posY: 10 };
     state.flags.codes = Array.from(document.querySelectorAll(".flag-check:checked")).map((el) => el.value);
     if ($("flag-placement")) state.flags.placement = $("flag-placement").value || "both";
-    if ($("flag-pos-x")) state.flags.posX = Number($("flag-pos-x").value) || 0;
-    if ($("flag-pos-y")) state.flags.posY = Number($("flag-pos-y").value) || 10;
+    if ($("flag-pos-x")) {
+      const v = Number($("flag-pos-x").value);
+      state.flags.posX = Number.isFinite(v) ? v : 0;
+    }
+    if ($("flag-pos-y")) {
+      const v = Number($("flag-pos-y").value);
+      state.flags.posY = Number.isFinite(v) ? v : 10;
+    }
     if ($("lab-flag-x")) $("lab-flag-x").textContent = String(state.flags.posX);
     if ($("lab-flag-y")) $("lab-flag-y").textContent = String(state.flags.posY);
+    syncFlagCustomPos();
     updateHexLabels();
   }
 
@@ -296,8 +318,8 @@ const $ = (id) => document.getElementById(id);
     }));
     list.push({
       type: "custom_text",
-      enabled: state.stickers.text,
-      text: state.stickerText,
+      enabled: !!state.stickers.text && !!(state.stickerText && String(state.stickerText).trim()),
+      text: state.stickerText || "",
       color: state.textColor,
       size: state.textSize,
       style: state.textStyle,
@@ -813,6 +835,7 @@ const $ = (id) => document.getElementById(id);
       state.flags.placement = btn.getAttribute("data-flag-place");
       if ($("flag-placement")) $("flag-placement").value = state.flags.placement;
       syncSegmented("data-flag-place", state.flags.placement);
+      syncFlagCustomPos();
       drawPreview();
     });
   });
@@ -890,6 +913,8 @@ const $ = (id) => document.getElementById(id);
     "text-scale",
     "text-flip-left",
     "text-flip-right",
+    "flag-pos-x",
+    "flag-pos-y",
   ].forEach((id) => {
     const el = $(id);
     if (!el) return;
@@ -897,6 +922,8 @@ const $ = (id) => document.getElementById(id);
       if (id === "text-pos-x" && $("lab-text-x")) $("lab-text-x").textContent = el.value;
       if (id === "text-pos-y" && $("lab-text-y")) $("lab-text-y").textContent = el.value;
       if (id === "text-scale" && $("lab-text-scale")) $("lab-text-scale").textContent = el.value + "%";
+      if (id === "flag-pos-x" && $("lab-flag-x")) $("lab-flag-x").textContent = el.value;
+      if (id === "flag-pos-y" && $("lab-flag-y")) $("lab-flag-y").textContent = el.value;
       drawPreview();
     });
     el.addEventListener("change", drawPreview);

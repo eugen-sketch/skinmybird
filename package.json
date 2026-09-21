@@ -1,6 +1,6 @@
 {
   "name": "skinmybird",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "description": "SkinMyBird \u2014 English multi-aircraft livery editor + BC7 DDS Community exporter for MSFS 2020",
   "scripts": {

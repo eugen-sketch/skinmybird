@@ -36,10 +36,10 @@ class ExportRequest(BaseModel):
     icao: str = "SMB"
     colors: dict[str, str] = Field(
         default_factory=lambda: {
-            "fuselage": "#FF6A00",
-            "wings": "#111111",
-            "engines": "#222222",
-            "tail": "#FF6A00",
+            "fuselage": "#2a2a2a",
+            "wings": "#141414",
+            "engines": "#1a1a1a",
+            "tail": "#1e1e1e",
         }
     )
     stickers: list[dict[str, Any]] = Field(default_factory=list)
@@ -116,7 +116,6 @@ def api_export(body: ExportRequest) -> dict:
         or [
             {"type": "team_stripe", "enabled": True},
             {"type": "heart", "enabled": False},
-            {"type": "custom_text", "enabled": True, "text": body.registration},
         ],
         "profile": body.profile_id,
         "logo": body.logo,
@@ -182,10 +181,10 @@ async def api_export_form(
         icao=icao,
         colors=colors
         or {
-            "fuselage": "#FF6A00",
-            "wings": "#111111",
-            "engines": "#222222",
-            "tail": "#FF6A00",
+            "fuselage": "#2a2a2a",
+            "wings": "#141414",
+            "engines": "#1a1a1a",
+            "tail": "#1e1e1e",
         },
         stickers=stickers,
         force_png=force_png,
@@ -206,7 +205,6 @@ async def api_export_form(
             "stickers": body.stickers
             or [
                 {"type": "team_stripe", "enabled": True},
-                {"type": "custom_text", "enabled": True, "text": body.registration},
             ],
             "profile": body.profile_id,
             "soacraPhoto": str(photo_path) if photo_path else None,

@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.5.1 — real airliner GLBs + procedural helo/balloon.
+ * SkinMyBird 3D hangar preview v0.5.2 — real airliner GLBs + procedural helo/balloon.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -810,8 +810,10 @@ function drawCountryFlagsOnCanvas(ctx, W, H, state, layout) {
   const fw = Math.max(36, 52 * scale * 0.55);
   const fh = fw * 0.62;
   const place = flags.placement || "both";
-  const posX = Number(flags.posX != null ? flags.posX : 0) / 100;
-  const posY = Number(flags.posY != null ? flags.posY : 10) / 100;
+  // Free mode: user X/Y offsets. Left/Both/Right ignore sliders (stable presets).
+  const free = place === "free";
+  const posX = free ? Number(flags.posX != null ? flags.posX : 0) / 100 : 0;
+  const posY = free ? Number(flags.posY != null ? flags.posY : 10) / 100 : 0.1;
   const baseY = H * (0.55 + posY * 0.35);
   const mid = layout && layout.xMid != null ? layout.xMid : W / 2;
   const gap = fw * 1.15;
@@ -832,6 +834,7 @@ function drawCountryFlagsOnCanvas(ctx, W, H, state, layout) {
   } else if (place === "both" && layout && layout.dual) {
     paintRow(startX + W * 0.5);
   }
+  // free: single mark (like left) — offsets already applied; do not mirror to dual half
 }
 
 function stickerSizeMul(state) {
@@ -931,14 +934,18 @@ function paintDecalCanvas(canvas, state) {
     ctx.fillText(state.slogan, W / 2, H * 0.48 + airPx * 0.58);
   }
 
-  // Registration drawn on primary wrap only when placement is fuselage/belly;
-  // secondary rear decal handles it for GLB — still paint lightly here as fallback.
-  if (state.registration && (state.textPlacement === "fuselage" || state.textPlacement === "belly")) {
+  // Registration: fuselage/belly use one aft decal (addTextDecals / makeRegTexture).
+  // Tail / wing bake a single mark into this panel (aft path is skipped there).
+  if (
+    state.registration &&
+    (state.textPlacement === "tail" || state.textPlacement === "wing")
+  ) {
     const rState = { ...state, textStyle: "bold" };
-    const rPx = fitFontPx(ctx, state.registration, maxW * 0.4, Math.round(basePx * 0.38), rState, 10);
+    const rPx = fitFontPx(ctx, state.registration, maxW * 0.55, Math.round(basePx * 0.42), rState, 10);
     ctx.font = resolveFontFace(rState, rPx);
-    ctx.globalAlpha = 0.9;
-    ctx.fillText(state.registration, W * 0.82, H * 0.72);
+    ctx.globalAlpha = 0.95;
+    const regY = state.textPlacement === "tail" ? H * 0.72 : H * 0.62;
+    ctx.fillText(state.registration, W / 2, regY);
     ctx.globalAlpha = 1;
   }
   ctx.shadowBlur = 0;
@@ -1129,12 +1136,13 @@ function projectDecal(group, hit, size, material, renderOrder = 2) {
 
 
 function makeRegTexture(state) {
+  // Single aft registration decal (one mark per side). Not airline/slogan.
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 128;
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, 512, 128);
-  if (!(state.stickers && state.stickers.text) || !state.registration) {
+  if (!state.registration) {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.needsUpdate = true;
@@ -1348,9 +1356,9 @@ function addTextDecals(craft, state) {
     }
   }
 
-  // Secondary registration aft on both sides
+  // One aft registration per side (real-airliner style). Not stacked with airline on the main wrap.
   let regTex = null;
-  if (st.text && state.registration && place !== "tail" && place !== "wing") {
+  if (state.registration && place !== "tail" && place !== "wing") {
     regTex = makeRegTexture(state);
     const regW = Math.min(size.x * 0.16, 1.5);
     const regH = Math.max(0.28, regW * 0.38);
@@ -1398,7 +1406,7 @@ function paintFuselageCanvas(canvas, state, family) {
   const ctx = canvas.getContext("2d");
   const W = canvas.width;
   const H = canvas.height;
-  const fus = state.colors.fuselage || "#FF6A00";
+  const fus = state.colors.fuselage || "#2a2a2a";
   const tail = state.colors.tail || fus;
   const nose = state.colors.nose || "#1A1A1A";
   const bellyCol = state.colors.belly || "#E8E8E8";
@@ -1529,16 +1537,23 @@ function paintFuselageCanvas(canvas, state, family) {
     drawWingBadge2d(ctx, W * 0.75, H * 0.8, 22 * sm, textColor);
   }
 
-  // Country flags (both UV halves)
+  // Country flags — respect Left / Both / Right / Free
   const flagCodes = (state.flags && state.flags.codes) || [];
   if (flagCodes.length) {
     const sm = stickerSizeMul(state);
-    drawCountryFlagsOnCanvas(ctx, W / 2, H, state, { xMid: W * 0.25, scale: sm * 0.85, dual: false });
-    // right half: temporarily shift by drawing into full W with dual layout
-    ctx.save();
-    ctx.translate(W / 2, 0);
-    drawCountryFlagsOnCanvas(ctx, W / 2, H, state, { xMid: W * 0.25, scale: sm * 0.85, dual: false });
-    ctx.restore();
+    const fPlace = (state.flags && state.flags.placement) || "both";
+    const drawHalf = (xMid) => {
+      drawCountryFlagsOnCanvas(ctx, W / 2, H, state, { xMid, scale: sm * 0.85, dual: false });
+    };
+    if (fPlace === "left" || fPlace === "both" || fPlace === "free") {
+      drawHalf(W * 0.25);
+    }
+    if (fPlace === "right" || fPlace === "both") {
+      ctx.save();
+      ctx.translate(W / 2, 0);
+      drawHalf(W * 0.25);
+      ctx.restore();
+    }
   }
 
   // Text / airline / registration — wide halves + auto-shrink + font/style
@@ -1579,19 +1594,22 @@ function paintFuselageCanvas(canvas, state, family) {
         ctx.globalAlpha = 1;
       }
 
-      const rState = { ...state, textStyle: "bold" };
-      const regPx = fitFontPx(
-        ctx,
-        state.registration || "",
-        maxW * 0.55,
-        Math.round(basePx * 0.42),
-        rState,
-        10
-      );
-      ctx.font = resolveFontFace(rState, regPx);
-      const regY = place === "tail" ? y + airPx * 0.75 : H * 0.52;
-      const regX = place === "tail" ? xCenter : xCenter + W * 0.1;
-      ctx.fillText(state.registration || "", regX, regY);
+      // Registration: UV paint only for tail/wing. Fuselage/belly use one aft decal instead
+      // (avoids stacked double marks with addTextDecals / makeRegTexture).
+      if (state.registration && (place === "tail" || place === "wing")) {
+        const rState = { ...state, textStyle: "bold" };
+        const regPx = fitFontPx(
+          ctx,
+          state.registration,
+          maxW * 0.55,
+          Math.round(basePx * 0.42),
+          rState,
+          10
+        );
+        ctx.font = resolveFontFace(rState, regPx);
+        const regY = place === "tail" ? y + airPx * 0.75 : H * 0.52;
+        ctx.fillText(state.registration, xCenter, regY);
+      }
     };
 
     // Wider centers on each cylinder UV half
@@ -2031,13 +2049,13 @@ function createMaterials(state, fuselageMap) {
   return {
     fuselage: matTextured(fuselageMap, state.colors.fuselage),
     wings: matSolid(state.colors.wings || "#111111", { metalness: 0.4, roughness: 0.5 }),
-    winglet: matSolid(state.colors.winglet || state.colors.tail || "#FF6A00", {
+    winglet: matSolid(state.colors.winglet || state.colors.tail || "#1e1e1e", {
       metalness: 0.35,
       roughness: 0.5,
     }),
     engines: matSolid(eng, { metalness: 0.55, roughness: 0.4 }),
     enginesDark: matSolid(shadeHex(eng, -30), { metalness: 0.6, roughness: 0.35 }),
-    tail: matSolid(state.colors.tail || "#FF6A00", { metalness: 0.3, roughness: 0.55 }),
+    tail: matSolid(state.colors.tail || "#1e1e1e", { metalness: 0.3, roughness: 0.55 }),
     glass: new THREE.MeshStandardMaterial({
       color: 0x152030,
       metalness: 0.8,
@@ -2410,13 +2428,13 @@ export class Preview3D {
 
     if (this.modelMode === "glb") {
       const colors = {
-        fuselage: hexToThree(state.colors.fuselage || "#FF6A00"),
+        fuselage: hexToThree(state.colors.fuselage || "#2a2a2a"),
         nose: hexToThree(state.colors.nose || "#1A1A1A"),
         belly: hexToThree(state.colors.belly || "#E8E8E8"),
         wings: hexToThree(state.colors.wings || "#111111"),
-        winglet: hexToThree(state.colors.winglet || "#FF6A00"),
+        winglet: hexToThree(state.colors.winglet || "#4a4a4a"),
         engines: hexToThree(state.colors.engines || "#222222"),
-        tail: hexToThree(state.colors.tail || "#FF6A00"),
+        tail: hexToThree(state.colors.tail || "#1e1e1e"),
         accent: hexToThree(state.colors.accent || "#FFFFFF"),
       };
       const unique = new Set(this.glbMaterials.map((g) => g.mat));

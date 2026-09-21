@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SkinMyBird — Canva for MSFS liveries</title>
   <link rel="icon" type="image/png" href="icon.png" />
-  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/styles.css?v=0.5.2" />
   <script type="importmap">
   {
     "imports": {
@@ -15,7 +15,7 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=0.5.1"></script>
+  <script type="module" src="js/app.js?v=0.5.2"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -88,57 +88,57 @@
               <label class="color-field">
                 <span>Fuselage / body</span>
                 <span class="color-row">
-                  <input type="color" id="c-fuselage" value="#FF6A00" />
-                  <code class="hex" id="hex-fuselage">#FF6A00</code>
+                  <input type="color" id="c-fuselage" value="#2a2a2a" />
+                  <code class="hex" id="hex-fuselage">#2a2a2a</code>
                 </span>
               </label>
               <label class="color-field">
                 <span>Nose / cockpit band</span>
                 <span class="color-row">
-                  <input type="color" id="c-nose" value="#1A1A1A" />
-                  <code class="hex" id="hex-nose">#1A1A1A</code>
+                  <input type="color" id="c-nose" value="#111111" />
+                  <code class="hex" id="hex-nose">#111111</code>
                 </span>
               </label>
               <label class="color-field">
                 <span>Belly</span>
                 <span class="color-row">
-                  <input type="color" id="c-belly" value="#E8E8E8" />
-                  <code class="hex" id="hex-belly">#E8E8E8</code>
+                  <input type="color" id="c-belly" value="#3d3d3d" />
+                  <code class="hex" id="hex-belly">#3d3d3d</code>
                 </span>
               </label>
               <label class="color-field">
                 <span>Wings / rotor</span>
                 <span class="color-row">
-                  <input type="color" id="c-wings" value="#111111" />
-                  <code class="hex" id="hex-wings">#111111</code>
+                  <input type="color" id="c-wings" value="#141414" />
+                  <code class="hex" id="hex-wings">#141414</code>
                 </span>
               </label>
               <label class="color-field">
                 <span>Winglet tip</span>
                 <span class="color-row">
-                  <input type="color" id="c-winglet" value="#FF6A00" />
-                  <code class="hex" id="hex-winglet">#FF6A00</code>
+                  <input type="color" id="c-winglet" value="#4a4a4a" />
+                  <code class="hex" id="hex-winglet">#4a4a4a</code>
                 </span>
               </label>
               <label class="color-field">
                 <span>Engines</span>
                 <span class="color-row">
-                  <input type="color" id="c-engines" value="#222222" />
-                  <code class="hex" id="hex-engines">#222222</code>
+                  <input type="color" id="c-engines" value="#1a1a1a" />
+                  <code class="hex" id="hex-engines">#1a1a1a</code>
                 </span>
               </label>
               <label class="color-field">
                 <span>Tail</span>
                 <span class="color-row">
-                  <input type="color" id="c-tail" value="#FF6A00" />
-                  <code class="hex" id="hex-tail">#FF6A00</code>
+                  <input type="color" id="c-tail" value="#1e1e1e" />
+                  <code class="hex" id="hex-tail">#1e1e1e</code>
                 </span>
               </label>
               <label class="color-field">
                 <span>Stripe accent</span>
                 <span class="color-row">
-                  <input type="color" id="c-accent" value="#FFFFFF" />
-                  <code class="hex" id="hex-accent">#FFFFFF</code>
+                  <input type="color" id="c-accent" value="#b0b0b0" />
+                  <code class="hex" id="hex-accent">#b0b0b0</code>
                 </span>
               </label>
             </div>
@@ -302,7 +302,7 @@
               </div>
               <input type="hidden" id="flag-placement" value="both" />
             </label>
-            <div class="field-group" id="flag-custom-pos">
+            <div class="field-group" id="flag-custom-pos" hidden>
               <h3 class="subhead">Free position</h3>
               <label class="field">
                 <span>Nose ← → Tail <em id="lab-flag-x">0</em></span>
@@ -354,7 +354,7 @@
             <h2>MSFS package</h2>
             <label class="field">
               <span>Livery name</span>
-              <input type="text" id="livery-name" value="Eugen Orange" maxlength="40" />
+              <input type="text" id="livery-name" value="Graphite" maxlength="40" />
             </label>
             <p class="hint">Shown in the MSFS list and on the thumbnail.</p>
             <div class="id-summary" id="id-summary"></div>
@@ -435,7 +435,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.5.1 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
+      <span>v0.5.2 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
     </footer>
   </div>
 </body>

@@ -15,6 +15,12 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.5.2 notes
+- **Single registration** aft on each side (no stacked double YR-… marks)
+- **Flags → Free**: X/Y sliders show only in Free mode; Left/Both/Right unchanged
+- Cold-start defaults are **graphite / dark grey** (Eugen Orange stays a preset)
+- UI polish + cache-bust `?v=0.5.2`
+
 ### v0.5.1 notes
 - English category badges: **Aircraft / Helicopter / Balloon** (no Romanian leftovers)
 - Stickers default larger + **S / M / L** size control (canvas + GLB decals)
@@ -22,7 +28,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.5.1 (selector)
+## Models v0.5.2 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -137,4 +143,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.5.1 — multi-aircraft English UI · flags · larger stickers
+© SkinMyBird v0.5.2 — single registration · flag free pos · grey defaults · English UI
