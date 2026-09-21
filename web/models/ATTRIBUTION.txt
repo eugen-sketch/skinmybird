@@ -20,6 +20,10 @@
    https://creativecommons.org/licenses/by/4.0/
    File: b747.glb (~9 MB — real upper-deck hump + 4 engines)
    Replaces earlier low-poly Poly Pizza stand-in (Miha Lunar CC BY 3.0).
+   v0.5.3 note: source GLB includes baked Korean Air brand meshes/colors.
+   SkinMyBird hangar runtime hides embossed titles (Mesh12*) and neutralizes
+   brand-colored materials so the preview shows a clean blank airframe for
+   user paint. Model file and CC BY 4.0 attribution unchanged.
 
 3) Cessna 172 / light GA (CC BY 4.0) — v0.5.1
    Title: Cessna 172 (c172.glb)

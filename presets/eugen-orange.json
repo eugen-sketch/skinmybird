@@ -5,10 +5,14 @@
   "airline": "SkinMyBird",
   "icao": "SMB",
   "colors": {
-    "fuselage": "#FF6A00",
-    "wings": "#111111",
-    "engines": "#222222",
-    "tail": "#FF6A00"
+    "fuselage": "#ff6a00",
+    "nose": "#ff6a00",
+    "belly": "#e55f00",
+    "wings": "#1a1a1a",
+    "winglet": "#1a1a1a",
+    "engines": "#1a1a1a",
+    "tail": "#1a1a1a",
+    "accent": "#fff5e6"
   },
   "stickers": [
     {

@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.5.2 — real airliner GLBs + procedural helo/balloon.
+ * SkinMyBird 3D hangar preview v0.5.3 — real airliner GLBs + procedural helo/balloon.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -7,8 +7,110 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
 
-const TEX_W = 1024;
-const TEX_H = 512;
+const TEX_W = 2048;
+const TEX_H = 1024;
+const REG_W = 2048;
+const REG_H = 512;
+const DECAL_W = 4096;
+const DECAL_H = 768;
+
+/** Max anisotropy from the live renderer (set in Preview3D.init). */
+let _maxAnisotropy = 8;
+
+/** HQ sampling for canvas / paint textures (mipmaps + aniso). */
+function configurePaintTexture(tex) {
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = Math.min(16, _maxAnisotropy || 8);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function prepareCanvas2d(ctx, w, h) {
+  if (!ctx) return;
+  ctx.imageSmoothingEnabled = true;
+  try { ctx.imageSmoothingQuality = "high"; } catch (_) {}
+  // Crisp glyph edges at high zoom (when supported)
+  try { ctx.textRendering = "geometricPrecision"; } catch (_) {}
+  ctx.clearRect(0, 0, w, h);
+}
+
+/** True for vivid airline-brand blues/reds (e.g. Korean Air on FetchCFD 747). */
+function isBrandLiveryMaterial(mat) {
+  if (!mat) return false;
+  const n = String(mat.name || "").toLowerCase();
+  if (/dodgerblue|0098|korean|airline|logo|__80_|__82_|material_7|material_9/.test(n))
+    return true;
+  if (!mat.color) return false;
+  const { r, g, b } = mat.color;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const sat = max > 1e-6 ? (max - min) / max : 0;
+  if (sat < 0.35) return false;
+  // vivid blue / cyan brand panels
+  if (b > 0.4 && b >= r && b >= g && r < 0.55) return true;
+  // vivid red brand accents
+  if (r > 0.65 && g < 0.35 && b < 0.4) return true;
+  return false;
+}
+
+function stripAndNeutralizeMaterial(m) {
+  if (!m) return;
+  if (m.map) {
+    try { m.map.dispose(); } catch (_) {}
+    m.map = null;
+  }
+  if (m.emissiveMap) {
+    try { m.emissiveMap.dispose(); } catch (_) {}
+    m.emissiveMap = null;
+  }
+  if (m.color) m.color.set(0xf2f4f6);
+  if (m.emissive) m.emissive.set(0x000000);
+  if ("metalness" in m) m.metalness = Math.min(m.metalness ?? 0.15, 0.35);
+  if ("roughness" in m) m.roughness = Math.max(m.roughness ?? 0.55, 0.45);
+  m.needsUpdate = true;
+}
+
+/**
+ * Blank liveried GLBs (esp. 747 Korean Air): hide embossed titles/logos,
+ * clear baked albedo maps, reset materials to neutral so zone colors show clean.
+ */
+function prepareGlbForSkinning(model) {
+  model.updateMatrixWorld(true);
+  model.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    const name = String(child.name || "");
+
+    let vertCount = 0;
+    try {
+      const pos = child.geometry && child.geometry.getAttribute("position");
+      if (pos) vertCount = pos.count;
+    } catch (_) {}
+
+    const brandMats = mats.filter(isBrandLiveryMaterial);
+    // Mesh12* = raised "KOREAN AIR" / taegeuk. Other small/medium brand
+    // meshes are embossed logos (e.g. stylized K) — hide so lighting cannot
+    // silhouette them after recolor. Large brand panels (blue cheatline) stay
+    // and are neutralized to zone colors below.
+    const allBrand = brandMats.length > 0 && brandMats.length === mats.length;
+    const anyBrand = brandMats.length > 0;
+    if (
+      /^Mesh12/i.test(name) ||
+      (allBrand && vertCount > 0 && vertCount < 4000) ||
+      (anyBrand && vertCount > 0 && vertCount < 400)
+    ) {
+      child.visible = false;
+      child.userData.skinHiddenLivery = true;
+      return;
+    }
+
+    mats.forEach(stripAndNeutralizeMaterial);
+  });
+}
+
 
 function hexToThree(hex) {
   return new THREE.Color(hex || "#888888");
@@ -810,15 +912,16 @@ function drawCountryFlagsOnCanvas(ctx, W, H, state, layout) {
   const fw = Math.max(36, 52 * scale * 0.55);
   const fh = fw * 0.62;
   const place = flags.placement || "both";
-  // Free mode: user X/Y offsets. Left/Both/Right ignore sliders (stable presets).
+  // Free mode: user X/Y offsets (−150…150). Left/Both/Right ignore sliders.
   const free = place === "free";
-  const posX = free ? Number(flags.posX != null ? flags.posX : 0) / 100 : 0;
-  const posY = free ? Number(flags.posY != null ? flags.posY : 10) / 100 : 0.1;
-  const baseY = H * (0.55 + posY * 0.35);
+  // Normalize so ±150 spans most of the fuselage panel
+  const posX = free ? Number(flags.posX != null ? flags.posX : 0) / 150 : 0;
+  const posY = free ? Number(flags.posY != null ? flags.posY : 10) / 150 : 0.07;
+  const baseY = Math.max(fh * 0.6, Math.min(H - fh * 0.6, H * (0.50 + posY * 0.42)));
   const mid = layout && layout.xMid != null ? layout.xMid : W / 2;
   const gap = fw * 1.15;
   const totalW = codes.length * gap;
-  const startX = mid - totalW / 2 + fw * 0.1 + posX * W * 0.25;
+  const startX = mid - totalW / 2 + fw * 0.1 + posX * W * 0.45;
 
   function paintRow(x0) {
     codes.forEach((code, i) => {
@@ -883,7 +986,7 @@ function paintDecalCanvas(canvas, state) {
   const ctx = canvas.getContext("2d");
   const W = canvas.width;
   const H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
+  prepareCanvas2d(ctx, W, H);
 
   const st = state.stickers || {};
   const anySticker =
@@ -907,7 +1010,7 @@ function paintDecalCanvas(canvas, state) {
 
   const textColor = state.textColor || "#FFFFFF";
   const sizeKey = state.textSize || "M";
-  const basePx = sizeKey === "S" ? 42 : sizeKey === "L" ? 86 : 62;
+  const basePx = sizeKey === "S" ? 96 : sizeKey === "L" ? 200 : 150;
   const maxW = W * 0.92;
 
   ctx.fillStyle = textColor;
@@ -917,8 +1020,13 @@ function paintDecalCanvas(canvas, state) {
   ctx.shadowBlur = 8;
 
   const airline = state.airline || "SkinMyBird";
-  const airPx = fitFontPx(ctx, airline, maxW, basePx, state, 14);
+  const airPx = fitFontPx(ctx, airline, maxW, basePx, state, 22);
   ctx.font = resolveFontFace(state, airPx);
+  ctx.lineJoin = "round";
+  ctx.miterLimit = 2;
+  ctx.strokeStyle = "rgba(0,0,0,0.28)";
+  ctx.lineWidth = Math.max(1.5, airPx * 0.04);
+  ctx.strokeText(airline, W / 2, H * 0.48);
   ctx.fillText(airline, W / 2, H * 0.48);
 
   if (state.slogan) {
@@ -951,14 +1059,13 @@ function paintDecalCanvas(canvas, state) {
   ctx.shadowBlur = 0;
 }
 
-function makeDecalTexture(state, w = 1536, h = 256) {
+function makeDecalTexture(state, w = DECAL_W, h = DECAL_H) {
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   paintDecalCanvas(canvas, state);
   const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
+  configurePaintTexture(tex);
   tex.userData.canvas = canvas;
   return tex;
 }
@@ -1052,8 +1159,7 @@ function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ) {
 
 function canvasTextureFromCanvas(canvas) {
   const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
+  configurePaintTexture(tex);
   tex.userData.canvas = canvas;
   return tex;
 }
@@ -1138,14 +1244,13 @@ function projectDecal(group, hit, size, material, renderOrder = 2) {
 function makeRegTexture(state) {
   // Single aft registration decal (one mark per side). Not airline/slogan.
   const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 128;
+  canvas.width = REG_W;
+  canvas.height = REG_H;
   const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, 512, 128);
+  prepareCanvas2d(ctx, REG_W, REG_H);
   if (!state.registration) {
     const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.needsUpdate = true;
+    configurePaintTexture(tex);
     tex.userData.canvas = canvas;
     return tex;
   }
@@ -1153,21 +1258,24 @@ function makeRegTexture(state) {
   ctx.fillStyle = state.textColor || "#FFFFFF";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(0,0,0,0.5)";
-  ctx.shadowBlur = 6;
+  ctx.shadowColor = "rgba(0,0,0,0.45)";
+  ctx.shadowBlur = 8;
   const px =
     typeof fitFontPx === "function"
-      ? fitFontPx(ctx, state.registration, 480, 48, rState, 14)
-      : 36;
+      ? fitFontPx(ctx, state.registration, REG_W * 0.92, 160, rState, 28)
+      : 72;
   ctx.font =
     typeof resolveFontFace === "function"
       ? resolveFontFace(rState, px)
       : `700 ${px}px "Segoe UI", system-ui, sans-serif`;
-  ctx.fillText(state.registration, 256, 64);
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(0,0,0,0.3)";
+  ctx.lineWidth = Math.max(1.5, px * 0.045);
+  ctx.strokeText(state.registration, REG_W / 2, REG_H / 2);
+  ctx.fillText(state.registration, REG_W / 2, REG_H / 2);
   ctx.shadowBlur = 0;
   const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
+  configurePaintTexture(tex);
   tex.userData.canvas = canvas;
   return tex;
 }
@@ -1201,7 +1309,7 @@ function addTextDecals(craft, state) {
   }
 
   const place = state.textPlacement || "fuselage";
-  const tex = makeDecalTexture(state, 1536, 256);
+  const tex = makeDecalTexture(state, DECAL_W, DECAL_H);
   const sharedMatOpts = {
     map: tex,
     transparent: true,
@@ -1406,11 +1514,12 @@ function paintFuselageCanvas(canvas, state, family) {
   const ctx = canvas.getContext("2d");
   const W = canvas.width;
   const H = canvas.height;
-  const fus = state.colors.fuselage || "#2a2a2a";
+  prepareCanvas2d(ctx, W, H);
+  const fus = state.colors.fuselage || "#d4d8dc";
   const tail = state.colors.tail || fus;
-  const nose = state.colors.nose || "#1A1A1A";
-  const bellyCol = state.colors.belly || "#E8E8E8";
-  const accent = state.colors.accent || "#FFFFFF";
+  const nose = state.colors.nose || "#c8cdd3";
+  const bellyCol = state.colors.belly || "#aeb4bc";
+  const accent = state.colors.accent || "#5b7c99";
   const textColor = state.textColor || "#FFFFFF";
 
   ctx.clearRect(0, 0, W, H);
@@ -1462,6 +1571,7 @@ function paintFuselageCanvas(canvas, state, family) {
 
   // Stickers (both UV halves)
   const st = state.stickers || {};
+  const sm = stickerSizeMul(state);
   if (st.stripe) {
     const sy = H * 0.58;
     ctx.fillStyle = accent;
@@ -1540,7 +1650,6 @@ function paintFuselageCanvas(canvas, state, family) {
   // Country flags — respect Left / Both / Right / Free
   const flagCodes = (state.flags && state.flags.codes) || [];
   if (flagCodes.length) {
-    const sm = stickerSizeMul(state);
     const fPlace = (state.flags && state.flags.placement) || "both";
     const drawHalf = (xMid) => {
       drawCountryFlagsOnCanvas(ctx, W / 2, H, state, { xMid, scale: sm * 0.85, dual: false });
@@ -1559,7 +1668,7 @@ function paintFuselageCanvas(canvas, state, family) {
   // Text / airline / registration — wide halves + auto-shrink + font/style
   if (st.text) {
     const sizeKey = state.textSize || "M";
-    const basePx = sizeKey === "S" ? 30 : sizeKey === "L" ? 56 : 42;
+    const basePx = sizeKey === "S" ? 72 : sizeKey === "L" ? 140 : 104;
     const place = state.textPlacement || "fuselage";
     // Each side gets ~42% of full width (was tighter); leave margin
     const maxW = W * 0.42;
@@ -1651,10 +1760,9 @@ function makeFuselageTexture(state, family) {
   canvas.height = TEX_H;
   paintFuselageCanvas(canvas, state, family);
   const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
+  configurePaintTexture(tex);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.needsUpdate = true;
   tex.userData.canvas = canvas;
   return tex;
 }
@@ -2122,6 +2230,11 @@ export class Preview3D {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(w, h, false);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    try {
+      _maxAnisotropy = this.renderer.capabilities.getMaxAnisotropy() || 8;
+    } catch (_) {
+      _maxAnisotropy = 8;
+    }
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setClearColor(0x000000, 0);
@@ -2170,7 +2283,7 @@ export class Preview3D {
     const fill = new THREE.DirectionalLight(0x88a0c0, 0.35);
     fill.position.set(-8, 4, -6);
     this.scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xff6a00, 0.25);
+    const rim = new THREE.DirectionalLight(0xb8c8d8, 0.18);
     rim.position.set(-4, 6, 10);
     this.scene.add(rim);
 
@@ -2323,23 +2436,30 @@ export class Preview3D {
     const model = gltf.scene.clone(true);
     cloneMaterialsDeep(model);
     fitAircraftToHangar(model, GLB_TARGET_SPAN);
+    // Strip Korean Air / baked livery (maps + embossed titles) → blank airframe
+    prepareGlbForSkinning(model);
     craft.add(model);
+    try { window.__SMB_CRAFT = craft; window.__SMB_PREVIEW = this; } catch (_) {}
 
     // Index materials by role for live recolor
     const craftBox = new THREE.Box3().setFromObject(craft);
     this.glbMaterials = [];
     model.traverse((child) => {
       if (!child.isMesh || !child.material) return;
+      if (child.userData && child.userData.skinHiddenLivery) return;
+      if (child.visible === false) return;
       const mats = Array.isArray(child.material)
         ? child.material
         : [child.material];
       const meshBox = new THREE.Box3().setFromObject(child);
       const role = classifyMeshRole(child.name, meshBox, craftBox);
       mats.forEach((m) => {
+        // Ensure no residual albedo map fights zone paint
         if (m.map) {
-          // Keep albedo loosely; we'll tint via color
-          m.color.set(0xffffff);
+          try { m.map.dispose(); } catch (_) {}
+          m.map = null;
         }
+        m.color.set(0xffffff);
         this.glbMaterials.push({ mat: m, role });
       });
     });
@@ -2428,14 +2548,14 @@ export class Preview3D {
 
     if (this.modelMode === "glb") {
       const colors = {
-        fuselage: hexToThree(state.colors.fuselage || "#2a2a2a"),
-        nose: hexToThree(state.colors.nose || "#1A1A1A"),
-        belly: hexToThree(state.colors.belly || "#E8E8E8"),
-        wings: hexToThree(state.colors.wings || "#111111"),
-        winglet: hexToThree(state.colors.winglet || "#4a4a4a"),
-        engines: hexToThree(state.colors.engines || "#222222"),
-        tail: hexToThree(state.colors.tail || "#1e1e1e"),
-        accent: hexToThree(state.colors.accent || "#FFFFFF"),
+        fuselage: hexToThree(state.colors.fuselage || "#d4d8dc"),
+        nose: hexToThree(state.colors.nose || "#c8cdd3"),
+        belly: hexToThree(state.colors.belly || "#aeb4bc"),
+        wings: hexToThree(state.colors.wings || "#4a4e56"),
+        winglet: hexToThree(state.colors.winglet || "#5a5f68"),
+        engines: hexToThree(state.colors.engines || "#6a7078"),
+        tail: hexToThree(state.colors.tail || "#c0c5cc"),
+        accent: hexToThree(state.colors.accent || "#5b7c99"),
       };
       const unique = new Set(this.glbMaterials.map((g) => g.mat));
       if (unique.size <= 1) {

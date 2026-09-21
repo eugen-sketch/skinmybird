@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.5.2 — commercial UI + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.5.3 — commercial UI + 3D hangar preview (Three.js).
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.2";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.3";
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,16 +35,16 @@ const $ = (id) => document.getElementById(id);
     profiles: [],
     profile: null,
     colors: {
-      fuselage: "#2a2a2a",
-      nose: "#111111",
-      belly: "#3d3d3d",
-      wings: "#141414",
-      winglet: "#4a4a4a",
-      engines: "#1a1a1a",
-      tail: "#1e1e1e",
-      accent: "#b0b0b0",
+      fuselage: "#d4d8dc",
+      nose: "#c8cdd3",
+      belly: "#aeb4bc",
+      wings: "#4a4e56",
+      winglet: "#5a5f68",
+      engines: "#6a7078",
+      tail: "#c0c5cc",
+      accent: "#5b7c99",
     },
-    name: "Graphite",
+    name: "Pearl Grey",
     registration: "YR-EUG",
     airline: "SkinMyBird",
     slogan: "",
@@ -94,14 +94,14 @@ const $ = (id) => document.getElementById(id);
   };
 
   const EUGEN = {
-    fuselage: "#FF6A00",
-    nose: "#1A1A1A",
-    belly: "#E8E8E8",
-    wings: "#111111",
-    winglet: "#FF6A00",
-    engines: "#222222",
-    tail: "#FF6A00",
-    accent: "#FFFFFF",
+    fuselage: "#ff6a00",
+    nose: "#ff6a00",
+    belly: "#e55f00",
+    wings: "#1a1a1a",
+    winglet: "#1a1a1a",
+    engines: "#1a1a1a",
+    tail: "#1a1a1a",
+    accent: "#fff5e6",
     name: "Eugen Orange",
     registration: "YR-EUG",
     airline: "SkinMyBird",
@@ -775,7 +775,7 @@ const $ = (id) => document.getElementById(id);
     syncInputsFromState();
     drawPreview();
     closeMoreMenu();
-    setStatus("Preset <strong>Eugen Orange</strong> applied.");
+    setStatus("Preset <strong>Eugen Orange — 3 colors</strong> applied (orange · charcoal · cream).");
   }
 
   function openAdvanced() {

@@ -15,6 +15,14 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.5.3 notes
+- **747 clean airframe**: FetchCFD 747 GLB still used (hump + 4 engines); at load we hide embossed Korean Air titles/logos and neutralize brand-colored materials so hangar paint is a blank canvas
+- Cold-start **Pearl Grey** defaults (soft silver fuselage, charcoal wings, soft-blue accent) — no matte-black Graphite
+- **Flags → Free** range widened to **−150…150** with stronger X/Y travel across the fuselage
+- **Eugen Orange — 3 colors** preset: orange fuselage/nose, charcoal wings/engines/tail, cream accent stripe
+- HQ text: fuselage **2048×1024**, reg **1024×256**, decals **2048×512**, mipmaps + anisotropy, higher base font px
+- Cache-bust `?v=0.5.3`
+
 ### v0.5.2 notes
 - **Single registration** aft on each side (no stacked double YR-… marks)
 - **Flags → Free**: X/Y sliders show only in Free mode; Left/Both/Right unchanged
@@ -28,7 +36,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.5.2 (selector)
+## Models v0.5.3 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -143,4 +151,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.5.2 — single registration · flag free pos · grey defaults · English UI
+© SkinMyBird v0.5.3 — clean 747 · Pearl Grey · wide Free flags · Eugen 3-color · HQ text
