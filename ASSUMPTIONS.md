@@ -89,7 +89,7 @@ Card stil Asobo (siluetă airliner / helicopter / balloon pe fundal studio desch
 ## PC access note (2026-09-21)
 Executor subagent was **box-scoped** (no `machineId` / ListMachines / CopyFromBox). Profile updates below come from a **real PC scan of Eugen's MSFS packages** relayed by the parent (confirmed facts). Desktop sync of `profiles/` is left to the parent (`CopyFromBox`).
 
-## Color zones v0.5.4 (UI → texture roles)
+## Color zones v0.5.5 (UI → texture roles)
 
 Hangar / editor paint zones (grouped Body / Flying surfaces / Details). Defaults are two colors only; extra zones inherit primary (`#f2f4f7`) or secondary (`#1b2430`) until the user changes them. Team stripe is **off** by default.
 
@@ -109,7 +109,7 @@ Hangar / editor paint zones (grouped Body / Flying surfaces / Details). Defaults
 
 Dedicated UV rects for nose/belly/winglet/stabilizer/doors/windowband are **not** measured yet on Asobo / third-party packages. Export stubs therefore tint the nearest existing stem.
 
-## Hangar GLB mapping v0.5.4
+## Hangar GLB mapping v0.5.5
 
 | Family | File | Notes |
 |--------|------|-------|
@@ -118,7 +118,7 @@ Dedicated UV rects for nose/belly/winglet/stabilizer/doors/windowband are **not*
 | 787 | `b787.glb` | amvlab nologo |
 | A350 | `a350.glb` | amvlab nologo |
 | A330 | `a350.glb` | **stand-in** |
-| 747 | *(none)* | **procedural only** — FetchCFD Korean Air `b747.glb` deleted v0.5.4 |
+| 747 | `b747.glb` | God's Eye View airplane.glb (CC BY 4.0, zairiq-123); Korean Air FetchCFD stays removed |
 | Cessna / GA stub | `cessna.glb` | CC BY 4.0 GA stand-in |
 | H135 / balloon | procedural | no third-party GLB |
 

@@ -15,6 +15,10 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.5.5 notes
+- **747**: clean CC-BY hangar GLB from **God's Eye View** (`airplane.glb` → `b747.glb`; credit zairiq-123). Plain light gray; Two-Tone paint overrides via `prepareGlbForSkinning`. FetchCFD Korean Air GLB stays removed.
+- Cache-bust `?v=0.5.5`
+
 ### v0.5.4 notes
 - **747**: FetchCFD Korean Air GLB **removed** — hangar uses **improved procedural 747** only (clear upper-deck hump, 4 engines, tall fin). No `b747.glb` is served; Korean Air branding cannot appear.
 - Cold-start **Two-Tone** defaults: primary `#f2f4f7` (fuselage/nose/belly/tail/stab/doors/windowband/accent) + secondary `#1b2430` (wings/winglet/engines); **Team stripe OFF**
@@ -43,7 +47,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.5.4 (selector)
+## Models v0.5.5 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -53,7 +57,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 | 4 | LatinVFR A330-900 | whole-albedo stub | a350.glb *(stand-in)* |
 | 5 | FlyByWire A320neo | whole-albedo stub | a320.glb |
 | 6 | Asobo Boeing 787-10 | whole-albedo stub | b787.glb |
-| 7 | Asobo Boeing 747-8i | whole-albedo stub | **procedural 747** (hump + 4 engines; Korean Air GLB removed) |
+| 7 | Asobo Boeing 747-8i | whole-albedo stub | b747.glb (God's Eye View CC BY 4.0) |
 | 8 | PMDG 737-600 | whole-albedo stub | b737.glb |
 | 9 | HPG Hot Air Balloon | whole-albedo stub | procedural |
 | 10 | HPG Airbus H135 | whole-albedo stub | procedural |
@@ -64,7 +68,7 @@ Profile JSON: `profiles/*.json`. UV / stub details: `ASSUMPTIONS.md`.
 ### 3D model attribution
 
 - **amvlab** A320 / 737 / 787 / A350 — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — https://github.com/amvlab/aircraft-models
-- **Boeing 747** hangar — SkinMyBird procedural (FetchCFD Korean Air GLB removed in v0.5.4)
+- **Boeing 747** hangar — God's Eye View `airplane.glb` ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), zairiq-123) → `b747.glb`
 - **Cessna 172** (light-GA) — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — https://github.com/bilawalsidhu/gods-eye-view
 
 Full notes: `web/models/ATTRIBUTION.txt`.
@@ -158,4 +162,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.5.4 — procedural 747 · Two-Tone · more paint zones · Eugen preset removed
+© SkinMyBird v0.5.5 — clean CC-BY 747 (God's Eye View) · Two-Tone · more paint zones

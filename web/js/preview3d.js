@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.5.4 — real airliner GLBs + procedural helo/balloon.
+ * SkinMyBird 3D hangar preview v0.5.5 — real airliner GLBs + procedural helo/balloon.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -76,7 +76,7 @@ function stripAndNeutralizeMaterial(m) {
 /**
  * Neutralize any residual baked livery on GLBs (amvlab are nologo; keep as safety net).
  * Hide embossed titles/logos, clear baked albedo maps, reset materials to zone colors.
- * Note: Korean Air 747 GLB was removed in v0.5.4 — 747 hangar is procedural only.
+ * Keeps Two-Tone paint able to override plain gray materials (e.g. God's Eye View 747).
  */
 function prepareGlbForSkinning(model) {
   model.updateMatrixWorld(true);
@@ -234,7 +234,7 @@ export function resolveGlbUrl(profile) {
 
 /**
  * Resolve GLB URL + whether the mesh is a licensed stand-in (not exact type).
- * 747 is procedural only (Korean Air GLB removed v0.5.4); A330 borrows A350; Cessna uses c172 GLB.
+ * 747 → b747.glb (God's Eye View CC BY 4.0); A330 borrows A350; Cessna uses c172 GLB.
  */
 export function resolveGlbMeta(profile) {
   if (!profile) return null;
@@ -268,10 +268,13 @@ export function resolveGlbMeta(profile) {
     };
   }
 
-  // v0.5.4: FetchCFD Korean Air 747 GLB removed — hangar uses improved procedural
-  // (upper-deck hump + 4 engines + tall fin). No b747.glb is served.
+  // v0.5.5: clean CC-BY 747 from God's Eye View (plain gray; Two-Tone overrides via prepareGlbForSkinning)
   if (blob.includes("747")) {
-    return null;
+    return {
+      url: "/models/b747.glb",
+      standIn: false,
+      note: "Boeing 747 preview — God's Eye View airplane.glb (CC BY 4.0, zairiq-123)",
+    };
   }
 
   if (blob.includes("787") || blob.includes("dreamliner"))
@@ -2474,7 +2477,7 @@ export class Preview3D {
     const model = gltf.scene.clone(true);
     cloneMaterialsDeep(model);
     fitAircraftToHangar(model, GLB_TARGET_SPAN);
-    // Strip Korean Air / baked livery (maps + embossed titles) → blank airframe
+    // Neutralize baked albedo / brand mats → blank airframe for zone paint
     prepareGlbForSkinning(model);
     craft.add(model);
     try { window.__SMB_CRAFT = craft; window.__SMB_PREVIEW = this; } catch (_) {}
