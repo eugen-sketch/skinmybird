@@ -1,0 +1,30 @@
+{
+  "id": "asobo-boeing-787-10",
+  "displayName": "Asobo Boeing 787-10",
+  "category": "avion",
+  "simObjectType": "Airplanes",
+  "base_container": "..\\Asobo_B787_10",
+  "ui_manufacturer": "Boeing",
+  "ui_type": "787-10 Dreamliner",
+  "ui_typerole": "Commercial Airliner",
+  "package_prefix": "skinmybird-b787-10",
+  "aircraft_folder_prefix": "skinmybird_b787_10",
+  "title_template": "Boeing 787-10 SkinMyBird {name}",
+  "paint_mode": "whole_albedo",
+  "tex_size": 2048,
+  "silhouette": "airliner",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "B787_FUSELAGE_ALBD", "role": "fuselage" },
+    { "stem": "B787_WINGS_ALBD", "role": "wings" },
+    { "stem": "B787_ENGINES_ALBD", "role": "engines" },
+    { "stem": "B787_TAIL_ALBD", "role": "tail" }
+  ],
+  "uv_rects": null,
+  "texture_fallbacks": [
+    "..\\..\\..\\..\\texture",
+    "..\\texture",
+    "..\\..\\Asobo_B787_10\\texture"
+  ],
+  "notes": "UV necunoscute — whole-albedo stub. Verifică numele Official pe PC."
+}

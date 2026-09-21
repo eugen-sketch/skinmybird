@@ -11,9 +11,20 @@
     "tail": "#FF6A00"
   },
   "stickers": [
-    { "type": "team_stripe", "enabled": true },
-    { "type": "heart", "enabled": false },
-    { "type": "custom_text", "enabled": true, "text": "YR-EUG" }
+    {
+      "type": "team_stripe",
+      "enabled": true
+    },
+    {
+      "type": "heart",
+      "enabled": false
+    },
+    {
+      "type": "custom_text",
+      "enabled": true,
+      "text": "YR-EUG"
+    }
   ],
-  "soacraPhoto": null
+  "soacraPhoto": null,
+  "profile": "asobo-aircraft-a320-neo"
 }

@@ -1,0 +1,30 @@
+{
+  "id": "lvfr-airbus-a321-neo",
+  "displayName": "LatinVFR A321neo",
+  "category": "avion",
+  "simObjectType": "Airplanes",
+  "base_container": "..\\lvfr-airbus-a321-neo",
+  "ui_manufacturer": "Airbus",
+  "ui_type": "A321neo",
+  "ui_typerole": "Commercial Airliner",
+  "package_prefix": "skinmybird-a321neo-lvfr",
+  "aircraft_folder_prefix": "skinmybird_a321neo_lvfr",
+  "title_template": "Airbus A321neo SkinMyBird {name}",
+  "paint_mode": "whole_albedo",
+  "tex_size": 2048,
+  "silhouette": "airliner",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "FUSELAGE_ALBD", "role": "fuselage" },
+    { "stem": "TAIL_ALBD", "role": "tail" },
+    { "stem": "ENGINES_ALBD", "role": "engines" },
+    { "stem": "WINGS_ALBD", "role": "wings" }
+  ],
+  "uv_rects": null,
+  "texture_fallbacks": [
+    "..\\..\\..\\..\\texture",
+    "..\\texture",
+    "..\\..\\lvfr-airbus-a321-neo\\texture"
+  ],
+  "notes": "UV necunoscute — whole-albedo recolor + logo centrat. Verifică numele texturilor pe PC după instalarea LVFR."
+}

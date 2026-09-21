@@ -1,0 +1,30 @@
+{
+  "id": "asobo-aircraft-b7478i",
+  "displayName": "Asobo Boeing 747-8i",
+  "category": "avion",
+  "simObjectType": "Airplanes",
+  "base_container": "..\\Asobo_B747_8i",
+  "ui_manufacturer": "Boeing",
+  "ui_type": "747-8i Intercontinental",
+  "ui_typerole": "Commercial Airliner",
+  "package_prefix": "skinmybird-b747-8i",
+  "aircraft_folder_prefix": "skinmybird_b747_8i",
+  "title_template": "Boeing 747-8i SkinMyBird {name}",
+  "paint_mode": "whole_albedo",
+  "tex_size": 2048,
+  "silhouette": "airliner",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "B747_FUSELAGE_ALBD", "role": "fuselage" },
+    { "stem": "B747_WINGS_ALBD", "role": "wings" },
+    { "stem": "B747_ENGINES_ALBD", "role": "engines" },
+    { "stem": "B747_TAIL_ALBD", "role": "tail" }
+  ],
+  "uv_rects": null,
+  "texture_fallbacks": [
+    "..\\..\\..\\..\\texture",
+    "..\\texture",
+    "..\\..\\Asobo_B747_8i\\texture"
+  ],
+  "notes": "UV necunoscute — whole-albedo stub pentru 747-8i."
+}

@@ -319,3 +319,99 @@ input[type="text"]:focus {
   .top { flex-direction: column; align-items: flex-start; }
   .header-actions .btn.primary { display: none; } /* use center CTA on mobile */
 }
+
+/* --- Multi-aircraft selector --- */
+.selector {
+  position: relative;
+  z-index: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 0.5rem;
+}
+.selector-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.selector-head .sub {
+  margin: 0.25rem 0 0.9rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+.model-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  text-align: left;
+  padding: 1rem 1.05rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: linear-gradient(160deg, #152033 0%, #101827 100%);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+}
+.model-card:hover {
+  border-color: rgba(255, 106, 0, 0.55);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+.model-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(255, 106, 0, 0.4);
+}
+.mc-icon { font-size: 1.5rem; line-height: 1; }
+.mc-name { font-weight: 700; font-size: 0.95rem; }
+.mc-meta { font-size: 0.72rem; color: var(--muted); }
+.mc-cat {
+  margin-top: 0.35rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent2);
+  background: rgba(61, 214, 198, 0.1);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+}
+
+.selected-model {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 0.4rem 0.55rem;
+  background: rgba(255, 106, 0, 0.1);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 106, 0, 0.25);
+}
+
+.btn.accent {
+  background: linear-gradient(135deg, #2ec4b6, #1a9e92);
+  border-color: transparent;
+  
+  color: #062a28;
+  box-shadow: 0 8px 22px rgba(46, 196, 182, 0.28);
+}
+
+.status-log {
+  margin-top: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.layout.canva[hidden],
+.selector[hidden] {
+  display: none !important;
+}

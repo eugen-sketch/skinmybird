@@ -1,0 +1,30 @@
+{
+  "id": "pmdg-aircraft-736",
+  "displayName": "PMDG 737-600",
+  "category": "avion",
+  "simObjectType": "Airplanes",
+  "base_container": "..\\PMDG 737-600",
+  "ui_manufacturer": "Boeing",
+  "ui_type": "737-600",
+  "ui_typerole": "Commercial Airliner",
+  "package_prefix": "skinmybird-pmdg-736",
+  "aircraft_folder_prefix": "skinmybird_pmdg_736",
+  "title_template": "Boeing 737-600 SkinMyBird {name}",
+  "paint_mode": "whole_albedo",
+  "tex_size": 2048,
+  "silhouette": "airliner",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "B737_FUSELAGE_ALBD", "role": "fuselage" },
+    { "stem": "B737_WINGS_ALBD", "role": "wings" },
+    { "stem": "B737_ENGINES_ALBD", "role": "engines" },
+    { "stem": "B737_TAIL_ALBD", "role": "tail" }
+  ],
+  "uv_rects": null,
+  "texture_fallbacks": [
+    "..\\..\\..\\..\\texture",
+    "..\\texture",
+    "..\\..\\PMDG 737-600\\texture"
+  ],
+  "notes": "PMDG — base_container și stem-uri pot diferi pe instalare. Whole-albedo stub; verifică pe PC folderul PMDG."
+}

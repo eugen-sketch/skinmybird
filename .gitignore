@@ -11,3 +11,4 @@ web/dist/
 work/
 *.PNG.DDS
 *.PNG.DDS.json
+tools/

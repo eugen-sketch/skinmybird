@@ -1,0 +1,28 @@
+{
+  "id": "hpg-hotair-balloon",
+  "displayName": "HPG Hot Air Balloon",
+  "category": "balon",
+  "simObjectType": "Misc",
+  "base_container": "..\\hpg-hotair-balloon",
+  "ui_manufacturer": "HPG",
+  "ui_type": "Hot Air Balloon",
+  "ui_typerole": "Balloon",
+  "package_prefix": "skinmybird-hpg-balloon",
+  "aircraft_folder_prefix": "skinmybird_hpg_balloon",
+  "title_template": "HPG Hot Air Balloon SkinMyBird {name}",
+  "paint_mode": "whole_albedo",
+  "tex_size": 2048,
+  "silhouette": "balloon",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "BALLOON_ENVELOPE_ALBD", "role": "fuselage" },
+    { "stem": "BALLOON_BASKET_ALBD", "role": "engines" }
+  ],
+  "uv_rects": null,
+  "texture_fallbacks": [
+    "..\\..\\..\\..\\texture",
+    "..\\texture",
+    "..\\..\\hpg-hotair-balloon\\texture"
+  ],
+  "notes": "Whole-albedo pe anvelopă + coș. Verifică stem-urile HPG pe PC. SimObjects/Misc."
+}

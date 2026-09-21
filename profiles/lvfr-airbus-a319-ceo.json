@@ -1,0 +1,42 @@
+{
+  "id": "lvfr-airbus-a319-ceo",
+  "displayName": "LatinVFR A319 CEO",
+  "category": "avion",
+  "simObjectType": "Airplanes",
+  "base_container": "..\\lvfr-319-cfm",
+  "ui_manufacturer": "Airbus",
+  "ui_type": "A319-100",
+  "ui_typerole": "Commercial Airliner",
+  "package_prefix": "skinmybird-a319-lvfr",
+  "aircraft_folder_prefix": "skinmybird_a319_lvfr",
+  "title_template": "Airbus A319-100 SkinMyBird {name}",
+  "paint_mode": "uv_rects",
+  "tex_size": 2048,
+  "silhouette": "airliner",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "FUSELAGE19", "role": "fuselage" },
+    { "stem": "TAIL19", "role": "tail" },
+    { "stem": "CFM56D", "role": "engines" },
+    { "stem": "CFM56D_LEFT", "role": "engines" },
+    { "stem": "WING1_ALB", "role": "wings" },
+    { "stem": "WING2_ALB", "role": "wings" },
+    { "stem": "WINGDETAILS_ALBEDO", "role": "wings" },
+    { "stem": "elevatorwing_albedo", "role": "wings" }
+  ],
+  "uv_rects": {
+    "title_upper": [60, 945, 880, 1035],
+    "title_lower": [30, 1590, 850, 1690],
+    "reg_upper": [545, 495, 705, 545],
+    "reg_lower": [485, 1430, 655, 1480],
+    "tail_logo_upper": [291, 166, 1051, 974],
+    "tail_logo_lower": [291, 1188, 1051, 1995],
+    "belly": [700, 1135, 1100, 1235]
+  },
+  "texture_fallbacks": [
+    "..\\..\\..\\..\\texture",
+    "..\\texture",
+    "..\\..\\lvfr-319-cfm\\texture"
+  ],
+  "notes": "UV din TAR Tunisair (work/build_a319_huculeaks.py). base_container tipic lvfr-319-cfm."
+}

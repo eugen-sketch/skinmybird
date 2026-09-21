@@ -1,0 +1,40 @@
+{
+  "id": "asobo-aircraft-a320-neo",
+  "displayName": "Asobo A320neo",
+  "category": "avion",
+  "simObjectType": "Airplanes",
+  "base_container": "..\\Asobo_A320_NEO",
+  "ui_manufacturer": "Airbus",
+  "ui_type": "A320neo",
+  "ui_typerole": "Commercial Airliner",
+  "package_prefix": "skinmybird-a320neo",
+  "aircraft_folder_prefix": "skinmybird_a320neo",
+  "title_template": "Airbus A320 Neo SkinMyBird {name}",
+  "paint_mode": "uv_rects",
+  "tex_size": 2048,
+  "silhouette": "airliner",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "A320NEO_AIRFRAME_FUSELAGE_ALBD", "role": "fuselage" },
+    { "stem": "A320NEO_AIRFRAME_WINGS_ALBD", "role": "wings" },
+    { "stem": "A320NEO_AIRFRAME_ENGINES_ALBD", "role": "engines" },
+    { "stem": "A320NEO_AIRFRAME_LIVERY_ALBD", "role": "livery" },
+    { "stem": "A320NEO_AIRFRAME_LIVERY_TEXTS_ALBD", "role": "texts" }
+  ],
+  "uv_rects": {
+    "neo_logo_upper": [95, 14, 1991, 283],
+    "neo_logo_lower": [95, 284, 1991, 552],
+    "side_title_upper": [52, 603, 1560, 817],
+    "side_title_lower": [52, 818, 1560, 1031],
+    "reg_slot": [12, 1509, 980, 1672]
+  },
+  "texture_fallbacks": [
+    "..\\..\\..\\..\\texture\\DetailMap",
+    "..\\..\\..\\..\\texture\\Glass",
+    "..\\..\\..\\..\\texture\\Interiors",
+    "..\\..\\..\\..\\texture",
+    "..\\texture",
+    "..\\..\\Asobo_A320_NEO\\texture"
+  ],
+  "notes": "UV măsurate pe Official LIVERY_TEXTS. Titlurile pe laterale, nu pe plafon."
+}

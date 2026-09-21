@@ -1,0 +1,30 @@
+{
+  "id": "hpg-airbus-h135",
+  "displayName": "HPG Airbus H135",
+  "category": "elicopter",
+  "simObjectType": "Rotorcraft",
+  "base_container": "..\\hpg-airbus-h135",
+  "ui_manufacturer": "Airbus Helicopters",
+  "ui_type": "H135",
+  "ui_typerole": "Helicopter",
+  "package_prefix": "skinmybird-hpg-h135",
+  "aircraft_folder_prefix": "skinmybird_hpg_h135",
+  "title_template": "Airbus H135 SkinMyBird {name}",
+  "paint_mode": "whole_albedo",
+  "tex_size": 2048,
+  "silhouette": "helicopter",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "H135_FUSELAGE_ALBD", "role": "fuselage" },
+    { "stem": "H135_TAIL_ALBD", "role": "tail" },
+    { "stem": "H135_ROTOR_ALBD", "role": "wings" },
+    { "stem": "H135_DOORS_ALBD", "role": "engines" }
+  ],
+  "uv_rects": null,
+  "texture_fallbacks": [
+    "..\\..\\..\\..\\texture",
+    "..\\texture",
+    "..\\..\\hpg-airbus-h135\\texture"
+  ],
+  "notes": "HPG H135 — UV necunoscute. Whole-albedo recolor + logo centrat pe fuselaj. SimObjects/Rotorcraft. Verifică stem-urile pe PC după instalarea HPG."
+}

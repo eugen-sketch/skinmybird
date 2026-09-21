@@ -1,0 +1,30 @@
+{
+  "id": "lvfr-a330-900",
+  "displayName": "LatinVFR A330-900",
+  "category": "avion",
+  "simObjectType": "Airplanes",
+  "base_container": "..\\lvfr-a330-900",
+  "ui_manufacturer": "Airbus",
+  "ui_type": "A330-900",
+  "ui_typerole": "Commercial Airliner",
+  "package_prefix": "skinmybird-a330-900-lvfr",
+  "aircraft_folder_prefix": "skinmybird_a330_900_lvfr",
+  "title_template": "Airbus A330-900 SkinMyBird {name}",
+  "paint_mode": "whole_albedo",
+  "tex_size": 2048,
+  "silhouette": "airliner",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "FUSELAGE_ALBD", "role": "fuselage" },
+    { "stem": "TAIL_ALBD", "role": "tail" },
+    { "stem": "ENGINES_ALBD", "role": "engines" },
+    { "stem": "WINGS_ALBD", "role": "wings" }
+  ],
+  "uv_rects": null,
+  "texture_fallbacks": [
+    "..\\..\\..\\..\\texture",
+    "..\\texture",
+    "..\\..\\lvfr-a330-900\\texture"
+  ],
+  "notes": "UV necunoscute — whole-albedo stub. Ajustează stem-urile după texture.cfg LVFR pe PC."
+}

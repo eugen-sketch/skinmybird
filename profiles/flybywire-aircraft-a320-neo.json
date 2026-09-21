@@ -1,0 +1,30 @@
+{
+  "id": "flybywire-aircraft-a320-neo",
+  "displayName": "FlyByWire A320neo",
+  "category": "avion",
+  "simObjectType": "Airplanes",
+  "base_container": "..\\flybywire-aircraft-a320-neo",
+  "ui_manufacturer": "Airbus",
+  "ui_type": "A320neo (FBW)",
+  "ui_typerole": "Commercial Airliner",
+  "package_prefix": "skinmybird-a320neo-fbw",
+  "aircraft_folder_prefix": "skinmybird_a320neo_fbw",
+  "title_template": "Airbus A320 Neo FBW SkinMyBird {name}",
+  "paint_mode": "whole_albedo",
+  "tex_size": 2048,
+  "silhouette": "airliner",
+  "thumbnail": { "style": "asobo_card", "size": [1618, 582] },
+  "textures": [
+    { "stem": "A32NX_AIRFRAME_FUSELAGE_ALBD", "role": "fuselage" },
+    { "stem": "A32NX_AIRFRAME_WINGS_ALBD", "role": "wings" },
+    { "stem": "A32NX_AIRFRAME_ENGINES_ALBD", "role": "engines" },
+    { "stem": "A32NX_AIRFRAME_TAIL_ALBD", "role": "tail" }
+  ],
+  "uv_rects": null,
+  "texture_fallbacks": [
+    "..\\..\\..\\..\\texture",
+    "..\\texture",
+    "..\\..\\flybywire-aircraft-a320-neo\\texture"
+  ],
+  "notes": "FBW A32NX — stem-uri approximate; verifică texture.cfg local. Whole-albedo + logo."
+}

@@ -1,136 +1,115 @@
 # SkinMyBird
 
-**Recolorează livery-urile default Asobo A320neo în MSFS 2020 — fără Photoshop, fără drama.**
+**Canva pentru avioane (și elicoptere / baloane) în MSFS 2020** — fără Photoshop.
 
-Instrument comercial **one-time €9.99** (Windows-friendly): UI local tip Canva în browser + exporter Python CLI. Alegi culorile pe zone (fuselaj / aripi / motoare / coadă), adaugi stickere sau o poză, apeși Generate → pachet **Community** gata de copiat.
+Instrument comercial **one-time €9.99**: alegi modelul → culori / stickere / text / logo → previzualizare live → **Export ZIP** cu `*.PNG.DDS` (BC7) real → **Instalează în Community**.
 
-Brand: iconița bird-pilot din `brand/icon.png`.
+Brand: `brand/icon.png`.
 
 ---
 
-## English (short)
+## Modele v1 (selector)
 
-SkinMyBird is a commercial **€9.99 one-time** tool: recolor the default Asobo A320neo, add stickers/photos, export a ready Community folder package.
+| # | Profil | Paint |
+|---|--------|-------|
+| 1 | Asobo A320neo | UV măsurat (LIVERY_TEXTS) |
+| 2 | LatinVFR A319 CEO | UV (FUSELAGE19 / TAIL19) |
+| 3 | LatinVFR A321neo | whole-albedo stub |
+| 4 | LatinVFR A330-900 | whole-albedo stub |
+| 5 | FlyByWire A320neo | whole-albedo stub |
+| 6 | Asobo Boeing 787-10 | whole-albedo stub |
+| 7 | Asobo Boeing 747-8i | whole-albedo stub |
+| 8 | PMDG 737-600 | whole-albedo stub |
+| 9 | HPG Hot Air Balloon | whole-albedo stub |
+| 10 | **HPG Airbus H135** | whole-albedo stub |
 
-**Critical MSFS fact:** Community textures must be **`*.PNG.DDS` (BC7)** + **`*.PNG.DDS.json`** + **`thumbnail.jpg` / `thumbnail_small.jpg`** + **`texture.cfg`** with Asobo fallbacks. Plain PNG placeholders are **ignored** → white/blue default fuselage. The Python exporter emits real DDS via **wine + texconv** when available.
+Profile JSON: `profiles/*.json`. Detalii UV / stub: `ASSUMPTIONS.md`.
 
-Validated in-game: **Eugen Orange** (`#FF6A00` fuselage, `YR-EUG`).
+---
 
-### Run the UI
-```bash
-npm start
-# or: cd web && python3 -m http.server 5173
-# open http://localhost:5173
-```
+## Cum rulezi (Windows — recomandat)
 
-### Export with Python (DDS — recommended)
+1. Instalează Python 3.11+ și (opțional) creează `.venv`, apoi:
+   ```bat
+   pip install -r requirements.txt
+   ```
+2. Asigură-te că există `texconv.exe` (DirectXTex), tipic:
+   `C:\Users\eugen\Downloads\texconv.exe`
+3. Dublu-click pe **`SkinMyBird.bat`** (sau `scripts\Start-SkinMyBird.ps1`).
+4. Browser: `http://127.0.0.1:5173`
+
+Variabile opționale:
+- `SKINMYBIRD_TEXCONV` — cale texconv
+- `SKINMYBIRD_COMMUNITY` — default  
+  `C:\Users\eugen\AppData\Roaming\Microsoft Flight Simulator\Packages\Community`  
+  (junction tipic: `D:\MSFS2020\Community`)
+
+### Flux UI (RO)
+1. **Alege modelul** (carduri)
+2. **Culori / Stickere / Identitate** (înmatriculare, airline, logo)
+3. **Export ZIP (DDS)** → descarcă pachet Community
+4. **Instalează în Community** → copiază în folderul Community (doar pe Windows cu calea setată)
+
+---
+
+## Cum rulezi (Linux / box de dezvoltare)
+
 ```bash
 cd /path/to/skinmybird
 source .venv/bin/activate
-python -m exporter.export --preset eugen-orange --zip
-# → output/skinmybird-a320neo-eugen_orange/  (+ .zip)
-# Files: A320NEO_AIRFRAME_*_ALBD.PNG.DDS + .json + thumbnails
+pip install -r requirements.txt
+export SKINMYBIRD_TEXCONV=/workspace/tools/texconv.exe   # sau tools/texconv.exe
+python server.py
+# → http://127.0.0.1:5173
 ```
 
-Requires: `Pillow`, and for DDS: `wine` + `/workspace/tools/texconv.exe` (or `SKINMYBIRD_TEXCONV`).  
-Fallback: `--force-png` writes PNG + `convert_to_dds.ps1` / `scripts/convert_to_dds.sh`.
+Sau: `./scripts/start_dev.sh` · `npm start`
 
-### Install in MSFS 2020
-1. Copy the package folder into **Community**.
-2. Restart MSFS 2020.
-3. Select Airbus A320neo → your SkinMyBird variation.
-
----
-
-## Produs (RO)
-
-| | |
-|---|---|
-| Preț | **€9.99** one-time |
-| Platformă | Windows (UI în browser + CLI Python) |
-| Avion | Asobo A320neo (variație `base_container`) |
-| Demo | **Eugen Orange** — fuselaj/coadă `#FF6A00`, aripi `#111111`, motoare `#222222`, `YR-EUG` |
-
-### Cum rulezi UI-ul
+### Export CLI
 ```bash
-npm start
-```
-Deschide `http://localhost:5173`. Layout Canva: unelte stânga, previzualizare live în centru.
-
-### Cum exporți pachetul
-- **UI:** Descarcă pachet ZIP — Community-shaped, thumbnail-uri din canvas, PNG 2K + `convert_to_dds.ps1`.
-- **CLI (recomandat pentru joc):** `python -m exporter.export --preset eugen-orange --zip` → **DDS BC7** real.
-
-### Instalare în MSFS 2020
-1. Copiază folderul pachet (ex. `skinmybird-a320neo-eugen_orange`) în **Community**.
-2. Restart MSFS.
-3. Alege A320neo → livery-ul tău.
-
-**Fără `*.PNG.DDS` texturile nu apar** (alb/albastru). Citește `README_INSTALL_RO.md` din pachet.
-
----
-
-## Structură pachet (validată)
-
-```
-skinmybird-a320neo-<slug>/
-  manifest.json
-  layout.json
-  README_INSTALL_RO.md
-  SimObjects/Airplanes/skinmybird_a320neo_<slug>/
-    aircraft.cfg          # [VARIATION] base_container = "..\Asobo_A320_NEO"
-    texture.<slug>/
-      texture.cfg         # fallback Asobo + DetailMap/Glass/...
-      A320NEO_AIRFRAME_FUSELAGE_ALBD.PNG.DDS
-      A320NEO_AIRFRAME_FUSELAGE_ALBD.PNG.DDS.json
-      A320NEO_AIRFRAME_WINGS_ALBD.PNG.DDS (+ .json)
-      A320NEO_AIRFRAME_ENGINES_ALBD.PNG.DDS (+ .json)
-      A320NEO_AIRFRAME_LIVERY_ALBD.PNG.DDS (+ .json)
-      A320NEO_AIRFRAME_LIVERY_TEXTS_ALBD.PNG.DDS (+ .json)
-      thumbnail.jpg
-      thumbnail_small.jpg
+python -m exporter.export --list-profiles
+python -m exporter.export --preset eugen-orange --profile asobo-aircraft-a320-neo --zip
+python -m exporter.export --preset eugen-orange --profile hpg-airbus-h135 --zip --force-png
 ```
 
-Dimensiuni tipice DDS: **~2–6 MB / mapă** (2048² BC7 + mips). Nu commităm texturi Official (~60MB+) în git; `output/` e gitignored.
+---
+
+## API
+
+| Metodă | Path | Rol |
+|--------|------|-----|
+| GET | `/api/profiles` | Lista celor 10 profile |
+| GET | `/api/profiles/{id}` | Profil complet |
+| POST | `/api/export` | Export Community (+ ZIP) |
+| POST | `/api/install` | Copiază în Community |
+| GET | `/api/health` | texconv / wine status |
 
 ---
 
-## Asumpții / reguli UV (v0.3)
-Vezi `ASSUMPTIONS.md`. Pe scurt:
+## Instalare în MSFS 2020
 
-- **Titlurile** (ex. HUCULEAKS AIR) → pe **`LIVERY_TEXTS`** UV (laterale fuselaj), **nu** pe albedo-ul de fuselaj (ajung pe plafon/top).
-- **Logo-uri pe coadă** → sloturile Official **neo** (`neo_logo_upper` / `neo_logo_lower`) pe `LIVERY_TEXTS`.
-- **Thumbnail-uri** → carduri stil Asobo: avion 3/4 pe fundal studio deschis (~1618×582), **nu** siluete pe negru.
-- Constante UV: `exporter.export.A320NEO_TEXTS_UV`.
-- DDS + sidecars + thumbnail = obligatorii pentru MSFS 2020.
+1. Copiază folderul din `output/skinmybird-…` în **Community**.
+2. Restart MSFS 2020.
+3. Selectează modelul → variația SkinMyBird.
 
----
-
-## Roadmap
-1. Editor UV pe albedo Official (recolor pe PC-ul utilizatorului, fără redistribuire).
-2. Mai multe avioane default Asobo.
-3. Suport **MSFS 2024**.
-4. Instalare one-click Windows + licență €9.99.
+**Fără `*.PNG.DDS` (BC7) + `.json` + thumbnail → fuselaj alb/albastru.**
 
 ---
 
-## Dev
+## Structură
 
 ```
 skinmybird/
-  brand/icon.png
-  web/                 # UI static Canva-like (RO)
-  exporter/export.py   # CLI → PNG.DDS via wine+texconv
-  scripts/convert_to_dds.sh
-  presets/eugen-orange.json
-  output/              # generate (gitignored)
+  profiles/           # JSON per aeronavă (10)
+  web/                # UI Canva RO
+  exporter/export.py  # Pillow → wine/native texconv BC7
+  server.py           # FastAPI
+  SkinMyBird.bat      # launcher Windows
+  scripts/Start-SkinMyBird.ps1
+  presets/
+  ASSUMPTIONS.md
 ```
 
-Remote: `https://github.com/eugen-sketch/skinmybird`
+Remote: https://github.com/eugen-sketch/skinmybird
 
-```bash
-npm start
-python -m exporter.export --preset eugen-orange --zip
-```
-
-© SkinMyBird — Phase 1 v0.2 (DDS)
+© SkinMyBird v0.3 — multi-aircraft MVP

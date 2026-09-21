@@ -1,0 +1,82 @@
+{
+  "id": "huculeaks_air_a319_lvfr",
+  "name": "HUCULEAKS AIR",
+  "aircraft": "lvfr-319-cfm",
+  "aircraft_label": "LatinVFR A319ceo legacy (A319-100)",
+  "base_container": "..\\lvfr-319-cfm",
+  "registration": "YR-HCX",
+  "airline": "HUCULEAKS AIR",
+  "icao": "HUC",
+  "colors": {
+    "fuselage": "#1A1A1A",
+    "wings": "#0A0A0A",
+    "engines": "#2A2A2A",
+    "tail": "#121212",
+    "accent": "#E85A00"
+  },
+  "stickers": [
+    {
+      "type": "custom_text",
+      "enabled": true,
+      "text": "HUCULEAKS AIR"
+    }
+  ],
+  "logo": "work/huculeaks_logo.png",
+  "font": "assets/fonts/SpecialElite-Regular.ttf",
+  "texture_stems": [
+    "FUSELAGE19",
+    "TAIL19",
+    "CFM56D",
+    "CFM56D_LEFT",
+    "WING1_ALB",
+    "WING2_ALB",
+    "WINGDETAILS_ALBEDO",
+    "elevatorwing_albedo"
+  ],
+  "uv_rects_2048": {
+    "title_upper": [
+      60,
+      945,
+      880,
+      1035
+    ],
+    "title_lower": [
+      30,
+      1590,
+      850,
+      1690
+    ],
+    "reg_upper": [
+      545,
+      495,
+      705,
+      545
+    ],
+    "reg_lower": [
+      485,
+      1430,
+      655,
+      1480
+    ],
+    "tail_logo_upper": [
+      291,
+      166,
+      1051,
+      974
+    ],
+    "tail_logo_lower": [
+      291,
+      1188,
+      1051,
+      1995
+    ],
+    "belly": [
+      700,
+      1135,
+      1100,
+      1235
+    ]
+  },
+  "package_folder": "skinmybird-a319-lvfr-huculeaks_air",
+  "soacraPhoto": null
+}
