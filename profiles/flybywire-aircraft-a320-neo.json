@@ -1,5 +1,6 @@
 {
   "id": "flybywire-aircraft-a320-neo",
+  "edition": "commercial",
   "displayName": "FlyByWire A320neo",
   "category": "avion",
   "simObjectType": "Airplanes",

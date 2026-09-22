@@ -1,5 +1,6 @@
 {
   "id": "asobo-boeing-787-10",
+  "edition": "commercial",
   "displayName": "Asobo Boeing 787-10",
   "category": "avion",
   "simObjectType": "Airplanes",

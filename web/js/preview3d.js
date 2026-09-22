@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.5.6 — real airliner GLBs + procedural helo/balloon.
+ * SkinMyBird 3D hangar preview v0.5.7 — real airliner GLBs + procedural helo/balloon.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";

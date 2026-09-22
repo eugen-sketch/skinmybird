@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.5.6 — commercial UI + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.5.7 — commercial/personal editions + 3D hangar preview (Three.js).
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.6";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.7";
 
 const $ = (id) => document.getElementById(id);
 
@@ -34,6 +34,7 @@ const $ = (id) => document.getElementById(id);
   const state = {
     profiles: [],
     profile: null,
+    edition: "commercial",
     colors: {
       fuselage: "#f2f4f7",
       nose: "#f2f4f7",
@@ -571,17 +572,32 @@ const $ = (id) => document.getElementById(id);
     drawPreview();
   }
 
+  async function resolveEdition() {
+    try {
+      let res = await fetch("/api/health");
+      if (!res.ok) res = await fetch("/api/edition");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      applyEditionBadge(data.edition || "commercial");
+    } catch (err) {
+      applyEditionBadge("commercial");
+    }
+  }
+
   async function loadProfiles() {
+    await resolveEdition();
     try {
       const res = await fetch("/api/profiles");
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
       state.profiles = data.profiles || [];
+      updateProfileCountPill();
       renderModelCards();
-      setStatus(`Loaded <strong>${state.profiles.length}</strong> profiles.`);
+      setStatus(`Loaded <strong>${state.profiles.length}</strong> profiles (${state.edition}).`);
       autoSelectFromUrl();
     } catch (err) {
-      state.profiles = FALLBACK_PROFILES;
+      state.profiles = filterProfilesForEdition(FALLBACK_PROFILES, state.edition);
+      updateProfileCountPill();
       renderModelCards();
       autoSelectFromUrl();
       setStatus(
@@ -592,18 +608,47 @@ const $ = (id) => document.getElementById(id);
   }
 
   const FALLBACK_PROFILES = [
-    { id: "asobo-aircraft-a320-neo", displayName: "Asobo A320neo", category: "avion", has_uv: true, silhouette: "airliner", ui_manufacturer: "Airbus" },
-    { id: "lvfr-airbus-a319-ceo", displayName: "LatinVFR A319 CEO", category: "avion", has_uv: true, silhouette: "airliner", ui_manufacturer: "Airbus" },
-    { id: "lvfr-airbus-a321-neo", displayName: "LatinVFR A321neo", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Airbus" },
-    { id: "lvfr-a330-900", displayName: "LatinVFR A330-900", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Airbus" },
-    { id: "flybywire-aircraft-a320-neo", displayName: "FlyByWire A320neo", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Airbus" },
-    { id: "asobo-boeing-787-10", displayName: "Asobo Boeing 787-10", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Boeing" },
-    { id: "asobo-aircraft-b7478i", displayName: "Asobo Boeing 747-8i", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Boeing" },
-    { id: "pmdg-aircraft-736", displayName: "PMDG 737-600", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Boeing" },
-    { id: "hpg-hotair-balloon", displayName: "HPG Hot Air Balloon", category: "balon", has_uv: false, silhouette: "balloon", ui_manufacturer: "HPG" },
-    { id: "hpg-airbus-h135", displayName: "HPG Airbus H135", category: "elicopter", has_uv: false, silhouette: "helicopter", ui_manufacturer: "Airbus Helicopters" },
-    { id: "skinmybird-cessna-172-stub", displayName: "Cessna 172 (preview stub)", category: "avion", has_uv: false, silhouette: "ga", ui_manufacturer: "Cessna" },
+    { id: "asobo-aircraft-a320-neo", displayName: "Asobo A320neo", category: "avion", has_uv: true, silhouette: "airliner", ui_manufacturer: "Airbus", edition: "commercial" },
+    { id: "lvfr-airbus-a319-ceo", displayName: "LatinVFR A319 CEO", category: "avion", has_uv: true, silhouette: "airliner", ui_manufacturer: "Airbus", edition: "commercial" },
+    { id: "lvfr-airbus-a321-neo", displayName: "LatinVFR A321neo", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Airbus", edition: "commercial" },
+    { id: "lvfr-a330-900", displayName: "LatinVFR A330-900", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Airbus", edition: "commercial" },
+    { id: "flybywire-aircraft-a320-neo", displayName: "FlyByWire A320neo", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Airbus", edition: "commercial" },
+    { id: "asobo-boeing-787-10", displayName: "Asobo Boeing 787-10", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Boeing", edition: "commercial" },
+    { id: "asobo-aircraft-b7478i", displayName: "Asobo Boeing 747-8i", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Boeing", edition: "commercial" },
+    { id: "pmdg-aircraft-736", displayName: "PMDG 737-600", category: "avion", has_uv: false, silhouette: "airliner", ui_manufacturer: "Boeing", edition: "commercial" },
+    { id: "hpg-hotair-balloon", displayName: "HPG Hot Air Balloon", category: "balon", has_uv: false, silhouette: "balloon", ui_manufacturer: "HPG", edition: "personal" },
+    { id: "hpg-airbus-h135", displayName: "HPG Airbus H135", category: "elicopter", has_uv: false, silhouette: "helicopter", ui_manufacturer: "Airbus Helicopters", edition: "personal" },
+    { id: "skinmybird-cessna-172-stub", displayName: "Cessna 172 (preview stub)", category: "avion", has_uv: false, silhouette: "ga", ui_manufacturer: "Cessna", edition: "personal" },
   ];
+
+  function filterProfilesForEdition(list, edition) {
+    const ed = (edition || "commercial").toLowerCase();
+    return (list || []).filter((p) => {
+      const tag = (p.edition || "commercial").toLowerCase();
+      if (tag === "personal") return ed === "personal";
+      return true;
+    });
+  }
+
+  function applyEditionBadge(edition) {
+    state.edition = (edition || "commercial").toLowerCase() === "personal" ? "personal" : "commercial";
+    const badge = $("edition-badge");
+    if (!badge) return;
+    const label = state.edition === "personal" ? "Personal" : "Commercial";
+    badge.textContent = label;
+    badge.classList.toggle("personal", state.edition === "personal");
+    badge.title = state.edition === "personal"
+      ? "Personal edition — airliners + helicopter / balloon / GA"
+      : "Commercial edition — Airbus + Boeing airliners only";
+    document.title = `SkinMyBird — ${label}`;
+  }
+
+  function updateProfileCountPill() {
+    const pill = $("profile-count-pill");
+    if (!pill) return;
+    const n = state.profiles.length;
+    pill.textContent = `${n} profile${n === 1 ? "" : "s"}`;
+  }
 
   function setBusy(busy, label) {
     ["btn-export", "btn-export-2", "btn-install", "btn-install-2"].forEach((id) => {

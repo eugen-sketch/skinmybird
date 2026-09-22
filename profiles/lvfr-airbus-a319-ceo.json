@@ -1,5 +1,6 @@
 {
   "id": "lvfr-airbus-a319-ceo",
+  "edition": "commercial",
   "displayName": "LatinVFR A319 CEO",
   "category": "avion",
   "simObjectType": "Airplanes",

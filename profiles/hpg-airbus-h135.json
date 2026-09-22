@@ -1,5 +1,6 @@
 {
   "id": "hpg-airbus-h135",
+  "edition": "personal",
   "displayName": "HPG Airbus H135",
   "category": "elicopter",
   "simObjectType": "Airplanes",

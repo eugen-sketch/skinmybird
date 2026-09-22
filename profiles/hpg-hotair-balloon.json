@@ -1,5 +1,6 @@
 {
   "id": "hpg-hotair-balloon",
+  "edition": "personal",
   "displayName": "HPG Hot Air Balloon",
   "category": "balon",
   "simObjectType": "Airplanes",

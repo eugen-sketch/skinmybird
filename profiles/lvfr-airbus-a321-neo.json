@@ -1,5 +1,6 @@
 {
   "id": "lvfr-airbus-a321-neo",
+  "edition": "commercial",
   "displayName": "LatinVFR A321neo",
   "category": "avion",
   "simObjectType": "Airplanes",

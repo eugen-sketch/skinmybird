@@ -1,5 +1,6 @@
 {
   "id": "skinmybird-cessna-172-stub",
+  "edition": "personal",
   "displayName": "Cessna 172 (preview stub)",
   "category": "avion",
   "simObjectType": "Airplanes",

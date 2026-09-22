@@ -1,5 +1,6 @@
 {
   "id": "asobo-aircraft-a320-neo",
+  "edition": "commercial",
   "displayName": "Asobo A320neo",
   "category": "avion",
   "simObjectType": "Airplanes",

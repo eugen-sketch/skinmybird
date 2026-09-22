@@ -15,6 +15,12 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.5.7 notes
+- **Two editions (one codebase)**: **Commercial** (default) = Airbus + Boeing fixed-wing airliners only; **Personal** = same + H135 helicopter, hot-air balloon, Cessna 172 stub.
+- Launchers: `SkinMyBird.bat` → commercial on **:5173**; `SkinMyBird-Personal.bat` → personal on **:5174**. Env: `SKINMYBIRD_EDITION`, `SKINMYBIRD_PORT`.
+- Profile JSON tagged with `"edition": "commercial"|"personal"`; UI header badge shows which edition is running.
+- Cache-bust `?v=0.5.7`
+
 ### v0.5.6 notes
 - **Hangar GLB paint zones**: single-material airframes (A320/737/747/787/…) recolor by **vertex geometry region** (wings / engines / tail / nose / belly / …), not the old fuselage-only tint. Procedural path unchanged.
 - Cache-bust `?v=0.5.6`
@@ -51,7 +57,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.5.6 (selector)
+## Models v0.5.7 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -63,11 +69,13 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 | 6 | Asobo Boeing 787-10 | whole-albedo stub | b787.glb |
 | 7 | Asobo Boeing 747-8i | whole-albedo stub | b747.glb (God's Eye View CC BY 4.0) |
 | 8 | PMDG 737-600 | whole-albedo stub | b737.glb |
-| 9 | HPG Hot Air Balloon | whole-albedo stub | procedural |
-| 10 | HPG Airbus H135 | whole-albedo stub | procedural |
-| 11 | Cessna 172 (preview stub) | whole-albedo stub | cessna.glb *(GA stand-in)* |
+| 9 | HPG Hot Air Balloon *(personal)* | whole-albedo stub | procedural |
+| 10 | HPG Airbus H135 *(personal)* | whole-albedo stub | procedural |
+| 11 | Cessna 172 preview stub *(personal)* | whole-albedo stub | cessna.glb *(GA stand-in)* |
 
-Profile JSON: `profiles/*.json`. UV / stub details: `ASSUMPTIONS.md`.
+Rows 1–8 ship in **commercial** (product for sale). Rows 9–11 are **personal-only** extras (still in the repo; hidden when `SKINMYBIRD_EDITION=commercial`).
+
+Profile JSON: `profiles/*.json` (`"edition"` field). UV / stub details: `ASSUMPTIONS.md`.
 
 ### 3D model attribution
 
@@ -79,6 +87,20 @@ Full notes: `web/models/ATTRIBUTION.txt`.
 
 ---
 
+## Editions (Commercial vs Personal)
+
+One codebase — two launchers. Do **not** fork the repo.
+
+| Launcher | Edition | Port | Aircraft |
+|----------|---------|------|----------|
+| **`SkinMyBird.bat`** | **Commercial** (default, for sale) | **5173** | Airbus + Boeing **fixed-wing airliners** only |
+| **`SkinMyBird-Personal.bat`** | **Personal** (Eugen private) | **5174** | Commercial set **+** H135 helicopter, hot-air balloon, Cessna 172 stub |
+
+- Env: `SKINMYBIRD_EDITION=commercial|personal`, `SKINMYBIRD_PORT` (defaults above).
+- Commercial hides personal profiles in the selector / API; profile JSON files stay in `profiles/`.
+- Header badge shows **Commercial** or **Personal** so you know which instance is open.
+- Note: H135 is Airbus-branded but a **helicopter** → personal only. Commercial = airliners only.
+
 ## Run (Windows — recommended)
 
 1. Install Python 3.11+ and (optional) create `.venv`, then:
@@ -87,10 +109,14 @@ Full notes: `web/models/ATTRIBUTION.txt`.
    ```
 2. Ensure `texconv.exe` (DirectXTex) exists, typically:
    `C:\Users\eugen\Downloads\texconv.exe`
-3. Double-click **`SkinMyBird.bat`** (or `scripts\Start-SkinMyBird.ps1`).
-4. Browser: `http://127.0.0.1:5173`
+3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
+4. Browser opens with cache-bust:
+   - Commercial → `http://127.0.0.1:5173/?v=0.5.7`
+   - Personal → `http://127.0.0.1:5174/?v=0.5.7`
 
 Optional env vars:
+- `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
+- `SKINMYBIRD_PORT` — default `5173` (commercial bat) / `5174` (personal bat)
 - `SKINMYBIRD_TEXCONV` — texconv path
 - `SKINMYBIRD_COMMUNITY` — default  
   `C:\Users\eugen\AppData\Roaming\Microsoft Flight Simulator\Packages\Community`  
@@ -112,8 +138,10 @@ cd /path/to/skinmybird
 source .venv/bin/activate
 pip install -r requirements.txt
 export SKINMYBIRD_TEXCONV=/workspace/tools/texconv.exe   # or tools/texconv.exe
+export SKINMYBIRD_EDITION=commercial   # or personal
+export SKINMYBIRD_PORT=5173            # 5174 for personal
 python server.py
-# → http://127.0.0.1:5173
+# → http://127.0.0.1:$SKINMYBIRD_PORT
 ```
 
 Or: `./scripts/start_dev.sh` · `npm start`
@@ -136,7 +164,8 @@ python -m exporter.export --preset two-tone --profile hpg-airbus-h135 --zip --fo
 | GET | `/api/profiles/{id}` | Full profile |
 | POST | `/api/export` | Community export (+ ZIP) |
 | POST | `/api/install` | Copy into Community |
-| GET | `/api/health` | texconv / wine status |
+| GET | `/api/health` | version, **edition**, texconv / wine |
+| GET | `/api/edition` | `{ edition, version }` |
 
 ---
 
@@ -158,7 +187,8 @@ skinmybird/
   web/                # English Canva UI + GLB hangar
   exporter/export.py  # Pillow → wine/native texconv BC7
   server.py           # FastAPI
-  SkinMyBird.bat      # Windows launcher
+  SkinMyBird.bat              # Commercial (:5173)
+  SkinMyBird-Personal.bat     # Personal (:5174)
   scripts/Start-SkinMyBird.ps1
   presets/
   ASSUMPTIONS.md
@@ -166,4 +196,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.5.6 — GLB vertex paint zones · clean CC-BY 747 · Two-Tone
+© SkinMyBird v0.5.7 — commercial + personal editions · GLB hangar · Two-Tone

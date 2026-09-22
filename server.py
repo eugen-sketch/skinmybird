@@ -25,7 +25,7 @@ DEFAULT_COMMUNITY = Path(
     )
 )
 
-app = FastAPI(title="SkinMyBird", version="0.3.0")
+app = FastAPI(title="SkinMyBird", version="0.5.7")
 
 
 class ExportRequest(BaseModel):
@@ -56,15 +56,25 @@ class InstallRequest(BaseModel):
 @app.get("/api/health")
 def health() -> dict:
     from exporter.export import find_texconv
+    from exporter.profiles import get_edition
 
     tex = find_texconv()
+    edition = get_edition()
     return {
         "ok": True,
-        "version": "0.3.0",
+        "version": "0.5.7",
+        "edition": edition,
         "texconv": str(tex) if tex else None,
         "wine": bool(shutil.which("wine")),
         "community_default": str(DEFAULT_COMMUNITY),
     }
+
+
+@app.get("/api/edition")
+def api_edition() -> dict:
+    from exporter.profiles import get_edition
+
+    return {"edition": get_edition(), "version": "0.5.7"}
 
 
 @app.get("/api/profiles")
@@ -282,10 +292,12 @@ if WEB.is_dir():
 
 def main() -> None:
     import uvicorn
+    from exporter.profiles import get_edition
 
     host = os.environ.get("SKINMYBIRD_HOST", "127.0.0.1")
     port = int(os.environ.get("SKINMYBIRD_PORT", "5173"))
-    print(f"SkinMyBird → http://{host}:{port}")
+    edition = get_edition()
+    print(f"SkinMyBird [{edition}] → http://{host}:{port}")
     uvicorn.run(app, host=host, port=port, reload=False, workers=1)
 
 

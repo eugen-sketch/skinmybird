@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SkinMyBird — Canva for MSFS liveries</title>
   <link rel="icon" type="image/png" href="icon.png" />
-  <link rel="stylesheet" href="css/styles.css?v=0.5.6" />
+  <link rel="stylesheet" href="css/styles.css?v=0.5.7" />
   <script type="importmap">
   {
     "imports": {
@@ -15,7 +15,7 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=0.5.6"></script>
+  <script type="module" src="js/app.js?v=0.5.7"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -26,6 +26,7 @@
           <strong class="brand-name">SkinMyBird</strong>
           <span class="brand-tag">Canva for MSFS · <em>€9.99</em></span>
         </div>
+        <span class="edition-badge" id="edition-badge" title="Product edition">Commercial</span>
       </div>
 
       <div class="header-center" id="header-model" hidden>
@@ -57,7 +58,7 @@
           <p class="lead">Pick a model, paint the livery, and export a Community package ready for MSFS.</p>
         </div>
         <div class="selector-meta">
-          <span class="pill">11 profiles</span>
+          <span class="pill" id="profile-count-pill">… profiles</span>
           <span class="pill muted">DDS BC7</span>
         </div>
       </div>
@@ -473,7 +474,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.5.6 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
+      <span>v0.5.7 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
     </footer>
   </div>
 </body>
