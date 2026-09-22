@@ -15,7 +15,7 @@ if exist ".venv\Scripts\python.exe" (
 )
 
 echo.
-echo  SkinMyBird v0.6.2 [Commercial] — http://127.0.0.1:5173
+echo  SkinMyBird v0.6.3 [Commercial] — http://127.0.0.1:5173
 echo  Stopping old servers on port 5173...
 echo.
 
@@ -31,6 +31,6 @@ echo  Community: %SKINMYBIRD_COMMUNITY%
 echo  texconv:   %SKINMYBIRD_TEXCONV%
 echo.
 
-start "" cmd /c "timeout /t 2 /nobreak >nul & start http://127.0.0.1:5173/?v=0.6.2"
+start "" cmd /c "timeout /t 2 /nobreak >nul & start http://127.0.0.1:5173/?v=0.6.3"
 "%PY%" -u server.py
 pause

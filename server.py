@@ -25,7 +25,7 @@ DEFAULT_COMMUNITY = Path(
     )
 )
 
-app = FastAPI(title="SkinMyBird", version="0.6.2")
+app = FastAPI(title="SkinMyBird", version="0.6.3")
 
 
 class ExportRequest(BaseModel):
@@ -62,7 +62,7 @@ def health() -> dict:
     edition = get_edition()
     return {
         "ok": True,
-        "version": "0.6.2",
+        "version": "0.6.3",
         "edition": edition,
         "texconv": str(tex) if tex else None,
         "wine": bool(shutil.which("wine")),
@@ -74,7 +74,7 @@ def health() -> dict:
 def api_edition() -> dict:
     from exporter.profiles import get_edition
 
-    return {"edition": get_edition(), "version": "0.6.2"}
+    return {"edition": get_edition(), "version": "0.6.3"}
 
 
 @app.get("/api/profiles")

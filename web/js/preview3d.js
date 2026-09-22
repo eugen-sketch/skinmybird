@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.2 — side-belt fuselage decals (not crown) + face-solid paint.
+ * SkinMyBird 3D hangar preview v0.6.3 — multi-X aft registration + side-belt fuselage decals (not crown) + face-solid paint.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -2018,6 +2018,7 @@ function addTextDecals(craft, state) {
   }
 
   // One aft registration per side (real-airliner style) — same lateral-side rules, not spine/crown.
+  // Multi-X probe: aft of wing the windowband often ends; single X silently misses both sides.
   let regTex = null;
   if (state.registration && place !== "tail" && place !== "wing") {
     regTex = makeRegTexture(state);
@@ -2025,12 +2026,25 @@ function addTextDecals(craft, state) {
     const regH = Math.max(0.28, regW * 0.38);
     const regDepth = panelDepth * 0.9;
     const regSize = new THREE.Vector3(regW, regH, regDepth);
-    const regX = center.x - size.x * 0.22;
+    // Prefer classic aft stations; try several X until a true side hit (|Ny|<=0.45, side skin).
+    const regXAft = [0.18, 0.22, 0.28, 0.32].map((f) => center.x - size.x * f);
+    // If aft mesh gaps: nudge forward toward wing TE, still clearly aft of airline title (xMain).
+    const regXFwd = [0.14, 0.10, 0.06]
+      .map((f) => center.x - size.x * f)
+      .filter((x) => x < xMain - size.x * 0.02);
+    const regXCandidates = regXAft.concat(regXFwd);
     const regYAlts = yAlts.map((y) => y - size.y * 0.02);
 
     [-1, 1].forEach((side) => {
-      const hit = trySideHit(side, regX, regYAlts);
-      if (!hit) return;
+      let hit = null;
+      for (const rx of regXCandidates) {
+        hit = trySideHit(side, rx, regYAlts);
+        if (hit) break;
+      }
+      if (!hit) {
+        console.warn("addTextDecals: no registration hit on side", side);
+        return;
+      }
       const flipU = resolveFlipU(hit, side, flipLeft, flipRight);
       const mat = sideMaterialFromTex(regTex, flipU, sharedMatOpts);
       projectDecal(group, hit, regSize, mat, 3);

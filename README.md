@@ -15,6 +15,11 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.6.3 notes
+- **Aft registration visibility**: Live hangar now probes several aft X stations (0.18 / 0.22 / 0.28 / 0.32 × fuselage length behind center) plus lower-Y belt samples so YR-… marks land on true lateral skin when the window-band ends aft of the wing.
+- Forward fallback (still aft of airline title) if all aft probes miss; hard-rejects crown/cockpit/belly and `|worldNormal.y| > 0.45` unchanged. Airline title placement from v0.6.2 is untouched.
+- Cache-bust `?v=0.6.3`
+
 ### v0.6.2 notes
 - **Fuselage side text (critical)**: airline title + aft registration project onto the **true lateral fuselage** (window-band / side skin), never the crown/roof ridge.
 - Side-decal targets prefer `windowband` > `fuselage` > `accent` > `doors` (optional fairings); **exclude** `crown`, `cockpit`, `belly`, wings, engines, tail.
@@ -76,7 +81,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.6.2 (selector)
+## Models v0.6.3 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -130,8 +135,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.6.2`
-   - Personal → `http://127.0.0.1:5174/?v=0.6.2`
+   - Commercial → `http://127.0.0.1:5173/?v=0.6.3`
+   - Personal → `http://127.0.0.1:5174/?v=0.6.3`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -215,4 +220,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.6.2 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.6.3 — commercial + personal editions · GLB hangar · Two-Tone
