@@ -1,4 +1,4 @@
-/* SkinMyBird v0.6.0 — commercial app shell · anthracite + orange · face-solid hangar paint */
+/* SkinMyBird v0.6.1 — commercial app shell · anthracite + orange · face-solid hangar paint */
 :root {
   --bg: #0b0b0d;
   --bg-elev: #121214;
@@ -960,7 +960,7 @@ input[type="text"]:focus {
 
 .field-group[hidden] { display: none !important; }
 
-/* v0.6.0 — zone highlight affordance in Colors tab */
+/* v0.6.1 — zone highlight affordance in Colors tab */
 .color-field:hover,
 .color-field:focus-within {
   outline: 1px solid rgba(255, 154, 74, 0.55);

@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.6.0 — face-solid GLB paint + zone highlight + commercial/personal editions.
+ * SkinMyBird web editor v0.6.1 — face-solid GLB paint + auto text orientation + zone highlight.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.0";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -66,7 +66,7 @@ const $ = (id) => document.getElementById(id);
     textPosY: -10,
     textScale: 100,
     textFlipLeft: false,
-    textFlipRight: true,
+    textFlipRight: false,
     stickers: {
       stripe: false,
       heart: false,
@@ -147,7 +147,7 @@ const $ = (id) => document.getElementById(id);
     if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? -10;
     if ($("text-scale")) $("text-scale").value = state.textScale ?? 100;
     if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
-    if ($("text-flip-right")) $("text-flip-right").checked = state.textFlipRight !== false;
+    if ($("text-flip-right")) $("text-flip-right").checked = !!state.textFlipRight;
     if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
     if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? -10);
     if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 100) + "%";
@@ -256,7 +256,7 @@ const $ = (id) => document.getElementById(id);
     state.textPosY = $("text-pos-y") ? Number($("text-pos-y").value) : -10;
     state.textScale = $("text-scale") ? Number($("text-scale").value) : 100;
     state.textFlipLeft = $("text-flip-left") ? $("text-flip-left").checked : false;
-    state.textFlipRight = $("text-flip-right") ? $("text-flip-right").checked : true;
+    state.textFlipRight = $("text-flip-right") ? $("text-flip-right").checked : false;
     // custom_text payload: slogan only — registration is its own field (avoid double paint)
     state.stickerText = state.slogan || "";
     state.stickers.stripe = $("st-stripe").checked;
@@ -876,7 +876,7 @@ const $ = (id) => document.getElementById(id);
     if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? -10;
     if ($("text-scale")) $("text-scale").value = state.textScale ?? 100;
     if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
-    if ($("text-flip-right")) $("text-flip-right").checked = state.textFlipRight !== false;
+    if ($("text-flip-right")) $("text-flip-right").checked = !!state.textFlipRight;
     if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
     if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? -10);
     if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 100) + "%";
@@ -953,7 +953,7 @@ const $ = (id) => document.getElementById(id);
     el.addEventListener("change", drawPreview);
   });
 
-  // v0.6.0 — highlight paint zone on preview when hovering/focusing a Colors field
+  // v0.6.1 — highlight paint zone on preview when hovering/focusing a Colors field
   const ZONE_COLOR_IDS = [
     "c-fuselage",
     "c-nose",

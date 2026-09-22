@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SkinMyBird — Canva for MSFS liveries</title>
   <link rel="icon" type="image/png" href="icon.png" />
-  <link rel="stylesheet" href="css/styles.css?v=0.6.0" />
+  <link rel="stylesheet" href="css/styles.css?v=0.6.1" />
   <script type="importmap">
   {
     "imports": {
@@ -15,7 +15,7 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=0.6.0"></script>
+  <script type="module" src="js/app.js?v=0.6.1"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -295,13 +295,13 @@
               </label>
               <label class="check">
                 <input type="checkbox" id="text-flip-left" />
-                <span>Mirror on left side</span>
+                <span>Fix if left still mirrored</span>
               </label>
               <label class="check">
-                <input type="checkbox" id="text-flip-right" checked />
-                <span>Mirror on right side</span>
+                <input type="checkbox" id="text-flip-right" />
+                <span>Fix if right still mirrored</span>
               </label>
-              <p class="hint">Drag the sliders to move text on the body. If one side reads backwards, toggle mirror.</p>
+              <p class="hint">Drag the sliders to move text on the body. Orientation is auto-corrected for outside L→R; check a side only if it still looks mirrored.</p>
             </div>
 
             <label class="check">
@@ -506,7 +506,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.6.0 · face-solid GLB paint · multi-aircraft · DDS BC7</span>
+      <span>v0.6.1 · face-solid GLB paint · auto text orient · DDS BC7</span>
     </footer>
   </div>
 </body>

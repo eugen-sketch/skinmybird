@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.0 — face-solid GLB paint zones (no vertex-color blur).
+ * SkinMyBird 3D hangar preview v0.6.1 — face-solid GLB paint + auto outward text orientation.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -805,6 +805,8 @@ function buildGlbFaceZoneSplits(craft) {
       if (uv && data.uv.length === (data.pos.length / 3) * 2) {
         zgeo.setAttribute("uv", new THREE.Float32BufferAttribute(data.uv, 2));
       }
+      zgeo.computeBoundingBox();
+      zgeo.computeBoundingSphere();
       const child = new THREE.Mesh(zgeo, zoneMaterials[zoneName]);
       child.name = `${mesh.name || "mesh"}_${zoneName}`;
       child.userData.paintZone = zoneName;
@@ -1537,6 +1539,18 @@ function collectDecalTargetMeshes(craft) {
   craft.updateMatrixWorld(true);
   const craftBox = new THREE.Box3().setFromObject(craft);
   const scored = [];
+  // Side-skin zones for airline/reg decals (avoid crown ridge / belly for fuselage sides)
+  const SIDE_ZONE_PRI = {
+    windowband: 0,
+    fuselage: 1,
+    accent: 2,
+    doors: 3,
+    fairings: 4,
+    nose: 5,
+    cockpit: 6,
+    belly: 8,
+    crown: 9,
+  };
   craft.traverse((child) => {
     if (!child.isMesh || !child.geometry) return;
     if (child.name === "textDecals" || (child.parent && child.parent.name === "textDecals"))
@@ -1550,9 +1564,10 @@ function collectDecalTargetMeshes(craft) {
     const isZonePart = !!(child.userData && child.userData.zonePaintPart);
     if (vol < 0.02 && !isZonePart) return;
     let role = classifyMeshRole(child.name, box, craftBox);
+    let paintZone = isZonePart ? child.userData.paintZone : null;
     // Map paint-zone parts to decal roles (body zones → fuselage target)
-    if (isZonePart && child.userData.paintZone) {
-      const z = child.userData.paintZone;
+    if (isZonePart && paintZone) {
+      const z = paintZone;
       if (
         z === "fuselage" || z === "crown" || z === "belly" || z === "nose" ||
         z === "cockpit" || z === "windowband" || z === "accent" || z === "doors" ||
@@ -1562,9 +1577,12 @@ function collectDecalTargetMeshes(craft) {
       else if (z === "tail" || z === "stabilizer") role = "tail";
       else if (z === "engines" || z === "pylons") role = "engines";
     }
-    scored.push({ mesh: child, role, vol, box, size });
+    const sidePri = paintZone != null && SIDE_ZONE_PRI[paintZone] != null
+      ? SIDE_ZONE_PRI[paintZone]
+      : 7;
+    scored.push({ mesh: child, role, vol, box, size, paintZone, sidePri });
   });
-  scored.sort((a, b) => b.vol - a.vol);
+  scored.sort((a, b) => a.sidePri - b.sidePri || b.vol - a.vol);
   const fuselage = scored.filter((s) => s.role === "fuselage");
   const wings = scored.filter((s) => s.role === "wings");
   const tail = scored.filter((s) => s.role === "tail");
@@ -1610,19 +1628,40 @@ function raycastBestHit(meshes, origin, dir, raycaster) {
  * Prefer fuselage skin hits (near centerline). Skip wing/outboard hits
  * that appear when casting from far away at low Y.
  */
-function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ) {
+function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ, preferY) {
   if (!meshes.length) return null;
   raycaster.set(origin, dir.clone().normalize());
   const hits = raycaster.intersectObjects(meshes, true);
   let best = null;
   let bestScore = Infinity;
+  const nMat = new THREE.Matrix3();
+  const wN = new THREE.Vector3();
   for (const h of hits) {
     if (!h.face || !h.object || !h.object.isMesh) continue;
     if (h.object.userData && h.object.userData.isTextDecal) continue;
+    if (h.object.userData && h.object.userData.zoneSplitParent) continue;
     const az = Math.abs(h.point.z - center.z);
     if (az > maxAbsZ) continue;
-    // Prefer closer to centerline, then nearer along the ray
-    const score = az * 10 + h.distance;
+    // World normal: prefer side skin (|Nz| high) over crown/belly (|Ny| high)
+    nMat.getNormalMatrix(h.object.matrixWorld);
+    wN.copy(h.face.normal).applyNormalMatrix(nMat).normalize();
+    const sideFacing = Math.abs(wN.z); // 1 = pure side
+    const vertical = Math.abs(wN.y);
+    const zone = h.object.userData && h.object.userData.paintZone;
+    let zonePen = 0;
+    if (zone === "crown") zonePen = 3.0;
+    else if (zone === "belly") zonePen = 1.5;
+    else if (zone === "windowband" || zone === "fuselage" || zone === "accent" || zone === "doors")
+      zonePen = -2.0;
+    const yErr = preferY != null ? Math.abs(h.point.y - preferY) * 2 : 0;
+    // Lower score wins: side-facing window-band beats crown ridge
+    const score =
+      az * 6 +
+      h.distance +
+      yErr +
+      zonePen +
+      vertical * 5 -
+      sideFacing * 5;
     if (score < bestScore) {
       bestScore = score;
       best = h;
@@ -1665,6 +1704,22 @@ function sideMaterialFromTex(baseTex, flipU, sharedMatOpts) {
     ...sharedMatOpts,
     map: matMap,
   });
+}
+
+/**
+ * Auto horizontal flip so fuselage text reads L→R from outside.
+ * After face-split DecalGeometry orientation (v0.6.0+), projector U already
+ * reads correctly on both fuselage sides — no auto flip. Text-tab checkboxes
+ * apply a manual corrective mirror when a side still looks wrong.
+ */
+function autoFlipUFromHit(hit) {
+  return false;
+}
+
+function resolveFlipU(hit, side, flipLeft, flipRight) {
+  const autoFlip = autoFlipUFromHit(hit);
+  const userFix = side < 0 ? !!flipLeft : !!flipRight;
+  return autoFlip !== userFix; // XOR: unchecked = auto (none); checked = mirror that side
 }
 
 /**
@@ -1819,8 +1874,9 @@ function addTextDecals(craft, state) {
   const stickerBoost = flagCodes.length || (st.stripe || st.heart || st.star || st.lightning || st.bird || st.roundel || st.chevron || st.checkered || st.smile || st.crown || st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge)
     ? (0.85 + 0.2 * stickerSizeMul(state))
     : 1;
-  const flipLeft = !!state.textFlipLeft;   // −Z
-  const flipRight = state.textFlipRight !== false; // +Z default on (fixes common mirror)
+  // Manual "fix if still mirrored" checkboxes (XOR autoFlipUFromHit); both default off
+  const flipLeft = !!state.textFlipLeft;   // −Z override
+  const flipRight = !!state.textFlipRight; // +Z override
   const decalSize = new THREE.Vector3(panelLen * scalePct * Math.min(stickerBoost, 1.55), panelH * scalePct * Math.min(stickerBoost, 1.55), panelDepth);
 
   // Sample X along fuselage (+posX moves aft toward tail if nose=+X mid)
@@ -1840,7 +1896,7 @@ function addTextDecals(craft, state) {
 
   // Fuselage half-width estimate (NOT wing span)
   const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
-  const maxFusAbsZ = fusR * 1.65; // reject wing/outboard hits
+  const maxFusAbsZ = fusR * 2.35; // reject wing/outboard hits (loose enough for zone-split skin)
   const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
 
   function meshesForPlace() {
@@ -1851,7 +1907,7 @@ function addTextDecals(craft, state) {
       const fus = targets.fuselage.map((t) => t.mesh);
       if (list.length || fus.length) return list.concat(fus);
     }
-    // Fuselage / belly: never include wing-role meshes
+    // Fuselage / belly: never include wing-role meshes (crown kept; raycast scoring deprioritizes it)
     if (targets.fuselage.length) {
       return targets.fuselage
         .filter((t) => t.role !== "wings")
@@ -1893,11 +1949,11 @@ function addTextDecals(craft, state) {
         const zDist = fusR * 2.4;
         origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
         dir = new THREE.Vector3(0, 0, -sideSign);
-        hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ);
+        hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y);
         // Fallback: slightly farther out if body miss
         if (!hit) {
           origin = new THREE.Vector3(x, y, center.z + sideSign * (fusR * 3.6));
-          hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ);
+          hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y);
         }
       }
       if (hit) return hit;
@@ -1909,11 +1965,10 @@ function addTextDecals(craft, state) {
   [-1, 1].forEach((side) => {
     const hit = trySideHit(side, xMain, place === "belly" || place === "wing" ? [yWindow] : yAlts);
     if (!hit) {
-      console.warn("addTextDecals: no hit on side", side, place);
+      console.warn("addTextDecals: no hit on side", side, place, "meshes", meshList.length);
       return;
     }
-    // Per-side mirror toggles (defaults: left off, right on — matches A320 hangar)
-    const flipU = side < 0 ? flipLeft : flipRight;
+    const flipU = resolveFlipU(hit, side, flipLeft, flipRight);
     const mat = sideMaterialFromTex(tex, flipU, sharedMatOpts);
     const sizeVec =
       place === "belly"
@@ -1952,7 +2007,7 @@ function addTextDecals(craft, state) {
     [-1, 1].forEach((side) => {
       const hit = trySideHit(side, regX, regYAlts);
       if (!hit) return;
-      const flipU = side < 0 ? flipLeft : flipRight;
+      const flipU = resolveFlipU(hit, side, flipLeft, flipRight);
       const mat = sideMaterialFromTex(regTex, flipU, sharedMatOpts);
       projectDecal(group, hit, regSize, mat, 3);
     });
@@ -2793,7 +2848,7 @@ export class Preview3D {
       this.scene.background = new THREE.Color(0x8a9aab);
     }
 
-    // Lights — brighter key/fill so solid zone colors read clearly (v0.6.0)
+    // Lights — brighter key/fill so solid zone colors read clearly (v0.6.1)
     const hemi = new THREE.HemisphereLight(0xeef3f8, 0x3a4048, 1.15);
     this.scene.add(hemi);
     const key = new THREE.DirectionalLight(0xfff7ee, 1.55);
