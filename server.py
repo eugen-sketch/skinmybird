@@ -297,7 +297,7 @@ def main() -> None:
     host = os.environ.get("SKINMYBIRD_HOST", "127.0.0.1")
     port = int(os.environ.get("SKINMYBIRD_PORT", "5173"))
     edition = get_edition()
-    print(f"SkinMyBird [{edition}] → http://{host}:{port}")
+    print(f"SkinMyBird [{edition}] -> http://{host}:{port}")
     uvicorn.run(app, host=host, port=port, reload=False, workers=1)
 
 
