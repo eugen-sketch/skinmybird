@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.5 — restore visible airline/reg side hits (windowband aim + broader probes) + face-solid paint.
+ * SkinMyBird 3D hangar preview v0.6.6 — deterministic window-band title/reg (sideBeltMeshes + yAim from band AABB).
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1872,70 +1872,93 @@ function addTextDecals(craft, state) {
   raycaster.far = 100;
 
   const fusLen = size.x;
-  // Shorter title panel (~A320 cabin side) so it stays forward of the wing and does not crop.
+
+  // --- v0.6.6 deterministic window-band belt ---------------------------------
+  // sideBeltMeshes: ONLY windowband + accent. Fallback fuselage ONLY if no windowband.
+  // Never belly / crown / cockpit / fairings / wings for title/reg side casts.
+  const scored = targets.scored || [];
+  const wbScored = scored.filter((s) => s.paintZone === "windowband");
+  const accentScored = scored.filter((s) => s.paintZone === "accent");
+  let sideBeltScored;
+  if (wbScored.length) {
+    sideBeltScored = wbScored.concat(accentScored);
+  } else {
+    sideBeltScored = scored.filter((s) => s.paintZone === "fuselage");
+  }
+  const sideBeltMeshes = sideBeltScored.map((s) => s.mesh);
+  // Fuselage side skins for aft reg when windowband ends (still no belly/crown/fairings)
+  const fuselageSideMeshes = scored
+    .filter(
+      (s) =>
+        s.paintZone === "fuselage" ||
+        s.paintZone === "windowband" ||
+        s.paintZone === "accent"
+    )
+    .map((s) => s.mesh);
+
+  // User offsets (need posX/posY before yAim / xMain)
+  const posX = Number(state.textPosX || 0) / 100;
+  const posY = Number(state.textPosY != null ? state.textPosY : 8) / 100;
+  const scalePct = Math.max(0.5, Math.min(1.6, (Number(state.textScale) || 100) / 100));
+
+  // Aim Y from UNION of windowband world AABBs (mid of band), not craft-size.y fractions.
+  let yAim;
+  let bandH;
+  if (wbScored.length && place !== "belly" && place !== "wing") {
+    const union = new THREE.Box3();
+    for (const s of wbScored) union.union(s.box);
+    yAim = (union.min.y + union.max.y) * 0.5;
+    bandH = Math.max(0.06, union.max.y - union.min.y);
+    // Tiny user textPosY nudge within the band (±12% of band height)
+    yAim += bandH * (posY * 0.12);
+  } else {
+    bandH = Math.max(0.12, size.y * 0.10);
+    yAim = center.y + size.y * (0.04 + posY * 0.25);
+  }
+  // Probes ONLY ±~15% of windowband height — never craft.size.y dives to wing root
+  const yAlts = [
+    yAim,
+    yAim - bandH * 0.08,
+    yAim + bandH * 0.08,
+    yAim - bandH * 0.15,
+    yAim + bandH * 0.15,
+  ];
+  const yWindow = yAim;
+  // Hard floor: anything below band bottom is wing-root / belly — reject
+  const yBandFloor = yAim - bandH;
+
+  // Title panel: fit INSIDE the window band; forward cabin (nose-ward of wing)
   const panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
-    fusLen * 0.38;
-  const panelH =
+    fusLen * 0.33; // ~0.30–0.36 fusLen
+  const titlePanelH =
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
-    Math.max(0.32, Math.min(size.y * 0.28, 0.72));
+    place === "belly" || place === "tail" ? Math.max(0.32, Math.min(size.y * 0.28, 0.72)) :
+    Math.max(bandH * 0.55, Math.min(bandH * 0.75, bandH * 0.65));
   const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
 
-  // User offsets: textPosX/Y in −50…50, textScale in %
-  const posX = Number(state.textPosX || 0) / 100; // −0.5…0.5 along length
-  const posY = Number(state.textPosY != null ? state.textPosY : 8) / 100;
-  const scalePct = Math.max(0.5, Math.min(1.6, (Number(state.textScale) || 100) / 100));
-  // Stickers / flags share the decal panel — bump projection size with stickerSize
   const stickerBoost = flagCodes.length || (st.stripe || st.heart || st.star || st.lightning || st.bird || st.roundel || st.chevron || st.checkered || st.smile || st.crown || st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge)
     ? (0.85 + 0.2 * stickerSizeMul(state))
     : 1;
-  // Manual "fix if still mirrored" checkboxes (XOR autoFlipUFromHit); both default off
-  const flipLeft = !!state.textFlipLeft;   // −Z override
-  const flipRight = !!state.textFlipRight; // +Z override
-  const decalSize = new THREE.Vector3(panelLen * scalePct * Math.min(stickerBoost, 1.55), panelH * scalePct * Math.min(stickerBoost, 1.55), panelDepth);
+  const flipLeft = !!state.textFlipLeft;
+  const flipRight = !!state.textFlipRight;
+  const decalSize = new THREE.Vector3(
+    panelLen * scalePct * Math.min(stickerBoost, 1.55),
+    titlePanelH * scalePct * Math.min(stickerBoost, 1.55),
+    panelDepth
+  );
 
-  // Sample X along fuselage (+posX moves aft toward tail if nose=+X mid).
-  // Default ~0.13× fusLen nose-ward of center = forward cabin, ahead of wing root.
-  let xMain = center.x + size.x * (0.13 - posX * 0.35);
+  // Title X: forward cabin, nose-ward of wing (~0.18 × fusLen ahead of center)
+  let xMain = center.x + size.x * (0.18 - posX * 0.35);
   if (place === "tail") xMain = center.x - size.x * (0.28 + posX * 0.1);
   else if (place === "wing") xMain = center.x - size.x * 0.02;
 
-  // Aim Y: prefer windowband mesh world bbox center (slightly below) when present —
-  // more reliable than craft-bbox fractions that drift into crown/shoulder.
-  let yBelt;
-  const wbMeshes = (targets.scored || []).filter((s) => s.paintZone === "windowband");
-  if (wbMeshes.length && place !== "belly" && place !== "wing") {
-    let bestWb = wbMeshes[0];
-    for (let i = 1; i < wbMeshes.length; i++) {
-      if (wbMeshes[i].vol > bestWb.vol) bestWb = wbMeshes[i];
-    }
-    const wbCenter = bestWb.box.getCenter(new THREE.Vector3());
-    // Slightly below band center keeps rays on the vertical side wall, not crown ridge.
-    yBelt = wbCenter.y - bestWb.size.y * 0.08 + size.y * (posY * 0.12);
-  } else {
-    // Fallback: moderate mid-side belt (below v0.6.4 crown-prone 0.10).
-    const beltBase = 0.04;
-    yBelt = center.y + size.y * (beltBase + posY * 0.35);
-  }
-  // Primary belt, then modest down steps that stay on the side wall (not wing root).
-  const yAlts = [
-    yBelt,
-    yBelt - size.y * 0.04,
-    yBelt - size.y * 0.08,
-    yBelt - size.y * 0.12,
-    yBelt + size.y * 0.03,
-  ];
-  const yWindow = yBelt;
-  // Soft floor: only reject truly low wing-root crops (not mid-side fallbacks).
-  const yWingFloor = center.y - size.y * 0.22;
-
-  // Fuselage half-width estimate (NOT wing span)
   const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
-  const maxFusAbsZ = fusR * 2.35; // reject wing/outboard hits (loose enough for zone-split skin)
+  const maxFusAbsZ = fusR * 2.35;
   const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
 
-  function meshesForPlace() {
+  function meshesForPlace(forReg) {
     if (place === "wing" && targets.wings.length)
       return targets.wings.map((t) => t.mesh);
     if (place === "belly") {
@@ -1948,46 +1971,34 @@ function addTextDecals(craft, state) {
       const fus = targets.fuselage.map((t) => t.mesh);
       if (list.length || fus.length) return list.concat(fus);
     }
-    // Fuselage / registration sides: ONLY lateral skins (windowband>fuselage>accent>doors)
-    // Crown / cockpit / belly / wings / engines / tail are excluded from targets.fuselage.
-    if (targets.fuselage.length) {
-      return targets.fuselage.map((t) => t.mesh);
+    if (!forReg && sideBeltMeshes.length) return sideBeltMeshes;
+    if (forReg) {
+      const seen = new Set();
+      const out = [];
+      for (const m of sideBeltMeshes.concat(fuselageSideMeshes)) {
+        if (!m || seen.has(m.uuid)) continue;
+        seen.add(m.uuid);
+        out.push(m);
+      }
+      if (out.length) return out;
     }
-    const cz = center.z;
-    const nearCenter = targets.scored
-      .filter((s) => {
-        if (s.role === "wings" || s.role === "engines" || s.role === "crown" || s.role === "belly" || s.role === "nose")
-          return false;
-        if (s.paintZone === "crown" || s.paintZone === "cockpit" || s.paintZone === "belly")
-          return false;
-        const c = s.box.getCenter(new THREE.Vector3());
-        return Math.abs(c.z - cz) < fusR * 2.2;
-      })
-      .map((s) => s.mesh);
-    if (nearCenter.length) return nearCenter.slice(0, 8);
-    // Single-mesh airliners: still ok — normal + zone filters reject roof hits
+    if (sideBeltMeshes.length) return sideBeltMeshes;
+    if (targets.fuselage.length) return targets.fuselage.map((t) => t.mesh);
     return targets.all.slice(0, 4);
   }
 
-  const meshList = meshesForPlace();
+  const meshListTitle = meshesForPlace(false);
+  const meshListReg = meshesForPlace(true);
 
-  function trySideHit(sideSign, x, yCandidates) {
-    // sideSign: +1 = +Z (right), −1 = −Z (left)
+  function trySideHit(sideSign, x, yCandidates, meshList) {
     const probeYs = Array.isArray(yCandidates) ? yCandidates.slice() : [yCandidates];
-    // Extra modest down samples if primary belt still grazes crown/shoulder
-    if (place !== "belly" && place !== "wing") {
-      probeYs.push(
-        yBelt - size.y * 0.06,
-        yBelt - size.y * 0.10,
-        yBelt + size.y * 0.02
-      );
-    }
-    function castAtY(y, soft) {
+    const meshes = meshList || meshListTitle;
+    function castAtY(y) {
       let origin, dir, hit;
       if (place === "belly") {
         origin = new THREE.Vector3(x, center.y - reach, center.z + sideSign * 0.05);
         dir = new THREE.Vector3(0, 1, -sideSign * 0.02).normalize();
-        return raycastBestHit(meshList, origin, dir, raycaster);
+        return raycastBestHit(meshes, origin, dir, raycaster);
       }
       if (place === "wing") {
         origin = new THREE.Vector3(
@@ -1996,97 +2007,84 @@ function addTextDecals(craft, state) {
           center.z + sideSign * size.z * 0.28
         );
         dir = new THREE.Vector3(0, -1, 0);
-        return raycastBestHit(meshList, origin, dir, raycaster);
+        return raycastBestHit(meshes, origin, dir, raycaster);
       }
-      // Fuselage / tail / registration: horizontal ray from side into body at belt Y
-      const opts = soft
-        ? { maxNy: 0.55, preferSideZones: true }
-        : { maxNy: 0.45 };
+      // Hard lateral only — |Ny|<=0.4; no soft belly / low-fuselage path
+      const opts = { maxNy: 0.4, preferSideZones: true };
       const zDist = fusR * 2.4;
       origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
       dir = new THREE.Vector3(0, 0, -sideSign);
-      hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
+      hit = raycastFuselageHit(meshes, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
       if (!hit) {
         origin = new THREE.Vector3(x, y, center.z + sideSign * (fusR * 3.6));
-        hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
+        hit = raycastFuselageHit(meshes, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
       }
-      // Drop only very-low wing-root crops; keep mid-side / windowband hits
-      if (hit && hit.point && hit.point.y < yWingFloor) {
-        const z = hit.object.userData && hit.object.userData.paintZone;
-        if (z !== "windowband" && z !== "fuselage" && z !== "accent" && z !== "doors")
-          hit = null;
-      }
+      if (hit && hit.point && hit.point.y < yBandFloor) hit = null;
       return hit;
     }
     for (const y of probeYs) {
-      const hit = castAtY(y, false);
+      const hit = castAtY(y);
       if (hit) return hit;
-    }
-    // Soft miss path: same Y ladder, slightly looser |Ny| + prefer side paintZones
-    if (place !== "belly" && place !== "wing") {
-      for (const y of probeYs) {
-        const hit = castAtY(y, true);
-        if (hit) return hit;
-      }
     }
     return null;
   }
 
-  // LEFT (−Z) and RIGHT (+Z)
+  // LEFT (−Z) and RIGHT (+Z) — airline / sticker title
   [-1, 1].forEach((side) => {
-    const hit = trySideHit(side, xMain, place === "belly" || place === "wing" ? [yWindow] : yAlts);
+    const hit = trySideHit(
+      side,
+      xMain,
+      place === "belly" || place === "wing" ? [yWindow] : yAlts,
+      meshListTitle
+    );
     if (!hit) {
-      console.warn("addTextDecals: no hit on side", side, place, "meshes", meshList.length);
+      console.warn("addTextDecals: no hit on side", side, place, "meshes", meshListTitle.length);
       return;
     }
     const flipU = resolveFlipU(hit, side, flipLeft, flipRight);
     const mat = sideMaterialFromTex(tex, flipU, sharedMatOpts);
     const sizeVec =
       place === "belly"
-        ? new THREE.Vector3(panelLen, panelH * 0.85, panelDepth)
+        ? new THREE.Vector3(panelLen, titlePanelH * 0.85, panelDepth)
         : decalSize.clone();
     projectDecal(group, hit, sizeVec, mat, 2);
   });
 
-  // Belly-only: also try a centered under-fuselage ray if sides missed (extra)
   if (place === "belly" && group.children.length === 0) {
     const origin = new THREE.Vector3(xMain, center.y - reach, center.z);
-    const hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, 1, 0), raycaster);
+    const hit = raycastBestHit(meshListTitle, origin, new THREE.Vector3(0, 1, 0), raycaster);
     if (hit) {
       const mat = sideMaterialFromTex(tex, false, sharedMatOpts);
       projectDecal(
         group,
         hit,
-        new THREE.Vector3(panelLen, panelH * 0.85, panelDepth),
+        new THREE.Vector3(panelLen, titlePanelH * 0.85, panelDepth),
         mat,
         2
       );
     }
   }
 
-  // One aft registration per side (real-airliner style) — same lateral-side rules, not spine/crown.
-  // Multi-X probe: aft of wing the windowband often ends; single X silently misses both sides.
+  // One aft registration per side — SAME yAim ladder as title (windowband).
   let regTex = null;
   if (state.registration && place !== "tail" && place !== "wing") {
     regTex = makeRegTexture(state);
-    const regW = Math.min(size.x * 0.16, 1.5);
-    const regH = Math.max(0.28, regW * 0.38);
+    // Visible ~0.9–1.2 m wide
+    const regW = Math.min(1.2, Math.max(0.9, size.x * 0.12));
+    const regH = Math.max(bandH * 0.45, Math.min(bandH * 0.70, regW * 0.32));
     const regDepth = panelDepth * 0.9;
     const regSize = new THREE.Vector3(regW, regH, regDepth);
-    // Prefer classic aft stations; try several X until a true side hit (|Ny|<=0.45, side skin).
     const regXAft = [0.18, 0.22, 0.28, 0.32].map((f) => center.x - size.x * f);
-    // If aft mesh gaps: nudge forward toward wing TE, still clearly aft of airline title (xMain).
     const regXFwd = [0.14, 0.10, 0.06]
       .map((f) => center.x - size.x * f)
       .filter((x) => x < xMain - size.x * 0.02);
     const regXCandidates = regXAft.concat(regXFwd);
-    // Same window-belt ladder as title (includes modest down probes for aft skin).
     const regYAlts = yAlts.slice();
 
     [-1, 1].forEach((side) => {
       let hit = null;
       for (const rx of regXCandidates) {
-        hit = trySideHit(side, rx, regYAlts);
+        hit = trySideHit(side, rx, regYAlts, meshListReg);
         if (hit) break;
       }
       if (!hit) {

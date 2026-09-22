@@ -15,10 +15,18 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.6.6 notes
+- **Deterministic window-band placement**: title + registration aim only at the cabin window line — not the teal strip above the wing root.
+- **`sideBeltMeshes`**: only `paintZone` in `{windowband, accent}`; fallback `fuselage` **only if no windowband**. Never belly / crown / cockpit / fairings / wings for side casts.
+- **`yAim`**: midpoint of windowband world AABB union `(min.y+max.y)/2`. Y probes ±8%/±15% of **band height** only (no craft-`size.y` dives). Reject hits with `|Ny|>0.4` or `point.y < yAim - bandH`.
+- Title X forward cabin `center.x + size.x * 0.18`; panelLen `fusLen * 0.33`; panelH ~0.55–0.75 of band height. Reg ~0.9–1.2 m wide on same `yAim` ladder (aft multi-X; fuselage side OK if band missing aft).
+- Removed soft miss path that accepted belly/low fuselage. L→R, both sides, no crown.
+- Cache-bust `?v=0.6.6`
+
 ### v0.6.5 notes
 - **QA fix**: v0.6.4 raised aim Y into crown/shoulder so hard-rejects (`paintZone crown` / `|Ny|>0.45`) dropped **both** SkinMyBird and YR-EUG on both sides.
-- Aim Y now prefers **`paintZone==="windowband"`** mesh world bbox center (slightly below); craft-bbox fallback uses moderate `beltBase` **0.04**.
-- Broader Y probe ladder (modest down −0.04…−0.12×size.y) + soft miss pass (`|Ny|<=0.55`, prefer windowband/fuselage/accent/doors). Softer wing-floor reject.
+- Aim Y preferred **`paintZone==="windowband"`** mesh world bbox center (slightly below); craft-bbox fallback used moderate `beltBase` **0.04**.
+- Broader Y probe ladder (modest down −0.04…−0.12×size.y) + soft miss pass (`|Ny|<=0.55`). Superseded by v0.6.6 band-height probes.
 - Keep airliner layout: forward `xMain` (~0.13), shorter panel (`fusLen * 0.38`), no crown, L→R flips, multi-X aft registration.
 - Identity airline/registration projects without requiring Stickers→Text.
 - Cache-bust `?v=0.6.5`
@@ -28,7 +36,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Raised defaults: `textPosY` **+8**, `beltBase` **0.10**; shorter fuselage panel (`fusLen * 0.36`); forward X (`center.x + size.x * 0.15`).
 - Y probes prefer belt → slight up → modest down; removed aggressive low probes (`-0.22/-0.28`); reject hits below wing-plane estimate.
 - Registration stays aft on the **same raised belt** (not dropped toward the wing).
-- Cache-bust `?v=0.6.4` (superseded by 0.6.5 hit restore)
+- Cache-bust `?v=0.6.4` (superseded by 0.6.5/0.6.6)
 
 ### v0.6.3 notes
 - **Aft registration visibility**: Live hangar now probes several aft X stations (0.18 / 0.22 / 0.28 / 0.32 × fuselage length behind center) plus lower-Y belt samples so YR-… marks land on true lateral skin when the window-band ends aft of the wing.
@@ -96,7 +104,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.6.5 (selector)
+## Models v0.6.6 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -150,8 +158,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.6.5`
-   - Personal → `http://127.0.0.1:5174/?v=0.6.5`
+   - Commercial → `http://127.0.0.1:5173/?v=0.6.6`
+   - Personal → `http://127.0.0.1:5174/?v=0.6.6`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -235,4 +243,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.6.5 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.6.6 — commercial + personal editions · GLB hangar · Two-Tone
