@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.4 — A320-style window-band title (forward of wing) + raised side-belt + face-solid paint.
+ * SkinMyBird 3D hangar preview v0.6.5 — restore visible airline/reg side hits (windowband aim + broader probes) + face-solid paint.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1456,7 +1456,9 @@ function paintDecalCanvas(canvas, state) {
     st.roundel || st.chevron || st.checkered || st.smile || st.crown ||
     st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow ||
     st.sparkle || st.wingbadge;
-  const showText = !!st.text;
+  // Airline title from Identity projects even if Stickers→Text is unchecked.
+  const hasAirlineId = !!(state.airline && String(state.airline).trim());
+  const showText = !!st.text || hasAirlineId;
   const flagCodes = (state.flags && state.flags.codes) || [];
   const hasFlags = flagCodes.length > 0;
 
@@ -1627,8 +1629,12 @@ function raycastBestHit(meshes, origin, dir, raycaster) {
  * Prefer fuselage skin hits (near centerline). Skip wing/outboard hits
  * that appear when casting from far away at low Y.
  */
-function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ, preferY) {
+function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ, preferY, opts) {
   if (!meshes.length) return null;
+  const options = opts || {};
+  const maxNy = options.maxNy != null ? options.maxNy : 0.45;
+  const preferSideZones = !!options.preferSideZones;
+  const SIDE_OK = new Set(["windowband", "fuselage", "accent", "doors"]);
   raycaster.set(origin, dir.clone().normalize());
   const hits = raycaster.intersectObjects(meshes, true);
   let best = null;
@@ -1644,10 +1650,12 @@ function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ, pre
     const zone = h.object.userData && h.object.userData.paintZone;
     // Hard reject roof/canopy/underside zone meshes — never treat crown as fuselage success
     if (zone === "crown" || zone === "cockpit" || zone === "belly") continue;
+    // Soft pass: prefer named lateral skins when present
+    if (preferSideZones && zone && !SIDE_OK.has(zone) && zone !== "fairings") continue;
     // World normal: keep mostly sideways; reject roof/belly-facing faces
     nMat.getNormalMatrix(h.object.matrixWorld);
     wN.copy(h.face.normal).applyNormalMatrix(nMat).normalize();
-    if (Math.abs(wN.y) > 0.45) continue; // |Ny| dominant → crown ridge / belly
+    if (Math.abs(wN.y) > maxNy) continue; // |Ny| dominant → crown ridge / belly
     const sideFacing = Math.abs(wN.z); // 1 = pure side
     const vertical = Math.abs(wN.y);
     let zonePen = 0;
@@ -1828,12 +1836,18 @@ function addTextDecals(craft, state) {
 
   const st = state.stickers || {};
   const flagCodes = (state.flags && state.flags.codes) || [];
+  // Identity airline/registration must project without requiring Stickers→Text.
+  const hasIdentityText = !!(
+    (state.airline && String(state.airline).trim()) ||
+    (state.registration && String(state.registration).trim())
+  );
   const anyVisual =
     st.text || st.stripe || st.heart || st.star || st.lightning ||
     st.bird || st.roundel || st.chevron || st.checkered ||
     st.smile || st.crown || st.diamond || st.sun || st.moon ||
     st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge ||
-    flagCodes.length > 0;
+    flagCodes.length > 0 ||
+    hasIdentityText;
   if (!anyVisual) {
     return { tex: null, mat: null, group, regTex: null };
   }
@@ -1862,7 +1876,7 @@ function addTextDecals(craft, state) {
   const panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
-    fusLen * 0.36;
+    fusLen * 0.38;
   const panelH =
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
     Math.max(0.32, Math.min(size.y * 0.28, 0.72));
@@ -1882,26 +1896,39 @@ function addTextDecals(craft, state) {
   const decalSize = new THREE.Vector3(panelLen * scalePct * Math.min(stickerBoost, 1.55), panelH * scalePct * Math.min(stickerBoost, 1.55), panelDepth);
 
   // Sample X along fuselage (+posX moves aft toward tail if nose=+X mid).
-  // Default ~0.15× fusLen nose-ward of center = forward cabin, ahead of wing root.
-  let xMain = center.x + size.x * (0.15 - posX * 0.35);
+  // Default ~0.13× fusLen nose-ward of center = forward cabin, ahead of wing root.
+  let xMain = center.x + size.x * (0.13 - posX * 0.35);
   if (place === "tail") xMain = center.x - size.x * (0.28 + posX * 0.1);
   else if (place === "wing") xMain = center.x - size.x * 0.02;
 
-  // Aim at true lateral window-belt (mid-tube), NOT crown/roof / wing root.
-  // Default textPosY=+8 + raised beltBase → cabin window line.
-  const beltBase = 0.10; // fraction of craft bbox height (~window line)
-  const yBelt = center.y + size.y * (beltBase + posY * 0.4);
-  // Prefer belt, slight up, then modest down — never dive to wing-root height.
+  // Aim Y: prefer windowband mesh world bbox center (slightly below) when present —
+  // more reliable than craft-bbox fractions that drift into crown/shoulder.
+  let yBelt;
+  const wbMeshes = (targets.scored || []).filter((s) => s.paintZone === "windowband");
+  if (wbMeshes.length && place !== "belly" && place !== "wing") {
+    let bestWb = wbMeshes[0];
+    for (let i = 1; i < wbMeshes.length; i++) {
+      if (wbMeshes[i].vol > bestWb.vol) bestWb = wbMeshes[i];
+    }
+    const wbCenter = bestWb.box.getCenter(new THREE.Vector3());
+    // Slightly below band center keeps rays on the vertical side wall, not crown ridge.
+    yBelt = wbCenter.y - bestWb.size.y * 0.08 + size.y * (posY * 0.12);
+  } else {
+    // Fallback: moderate mid-side belt (below v0.6.4 crown-prone 0.10).
+    const beltBase = 0.04;
+    yBelt = center.y + size.y * (beltBase + posY * 0.35);
+  }
+  // Primary belt, then modest down steps that stay on the side wall (not wing root).
   const yAlts = [
     yBelt,
+    yBelt - size.y * 0.04,
+    yBelt - size.y * 0.08,
+    yBelt - size.y * 0.12,
     yBelt + size.y * 0.03,
-    yBelt + size.y * 0.06,
-    yBelt - size.y * 0.03,
-    yBelt - size.y * 0.06,
   ];
   const yWindow = yBelt;
-  // Reject hits that land near/below wing plane (wing-root crop)
-  const yWingFloor = center.y - size.y * 0.08;
+  // Soft floor: only reject truly low wing-root crops (not mid-side fallbacks).
+  const yWingFloor = center.y - size.y * 0.22;
 
   // Fuselage half-width estimate (NOT wing span)
   const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
@@ -1947,42 +1974,60 @@ function addTextDecals(craft, state) {
   function trySideHit(sideSign, x, yCandidates) {
     // sideSign: +1 = +Z (right), −1 = −Z (left)
     const probeYs = Array.isArray(yCandidates) ? yCandidates.slice() : [yCandidates];
-    // Mild extras only: prefer staying on/above window belt (no wing-root dive)
+    // Extra modest down samples if primary belt still grazes crown/shoulder
     if (place !== "belly" && place !== "wing") {
       probeYs.push(
-        yBelt + size.y * 0.02,
-        yBelt - size.y * 0.08
+        yBelt - size.y * 0.06,
+        yBelt - size.y * 0.10,
+        yBelt + size.y * 0.02
       );
     }
-    for (const y of probeYs) {
+    function castAtY(y, soft) {
       let origin, dir, hit;
       if (place === "belly") {
         origin = new THREE.Vector3(x, center.y - reach, center.z + sideSign * 0.05);
         dir = new THREE.Vector3(0, 1, -sideSign * 0.02).normalize();
-        hit = raycastBestHit(meshList, origin, dir, raycaster);
-      } else if (place === "wing") {
+        return raycastBestHit(meshList, origin, dir, raycaster);
+      }
+      if (place === "wing") {
         origin = new THREE.Vector3(
           x,
           center.y + reach * 0.55,
           center.z + sideSign * size.z * 0.28
         );
         dir = new THREE.Vector3(0, -1, 0);
-        hit = raycastBestHit(meshList, origin, dir, raycaster);
-      } else {
-        // Fuselage / tail / registration: horizontal ray from side into body at belt Y
-        const zDist = fusR * 2.4;
-        origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
-        dir = new THREE.Vector3(0, 0, -sideSign);
-        hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y);
-        // Fallback: slightly farther out if body miss
-        if (!hit) {
-          origin = new THREE.Vector3(x, y, center.z + sideSign * (fusR * 3.6));
-          hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y);
-        }
-        // Drop hits that landed at/below wing-plane estimate (wing-root crop)
-        if (hit && hit.point && hit.point.y < yWingFloor) hit = null;
+        return raycastBestHit(meshList, origin, dir, raycaster);
       }
+      // Fuselage / tail / registration: horizontal ray from side into body at belt Y
+      const opts = soft
+        ? { maxNy: 0.55, preferSideZones: true }
+        : { maxNy: 0.45 };
+      const zDist = fusR * 2.4;
+      origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
+      dir = new THREE.Vector3(0, 0, -sideSign);
+      hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
+      if (!hit) {
+        origin = new THREE.Vector3(x, y, center.z + sideSign * (fusR * 3.6));
+        hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
+      }
+      // Drop only very-low wing-root crops; keep mid-side / windowband hits
+      if (hit && hit.point && hit.point.y < yWingFloor) {
+        const z = hit.object.userData && hit.object.userData.paintZone;
+        if (z !== "windowband" && z !== "fuselage" && z !== "accent" && z !== "doors")
+          hit = null;
+      }
+      return hit;
+    }
+    for (const y of probeYs) {
+      const hit = castAtY(y, false);
       if (hit) return hit;
+    }
+    // Soft miss path: same Y ladder, slightly looser |Ny| + prefer side paintZones
+    if (place !== "belly" && place !== "wing") {
+      for (const y of probeYs) {
+        const hit = castAtY(y, true);
+        if (hit) return hit;
+      }
     }
     return null;
   }
@@ -2035,7 +2080,7 @@ function addTextDecals(craft, state) {
       .map((f) => center.x - size.x * f)
       .filter((x) => x < xMain - size.x * 0.02);
     const regXCandidates = regXAft.concat(regXFwd);
-    // Same raised window-belt as title — do not drop toward the wing.
+    // Same window-belt ladder as title (includes modest down probes for aft skin).
     const regYAlts = yAlts.slice();
 
     [-1, 1].forEach((side) => {
@@ -2254,7 +2299,8 @@ function paintFuselageCanvas(canvas, state, family) {
   }
 
   // Text / airline / registration — wide halves + auto-shrink + font/style
-  if (st.text) {
+  // Identity airline paints even when Stickers→Text is off (same as mesh decals).
+  if (st.text || (state.airline && String(state.airline).trim())) {
     const sizeKey = state.textSize || "M";
     const basePx = sizeKey === "S" ? 72 : sizeKey === "L" ? 140 : 104;
     const place = state.textPlacement || "fuselage";

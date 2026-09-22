@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.6.4 — A320-style window-band title placement + raised side-belt + face-solid paint + zone highlight.
+ * SkinMyBird web editor v0.6.5 — restore visible airline/reg side hits (windowband aim) + airliner panel + face-solid paint + zone highlight.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.4";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.5";
 
 const $ = (id) => document.getElementById(id);
 

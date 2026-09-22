@@ -15,12 +15,20 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.6.5 notes
+- **QA fix**: v0.6.4 raised aim Y into crown/shoulder so hard-rejects (`paintZone crown` / `|Ny|>0.45`) dropped **both** SkinMyBird and YR-EUG on both sides.
+- Aim Y now prefers **`paintZone==="windowband"`** mesh world bbox center (slightly below); craft-bbox fallback uses moderate `beltBase` **0.04**.
+- Broader Y probe ladder (modest down −0.04…−0.12×size.y) + soft miss pass (`|Ny|<=0.55`, prefer windowband/fuselage/accent/doors). Softer wing-floor reject.
+- Keep airliner layout: forward `xMain` (~0.13), shorter panel (`fusLen * 0.38`), no crown, L→R flips, multi-X aft registration.
+- Identity airline/registration projects without requiring Stickers→Text.
+- Cache-bust `?v=0.6.5`
+
 ### v0.6.4 notes
 - **Airline title placement (A320-style)**: title aims at the **window-band** on the mid-side wall, **forward of the wing** (between nose and wing LE) — not at the wing root.
 - Raised defaults: `textPosY` **+8**, `beltBase` **0.10**; shorter fuselage panel (`fusLen * 0.36`); forward X (`center.x + size.x * 0.15`).
 - Y probes prefer belt → slight up → modest down; removed aggressive low probes (`-0.22/-0.28`); reject hits below wing-plane estimate.
 - Registration stays aft on the **same raised belt** (not dropped toward the wing).
-- Cache-bust `?v=0.6.4`
+- Cache-bust `?v=0.6.4` (superseded by 0.6.5 hit restore)
 
 ### v0.6.3 notes
 - **Aft registration visibility**: Live hangar now probes several aft X stations (0.18 / 0.22 / 0.28 / 0.32 × fuselage length behind center) plus lower-Y belt samples so YR-… marks land on true lateral skin when the window-band ends aft of the wing.
@@ -88,7 +96,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.6.4 (selector)
+## Models v0.6.5 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -142,8 +150,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.6.4`
-   - Personal → `http://127.0.0.1:5174/?v=0.6.4`
+   - Commercial → `http://127.0.0.1:5173/?v=0.6.5`
+   - Personal → `http://127.0.0.1:5174/?v=0.6.5`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -227,4 +235,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.6.4 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.6.5 — commercial + personal editions · GLB hangar · Two-Tone
