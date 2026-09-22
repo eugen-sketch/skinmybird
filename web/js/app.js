@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.6.3 — multi-X aft registration + side-belt fuselage text + face-solid paint + zone highlight.
+ * SkinMyBird web editor v0.6.4 — A320-style window-band title placement + raised side-belt + face-solid paint + zone highlight.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.3";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.4";
 
 const $ = (id) => document.getElementById(id);
 
@@ -63,7 +63,7 @@ const $ = (id) => document.getElementById(id);
     textFont: "segoe",
     textPlacement: "fuselage",
     textPosX: 0,
-    textPosY: -10,
+    textPosY: 8,
     textScale: 100,
     textFlipLeft: false,
     textFlipRight: false,
@@ -144,12 +144,12 @@ const $ = (id) => document.getElementById(id);
     if ($("text-font")) $("text-font").value = state.textFont || "segoe";
     $("text-placement").value = state.textPlacement;
     if ($("text-pos-x")) $("text-pos-x").value = state.textPosX ?? 0;
-    if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? -10;
+    if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? 8;
     if ($("text-scale")) $("text-scale").value = state.textScale ?? 100;
     if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
     if ($("text-flip-right")) $("text-flip-right").checked = !!state.textFlipRight;
     if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
-    if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? -10);
+    if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? 8);
     if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 100) + "%";
     $("st-stripe").checked = !!state.stickers.stripe;
     $("st-heart").checked = !!state.stickers.heart;
@@ -253,7 +253,7 @@ const $ = (id) => document.getElementById(id);
     state.textFont = ($("text-font") && $("text-font").value) || "segoe";
     state.textPlacement = $("text-placement").value || "fuselage";
     state.textPosX = $("text-pos-x") ? Number($("text-pos-x").value) : 0;
-    state.textPosY = $("text-pos-y") ? Number($("text-pos-y").value) : -10;
+    state.textPosY = $("text-pos-y") ? Number($("text-pos-y").value) : 8;
     state.textScale = $("text-scale") ? Number($("text-scale").value) : 100;
     state.textFlipLeft = $("text-flip-left") ? $("text-flip-left").checked : false;
     state.textFlipRight = $("text-flip-right") ? $("text-flip-right").checked : false;
@@ -873,12 +873,12 @@ const $ = (id) => document.getElementById(id);
       state.textPlacement = btn.getAttribute("data-place");
       $("text-placement").value = state.textPlacement;
     if ($("text-pos-x")) $("text-pos-x").value = state.textPosX ?? 0;
-    if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? -10;
+    if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? 8;
     if ($("text-scale")) $("text-scale").value = state.textScale ?? 100;
     if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
     if ($("text-flip-right")) $("text-flip-right").checked = !!state.textFlipRight;
     if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
-    if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? -10);
+    if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? 8);
     if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 100) + "%";
       syncSegmented("data-place", state.textPlacement);
       drawPreview();

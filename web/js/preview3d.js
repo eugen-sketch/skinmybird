@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.3 — multi-X aft registration + side-belt fuselage decals (not crown) + face-solid paint.
+ * SkinMyBird 3D hangar preview v0.6.4 — A320-style window-band title (forward of wing) + raised side-belt + face-solid paint.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1858,18 +1858,19 @@ function addTextDecals(craft, state) {
   raycaster.far = 100;
 
   const fusLen = size.x;
+  // Shorter title panel (~A320 cabin side) so it stays forward of the wing and does not crop.
   const panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
-    fusLen * 0.62;
+    fusLen * 0.36;
   const panelH =
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
-    Math.max(0.55, Math.min(size.y * 0.55, 1.15));
+    Math.max(0.32, Math.min(size.y * 0.28, 0.72));
   const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
 
   // User offsets: textPosX/Y in −50…50, textScale in %
   const posX = Number(state.textPosX || 0) / 100; // −0.5…0.5 along length
-  const posY = Number(state.textPosY != null ? state.textPosY : -10) / 100;
+  const posY = Number(state.textPosY != null ? state.textPosY : 8) / 100;
   const scalePct = Math.max(0.5, Math.min(1.6, (Number(state.textScale) || 100) / 100));
   // Stickers / flags share the decal panel — bump projection size with stickerSize
   const stickerBoost = flagCodes.length || (st.stripe || st.heart || st.star || st.lightning || st.bird || st.roundel || st.chevron || st.checkered || st.smile || st.crown || st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge)
@@ -1880,27 +1881,27 @@ function addTextDecals(craft, state) {
   const flipRight = !!state.textFlipRight; // +Z override
   const decalSize = new THREE.Vector3(panelLen * scalePct * Math.min(stickerBoost, 1.55), panelH * scalePct * Math.min(stickerBoost, 1.55), panelDepth);
 
-  // Sample X along fuselage (+posX moves aft toward tail if nose=+X mid)
-  let xMain = center.x + size.x * (0.02 - posX * 0.35);
+  // Sample X along fuselage (+posX moves aft toward tail if nose=+X mid).
+  // Default ~0.15× fusLen nose-ward of center = forward cabin, ahead of wing root.
+  let xMain = center.x + size.x * (0.15 - posX * 0.35);
   if (place === "tail") xMain = center.x - size.x * (0.28 + posX * 0.1);
   else if (place === "wing") xMain = center.x - size.x * 0.02;
 
-  // Aim at true lateral window-belt (mid-tube), NOT crown/roof.
-  // Base ≈ craft mid + small up-bias (window line); textPosY offsets around that belt.
-  // Default textPosY=-10 → slightly below mid-side, still on the vertical wall.
-  const beltBase = 0.03; // fraction of craft bbox height (~window line)
+  // Aim at true lateral window-belt (mid-tube), NOT crown/roof / wing root.
+  // Default textPosY=+8 + raised beltBase → cabin window line.
+  const beltBase = 0.10; // fraction of craft bbox height (~window line)
   const yBelt = center.y + size.y * (beltBase + posY * 0.4);
-  // Prefer belt, then lower samples; higher (roof-ward) sample last / lowest priority
+  // Prefer belt, slight up, then modest down — never dive to wing-root height.
   const yAlts = [
     yBelt,
+    yBelt + size.y * 0.03,
+    yBelt + size.y * 0.06,
     yBelt - size.y * 0.03,
     yBelt - size.y * 0.06,
-    yBelt - size.y * 0.10,
-    yBelt - size.y * 0.14,
-    yBelt - size.y * 0.18,
-    yBelt + size.y * 0.025,
   ];
   const yWindow = yBelt;
+  // Reject hits that land near/below wing plane (wing-root crop)
+  const yWingFloor = center.y - size.y * 0.08;
 
   // Fuselage half-width estimate (NOT wing span)
   const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
@@ -1946,12 +1947,11 @@ function addTextDecals(craft, state) {
   function trySideHit(sideSign, x, yCandidates) {
     // sideSign: +1 = +Z (right), −1 = −Z (left)
     const probeYs = Array.isArray(yCandidates) ? yCandidates.slice() : [yCandidates];
-    // If only roof-level hits exist higher up, keep probing lower on the side wall
+    // Mild extras only: prefer staying on/above window belt (no wing-root dive)
     if (place !== "belly" && place !== "wing") {
       probeYs.push(
-        yBelt - size.y * 0.22,
-        yBelt - size.y * 0.28,
-        center.y - size.y * 0.05
+        yBelt + size.y * 0.02,
+        yBelt - size.y * 0.08
       );
     }
     for (const y of probeYs) {
@@ -1979,6 +1979,8 @@ function addTextDecals(craft, state) {
           origin = new THREE.Vector3(x, y, center.z + sideSign * (fusR * 3.6));
           hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y);
         }
+        // Drop hits that landed at/below wing-plane estimate (wing-root crop)
+        if (hit && hit.point && hit.point.y < yWingFloor) hit = null;
       }
       if (hit) return hit;
     }
@@ -2033,7 +2035,8 @@ function addTextDecals(craft, state) {
       .map((f) => center.x - size.x * f)
       .filter((x) => x < xMain - size.x * 0.02);
     const regXCandidates = regXAft.concat(regXFwd);
-    const regYAlts = yAlts.map((y) => y - size.y * 0.02);
+    // Same raised window-belt as title — do not drop toward the wing.
+    const regYAlts = yAlts.slice();
 
     [-1, 1].forEach((side) => {
       let hit = null;
