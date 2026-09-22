@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.5.8 — commercial/personal editions + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.6.0 — face-solid GLB paint + zone highlight + commercial/personal editions.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.8";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.0";
 
 const $ = (id) => document.getElementById(id);
 
@@ -952,6 +952,97 @@ const $ = (id) => document.getElementById(id);
     });
     el.addEventListener("change", drawPreview);
   });
+
+  // v0.6.0 — highlight paint zone on preview when hovering/focusing a Colors field
+  const ZONE_COLOR_IDS = [
+    "c-fuselage",
+    "c-nose",
+    "c-belly",
+    "c-crown",
+    "c-cockpit",
+    "c-wings",
+    "c-winglet",
+    "c-engines",
+    "c-pylons",
+    "c-fairings",
+    "c-tail",
+    "c-stabilizer",
+    "c-doors",
+    "c-windowband",
+    "c-accent",
+  ];
+  let _zoneHlClearTimer = null;
+  function zoneNameFromColorId(id) {
+    return id && id.startsWith("c-") ? id.slice(2) : null;
+  }
+  function setZoneHighlight(zone) {
+    const p3 = ensurePreview3D();
+    if (p3 && p3.ok && typeof p3.setHighlightedZone === "function") {
+      p3.setHighlightedZone(zone);
+    }
+  }
+  function scheduleClearZoneHighlight() {
+    if (_zoneHlClearTimer) clearTimeout(_zoneHlClearTimer);
+    _zoneHlClearTimer = setTimeout(() => {
+      _zoneHlClearTimer = null;
+      // Don't clear if focus moved to another zone field
+      const ae = document.activeElement;
+      if (ae && ae.id && ZONE_COLOR_IDS.includes(ae.id)) {
+        setZoneHighlight(zoneNameFromColorId(ae.id));
+        return;
+      }
+      setZoneHighlight(null);
+    }, 60);
+  }
+  ZONE_COLOR_IDS.forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    const zone = zoneNameFromColorId(id);
+    const activate = () => {
+      if (_zoneHlClearTimer) {
+        clearTimeout(_zoneHlClearTimer);
+        _zoneHlClearTimer = null;
+      }
+      setZoneHighlight(zone);
+    };
+    el.addEventListener("mouseenter", activate);
+    el.addEventListener("focusin", activate);
+    el.addEventListener("mouseleave", scheduleClearZoneHighlight);
+    el.addEventListener("focusout", scheduleClearZoneHighlight);
+    // Label click / span also highlights (color-field is the <label>)
+    const field = el.closest(".color-field");
+    if (field) {
+      field.addEventListener("mouseenter", activate);
+      field.addEventListener("mouseleave", scheduleClearZoneHighlight);
+      field.addEventListener("focusin", activate);
+      field.addEventListener("focusout", scheduleClearZoneHighlight);
+    }
+  });
+
+  // Optional: click plane → focus that zone's color input
+  (function wireZonePickClick() {
+    const canvas = $("preview3d");
+    if (!canvas) return;
+    let downX = 0, downY = 0, downT = 0;
+    canvas.addEventListener("pointerdown", (e) => {
+      downX = e.clientX;
+      downY = e.clientY;
+      downT = performance.now();
+    });
+    canvas.addEventListener("click", (e) => {
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return;
+      if (performance.now() - downT > 500) return;
+      const p3 = ensurePreview3D();
+      if (!p3 || !p3.ok || typeof p3.pickZoneAt !== "function") return;
+      const zone = p3.pickZoneAt(e.clientX, e.clientY);
+      if (!zone) return;
+      const input = $("c-" + zone);
+      if (input) {
+        input.focus();
+        setZoneHighlight(zone);
+      }
+    });
+  })();
 
   $("soacra").addEventListener("change", (e) => {
     const file = e.target.files && e.target.files[0];

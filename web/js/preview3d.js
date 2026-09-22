@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.5.8 — real airliner GLBs + procedural helo/balloon.
+ * SkinMyBird 3D hangar preview v0.6.0 — face-solid GLB paint zones (no vertex-color blur).
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -69,10 +69,10 @@ function stripAndNeutralizeMaterial(m) {
   if (m.envMap) m.envMap = null;
   if (m.color) m.color.set(0xffffff);
   if (m.emissive) m.emissive.set(0x000000);
-  // Solid paint, not chrome — keep metalness low so zone colors read clearly
-  if ("metalness" in m) m.metalness = Math.min(m.metalness ?? 0.12, 0.18);
-  if ("roughness" in m) m.roughness = Math.max(m.roughness ?? 0.62, 0.62);
-  m.vertexColors = true;
+  // Solid paint, not chrome — face-zone materials own color (no vertexColors)
+  if ("metalness" in m) m.metalness = Math.min(m.metalness ?? 0.12, 0.12);
+  if ("roughness" in m) m.roughness = Math.max(m.roughness ?? 0.7, 0.7);
+  m.vertexColors = false;
   m.needsUpdate = true;
 }
 
@@ -141,15 +141,22 @@ function shadeHex(hex, amt) {
 
 function disposeObject(obj) {
   if (!obj) return;
+  const seenMats = new Set();
   obj.traverse((child) => {
-    if (child.geometry) child.geometry.dispose();
+    if (child.geometry) {
+      try { child.geometry.dispose(); } catch (_) {}
+    }
     if (child.material) {
       const mats = Array.isArray(child.material)
         ? child.material
         : [child.material];
       mats.forEach((m) => {
-        if (m.map) m.map.dispose();
-        m.dispose();
+        if (!m || seenMats.has(m)) return;
+        seenMats.add(m);
+        if (m.map) {
+          try { m.map.dispose(); } catch (_) {}
+        }
+        try { m.dispose(); } catch (_) {}
       });
     }
   });
@@ -384,7 +391,7 @@ function cloneMaterialsDeep(root) {
   });
 }
 
-/** Own BufferGeometry per hangar instance so zoneIds / vertex colors never mutate the GLB cache. */
+/** Own BufferGeometry per hangar instance so face-zone splits never mutate the GLB cache. */
 function cloneGeometriesDeep(root) {
   root.traverse((child) => {
     if (!child.isMesh || !child.geometry) return;
@@ -529,10 +536,25 @@ function buildGlbZoneContext(samples, craftBox, noseSign) {
   }
 
   const engineR = Math.max(sy * 0.14, halfZ * 0.06, 0.4);
-  return { min, max, sx, sy, sz, halfZ, wingY, noseSign, seeds, engineR };
+
+  // Fuselage tube top (exclude vertical fin): high-|Z| and extreme aft-high verts skew sy
+  // so crown v-thresholds never fire. Use ~95th %ile Y of near-centerline samples.
+  const tubeYs = samples
+    .filter((s) => Math.abs(s[2]) < halfZ * 0.28)
+    .map((s) => s[1])
+    .sort((a, b) => a - b);
+  let fuseTop = max.y;
+  if (tubeYs.length >= 8) {
+    fuseTop = tubeYs[Math.min(tubeYs.length - 1, Math.floor(tubeYs.length * 0.95))];
+  }
+  // Keep a little headroom but never above craft max
+  fuseTop = Math.min(Math.max(fuseTop, min.y + sy * 0.35), max.y);
+  const fuseSy = Math.max(fuseTop - min.y, sy * 0.35, 1e-6);
+
+  return { min, max, sx, sy, sz, halfZ, wingY, noseSign, seeds, engineR, fuseTop, fuseSy };
 }
 
-function classifyVertexZone(x, y, z, ctx) {
+function classifyPoint(x, y, z, ctx) {
   const xx = x * ctx.noseSign;
   const xmin = ctx.noseSign === 1 ? ctx.min.x : -ctx.max.x;
   const u = (xx - xmin) / ctx.sx; // 0 = aft, 1 = nose
@@ -593,44 +615,77 @@ function classifyVertexZone(x, y, z, ctx) {
     return ZONE_ID.fairings;
   }
 
-  // Cockpit: forward upper canopy
-  if (u > 0.78 && u < 0.95 && v > 0.55 && w < 0.28) return ZONE_ID.cockpit;
+  // Relative height along fuselage tube (not full craft Y — fin used to steal crown)
+  const fuseSy = ctx.fuseSy || sy;
+  const vTube = (y - ctx.min.y) / fuseSy;
 
-  // Crown: upper fuselage roof (high v, low w, mid body)
-  if (v > 0.62 && w < 0.22 && u > 0.18 && u < 0.82) return ZONE_ID.crown;
+  // Cockpit: forward upper canopy (before crown so nose glass stays distinct)
+  if (u > 0.78 && u < 0.95 && vTube > 0.55 && w < 0.30) return ZONE_ID.cockpit;
+
+  // Crown / spine: upper tube roof — high vTube, low |Z|, mid body
+  // Must fire before fuselage default so the roof ridge is never left white.
+  if (w < 0.30 && u > 0.16 && u < 0.85 && vTube > 0.62) return ZONE_ID.crown;
 
   // Body side — thin windowband/accent so fuselage + crown own most of the tube
-  // (v0.5.7 windowband was too tall for w<0.2 → looked like uncovered gray metal)
-  if (w < 0.22 && u > 0.14 && u < 0.9) {
-    if (v < 0.22) return ZONE_ID.belly;
-    if (v > 0.42 && v < 0.5 && w > 0.05) return ZONE_ID.windowband;
-    if (v > 0.36 && v < 0.42 && w > 0.05) return ZONE_ID.accent;
+  if (w < 0.30 && u > 0.14 && u < 0.9) {
+    if (vTube < 0.22) return ZONE_ID.belly;
+    if (vTube > 0.42 && vTube < 0.52 && w > 0.06) return ZONE_ID.windowband;
+    if (vTube > 0.36 && vTube < 0.42 && w > 0.06) return ZONE_ID.accent;
   }
-  if (w > 0.1 && w < 0.24 && v > 0.28 && v < 0.52 && u > 0.28 && u < 0.78)
+  if (w > 0.1 && w < 0.26 && vTube > 0.28 && vTube < 0.55 && u > 0.28 && u < 0.78)
     return ZONE_ID.doors;
-  if (u > 0.86 && w < 0.28) return ZONE_ID.nose;
+  if (u > 0.86 && w < 0.30) return ZONE_ID.nose;
+
+  // Safety net: any remaining upper centerline on the tube → crown
+  if (w < 0.34 && u > 0.14 && u < 0.88 && vTube > 0.55) return ZONE_ID.crown;
 
   // Always paintable — never leave raw GLB gray
   return ZONE_ID.fuselage;
 }
 
+/** @deprecated alias — face path uses classifyPoint */
+function classifyVertexZone(x, y, z, ctx) {
+  return classifyPoint(x, y, z, ctx);
+}
+
+function makeGlbZoneMaterial(hexColor) {
+  return new THREE.MeshStandardMaterial({
+    color: hexColor ? hexToThree(hexColor) : new THREE.Color(0xffffff),
+    metalness: 0.1,
+    roughness: 0.72,
+    vertexColors: false,
+    flatShading: false,
+    envMap: null,
+    map: null,
+    emissive: new THREE.Color(0x000000),
+    emissiveIntensity: 0,
+  });
+}
+
 /**
- * Sample craft-space positions, assign per-vertex zone ids once at GLB mount.
- * Stored on geometry.userData.zoneIds — used by applyPaint vertex colors.
+ * v0.6.0 — Face-based solid zones.
+ * Classify each triangle by craft-space centroid, then split into one
+ * BufferGeometry + MeshStandardMaterial per zone. No mixed-face vertex colors
+ * → GPU cannot interpolate across zone boundaries → sharp edges.
+ * Shared materials per zone name so applyPaint only updates material.color.
  */
-function assignGlbVertexZones(craft) {
+function buildGlbFaceZoneSplits(craft) {
   craft.updateMatrixWorld(true);
   const craftBox = new THREE.Box3().setFromObject(craft);
   const craftInv = craft.matrixWorld.clone().invert();
   const samples = [];
   const tmp = new THREE.Vector3();
+  const tmpA = new THREE.Vector3();
+  const tmpB = new THREE.Vector3();
+  const tmpC = new THREE.Vector3();
   const meshes = [];
 
   craft.traverse((child) => {
     if (!child.isMesh || !child.geometry) return;
     if (child.userData && child.userData.skinHiddenLivery) return;
+    if (child.userData && child.userData.zonePaintPart) return;
+    if (child.userData && child.userData.isTextDecal) return;
     if (child.visible === false) return;
-    // Skip projected text/flag decals
     if (child.name && /decal|textDecal|flag/i.test(child.name)) return;
     const pos = child.geometry.getAttribute("position");
     if (!pos || !pos.count) return;
@@ -644,11 +699,9 @@ function assignGlbVertexZones(craft) {
   });
 
   const noseSign = detectGlbNoseSign(samples);
-  // craftBox is world-aligned; convert to craft-local by applying craftInv corners
   const localBox = craftBox.clone();
   localBox.min.applyMatrix4(craftInv);
   localBox.max.applyMatrix4(craftInv);
-  // After inverse, min/max may swap per-axis
   const lb = new THREE.Box3(
     new THREE.Vector3(
       Math.min(localBox.min.x, localBox.max.x),
@@ -663,76 +716,151 @@ function assignGlbVertexZones(craft) {
   );
   const ctx = buildGlbZoneContext(samples, lb, noseSign);
 
-  meshes.forEach((child) => {
-    const pos = child.geometry.getAttribute("position");
-    const zoneIds = new Uint8Array(pos.count);
+  const zoneMaterials = Object.create(null);
+
+  meshes.forEach((mesh) => {
+    const geo = mesh.geometry;
+    const pos = geo.getAttribute("position");
+    if (!pos || !pos.count) return;
+    const norm = geo.getAttribute("normal");
+    const uv = geo.getAttribute("uv");
+    const index = geo.getIndex();
     const toCraft = new THREE.Matrix4()
       .copy(craftInv)
-      .multiply(child.matrixWorld);
-    for (let i = 0; i < pos.count; i++) {
-      tmp.fromBufferAttribute(pos, i).applyMatrix4(toCraft);
-      zoneIds[i] = classifyVertexZone(tmp.x, tmp.y, tmp.z, ctx);
+      .multiply(mesh.matrixWorld);
+
+    /** @type {Record<number, {pos:number[], nrm:number[], uv:number[]}>} */
+    const buckets = Object.create(null);
+    const ensure = (zid) => {
+      if (!buckets[zid]) buckets[zid] = { pos: [], nrm: [], uv: [] };
+      return buckets[zid];
+    };
+
+    const pushVert = (bucket, vi) => {
+      bucket.pos.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+      if (norm) {
+        bucket.nrm.push(norm.getX(vi), norm.getY(vi), norm.getZ(vi));
+      }
+      if (uv) {
+        bucket.uv.push(uv.getX(vi), uv.getY(vi));
+      }
+    };
+
+    const triCount = index ? Math.floor(index.count / 3) : Math.floor(pos.count / 3);
+    for (let t = 0; t < triCount; t++) {
+      let i0, i1, i2;
+      if (index) {
+        i0 = index.getX(t * 3);
+        i1 = index.getX(t * 3 + 1);
+        i2 = index.getX(t * 3 + 2);
+      } else {
+        i0 = t * 3;
+        i1 = t * 3 + 1;
+        i2 = t * 3 + 2;
+      }
+      if (i0 >= pos.count || i1 >= pos.count || i2 >= pos.count) continue;
+
+      tmpA.fromBufferAttribute(pos, i0).applyMatrix4(toCraft);
+      tmpB.fromBufferAttribute(pos, i1).applyMatrix4(toCraft);
+      tmpC.fromBufferAttribute(pos, i2).applyMatrix4(toCraft);
+      const cx = (tmpA.x + tmpB.x + tmpC.x) / 3;
+      const cy = (tmpA.y + tmpB.y + tmpC.y) / 3;
+      const cz = (tmpA.z + tmpB.z + tmpC.z) / 3;
+      const zid = classifyPoint(cx, cy, cz, ctx);
+      const bucket = ensure(zid);
+      pushVert(bucket, i0);
+      pushVert(bucket, i1);
+      pushVert(bucket, i2);
     }
-    child.geometry.userData.zoneIds = zoneIds;
-    child.userData.paintZones = true;
+
+    // Clear prior zone children if re-run
+    const toRemove = [];
+    mesh.children.forEach((ch) => {
+      if (ch.userData && ch.userData.zonePaintPart) toRemove.push(ch);
+    });
+    toRemove.forEach((ch) => {
+      mesh.remove(ch);
+      // Dispose geometry only — materials are shared across zone parts
+      if (ch.geometry) {
+        try { ch.geometry.dispose(); } catch (_) {}
+      }
+    });
+
+    let made = 0;
+    Object.keys(buckets).forEach((zidStr) => {
+      const zid = Number(zidStr);
+      const data = buckets[zid];
+      if (!data.pos.length) return;
+      const zoneName = ZONE_NAMES[zid] || "fuselage";
+      if (!zoneMaterials[zoneName]) {
+        zoneMaterials[zoneName] = makeGlbZoneMaterial("#ffffff");
+      }
+      const zgeo = new THREE.BufferGeometry();
+      zgeo.setAttribute("position", new THREE.Float32BufferAttribute(data.pos, 3));
+      if (data.nrm.length === data.pos.length) {
+        zgeo.setAttribute("normal", new THREE.Float32BufferAttribute(data.nrm, 3));
+      } else {
+        zgeo.computeVertexNormals();
+      }
+      if (uv && data.uv.length === (data.pos.length / 3) * 2) {
+        zgeo.setAttribute("uv", new THREE.Float32BufferAttribute(data.uv, 2));
+      }
+      const child = new THREE.Mesh(zgeo, zoneMaterials[zoneName]);
+      child.name = `${mesh.name || "mesh"}_${zoneName}`;
+      child.userData.paintZone = zoneName;
+      child.userData.zonePaintPart = true;
+      child.castShadow = true;
+      child.receiveShadow = true;
+      child.renderOrder = mesh.renderOrder || 0;
+      mesh.add(child);
+      made++;
+    });
+
+    // Parent no longer draws; children carry solid zone materials
+    if (made > 0) {
+      try {
+        geo.dispose();
+      } catch (_) {}
+      mesh.geometry = new THREE.BufferGeometry();
+      mesh.raycast = () => {};
+      const hideMat = new THREE.MeshBasicMaterial({ visible: false });
+      mesh.material = hideMat;
+      mesh.userData.zoneSplitParent = true;
+      mesh.userData.paintZones = true;
+    }
   });
 
-  return ctx;
+  craft.userData.zoneMaterials = zoneMaterials;
+  craft.userData.zoneCtx = ctx;
+  craft.userData.faceZones = true;
+  return { ctx, zoneMaterials };
 }
 
 /**
- * Apply state.colors onto GLB meshes via vertex colors × zoneIds.
+ * Fast path: update shared per-zone material.color only (no geometry rebuild).
  */
-function applyGlbVertexPaint(craft, colorsByZone) {
-  if (!craft) return;
-  const tmpC = new THREE.Color();
-  craft.traverse((child) => {
-    if (!child.isMesh || !child.geometry) return;
-    const zoneIds = child.geometry.userData && child.geometry.userData.zoneIds;
-    if (!zoneIds) return;
-    const pos = child.geometry.getAttribute("position");
-    if (!pos) return;
-
-    let colorAttr = child.geometry.getAttribute("color");
-    if (!colorAttr || colorAttr.count !== pos.count) {
-      colorAttr = new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3);
-      child.geometry.setAttribute("color", colorAttr);
+function applyGlbZonePaint(craft, colorsByZone) {
+  if (!craft) return false;
+  const mats = craft.userData && craft.userData.zoneMaterials;
+  if (!mats || typeof mats !== "object") return false;
+  Object.keys(mats).forEach((name) => {
+    const m = mats[name];
+    if (!m) return;
+    const c = colorsByZone[name] || colorsByZone.fuselage;
+    if (!m.userData) m.userData = {};
+    m.userData.baseColor = c.clone();
+    m.color.copy(c);
+    m.vertexColors = false;
+    if (m.map) {
+      try { m.map.dispose(); } catch (_) {}
+      m.map = null;
     }
-    const arr = colorAttr.array;
-    for (let i = 0; i < pos.count; i++) {
-      const name = ZONE_NAMES[zoneIds[i]] || "fuselage";
-      const c = colorsByZone[name] || colorsByZone.fuselage;
-      tmpC.copy(c);
-      const o = i * 3;
-      arr[o] = tmpC.r;
-      arr[o + 1] = tmpC.g;
-      arr[o + 2] = tmpC.b;
-    }
-    colorAttr.needsUpdate = true;
-
-    const mats = Array.isArray(child.material) ? child.material : [child.material];
-    mats.forEach((m) => {
-      if (!m) return;
-      if (m.map) {
-        try {
-          m.map.dispose();
-        } catch (_) {}
-        m.map = null;
-      }
-      if (m.emissiveMap) {
-        try {
-          m.emissiveMap.dispose();
-        } catch (_) {}
-        m.emissiveMap = null;
-      }
-      if (m.envMap) m.envMap = null;
-      m.vertexColors = true;
-      if (m.color) m.color.set(0xffffff);
-      if ("metalness" in m) m.metalness = Math.min(m.metalness ?? 0.12, 0.18);
-      if ("roughness" in m) m.roughness = Math.max(m.roughness ?? 0.62, 0.62);
-      m.needsUpdate = true;
-    });
+    if (m.envMap) m.envMap = null;
+    if ("metalness" in m) m.metalness = Math.min(m.metalness ?? 0.1, 0.12);
+    if ("roughness" in m) m.roughness = Math.max(m.roughness ?? 0.72, 0.7);
+    m.needsUpdate = true;
   });
+  return true;
 }
 
 const FONT_STACKS = {
@@ -1413,13 +1541,27 @@ function collectDecalTargetMeshes(craft) {
     if (!child.isMesh || !child.geometry) return;
     if (child.name === "textDecals" || (child.parent && child.parent.name === "textDecals"))
       return;
-    // Skip existing decal meshes
+    // Skip existing decal meshes + empty zone-split parents
     if (child.userData && child.userData.isTextDecal) return;
+    if (child.userData && child.userData.zoneSplitParent) return;
     const box = new THREE.Box3().setFromObject(child);
     const size = box.getSize(new THREE.Vector3());
     const vol = Math.max(size.x, 0.001) * Math.max(size.y, 0.001) * Math.max(size.z, 0.001);
-    if (vol < 0.02) return;
-    const role = classifyMeshRole(child.name, box, craftBox);
+    const isZonePart = !!(child.userData && child.userData.zonePaintPart);
+    if (vol < 0.02 && !isZonePart) return;
+    let role = classifyMeshRole(child.name, box, craftBox);
+    // Map paint-zone parts to decal roles (body zones → fuselage target)
+    if (isZonePart && child.userData.paintZone) {
+      const z = child.userData.paintZone;
+      if (
+        z === "fuselage" || z === "crown" || z === "belly" || z === "nose" ||
+        z === "cockpit" || z === "windowband" || z === "accent" || z === "doors" ||
+        z === "fairings"
+      ) role = "fuselage";
+      else if (z === "wings" || z === "winglet") role = "wings";
+      else if (z === "tail" || z === "stabilizer") role = "tail";
+      else if (z === "engines" || z === "pylons") role = "engines";
+    }
     scored.push({ mesh: child, role, vol, box, size });
   });
   scored.sort((a, b) => b.vol - a.vol);
@@ -2563,6 +2705,7 @@ export class Preview3D {
     this._ro = null;
     this.ok = false;
     this._lastStateKey = "";
+    this._highlightedZone = null;
   }
 
   static isWebGLAvailable() {
@@ -2591,7 +2734,7 @@ export class Preview3D {
       alpha: true,
       powerPreference: "high-performance",
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
     this.renderer.setSize(w, h, false);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     try {
@@ -2650,10 +2793,10 @@ export class Preview3D {
       this.scene.background = new THREE.Color(0x8a9aab);
     }
 
-    // Lights — brighter fill so paint colors pop
-    const hemi = new THREE.HemisphereLight(0xe8eef6, 0x3a4048, 1.05);
+    // Lights — brighter key/fill so solid zone colors read clearly (v0.6.0)
+    const hemi = new THREE.HemisphereLight(0xeef3f8, 0x3a4048, 1.15);
     this.scene.add(hemi);
-    const key = new THREE.DirectionalLight(0xfff5ea, 1.35);
+    const key = new THREE.DirectionalLight(0xfff7ee, 1.55);
     key.position.set(6, 12, 8);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
@@ -2664,10 +2807,10 @@ export class Preview3D {
     key.shadow.camera.top = 15;
     key.shadow.camera.bottom = -15;
     this.scene.add(key);
-    const fill = new THREE.DirectionalLight(0xa8c0d8, 0.55);
+    const fill = new THREE.DirectionalLight(0xb0c8e0, 0.72);
     fill.position.set(-8, 4, -6);
     this.scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xd0dde8, 0.32);
+    const rim = new THREE.DirectionalLight(0xd8e4ee, 0.4);
     rim.position.set(-4, 6, 10);
     this.scene.add(rim);
 
@@ -2721,7 +2864,7 @@ export class Preview3D {
     const h = Math.max(280, Math.floor(rect.height));
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
     this.renderer.setSize(w, h, false);
   }
 
@@ -2769,6 +2912,7 @@ export class Preview3D {
     this.glbMaterials = [];
     this.modelMode = null;
     this.glbUrl = null;
+    this._highlightedZone = null;
   }
 
   buildProcedural(profile, state) {
@@ -2827,7 +2971,7 @@ export class Preview3D {
     craft.add(model);
     try { window.__SMB_CRAFT = craft; window.__SMB_PREVIEW = this; } catch (_) {}
 
-    // Index materials by role (multi-mesh fallback) + prepare for vertex zones
+    // Index materials by role (multi-mesh fallback) + prepare for face-zone paint
     const craftBox = new THREE.Box3().setFromObject(craft);
     this.glbMaterials = [];
     model.traverse((child) => {
@@ -2855,11 +2999,11 @@ export class Preview3D {
     this.root.add(craft);
     craft.updateMatrixWorld(true);
 
-    // Single/few-material GLBs: color by geometry region (vertex zones), not shared mat role
+    // Face-solid zone splits (sharp edges; no vertex-color blur)
     try {
-      assignGlbVertexZones(craft);
+      buildGlbFaceZoneSplits(craft);
     } catch (zoneErr) {
-      console.warn("GLB vertex zone assign failed:", zoneErr);
+      console.warn("GLB face zone split failed:", zoneErr);
     }
 
     let decal = { tex: null, regTex: null };
@@ -2950,24 +3094,19 @@ export class Preview3D {
         fairings: hexToThree(state.colors.fairings || state.colors.fuselage || "#f2f4f7"),
       };
       const craft = this.root.getObjectByName("aircraft");
-      // Prefer per-vertex zone paint (works for 1-mesh / 1-material airframes)
-      let usedVertexZones = false;
-      if (craft) {
-        let hasZones = false;
-        craft.traverse((ch) => {
-          if (ch.isMesh && ch.geometry && ch.geometry.userData && ch.geometry.userData.zoneIds)
-            hasZones = true;
-        });
-        if (hasZones) {
-          applyGlbVertexPaint(craft, colors);
-          usedVertexZones = true;
-        }
+      // Face-solid zone materials (preferred). Rebuild splits only on mount.
+      let usedFaceZones = false;
+      if (craft && craft.userData && craft.userData.zoneMaterials) {
+        usedFaceZones = applyGlbZonePaint(craft, colors);
+        this._applyHighlightVisuals();
       }
-      if (!usedVertexZones) {
+      if (!usedFaceZones) {
         // Multi-mesh fallback: per-mesh material role from classifyMeshRole
         this.glbMaterials.forEach(({ mat, role }) => {
           mat.vertexColors = false;
           mat.color.copy(colors[role] || colors.fuselage);
+          if ("metalness" in mat) mat.metalness = Math.min(mat.metalness ?? 0.1, 0.12);
+          if ("roughness" in mat) mat.roughness = Math.max(mat.roughness ?? 0.72, 0.7);
           mat.needsUpdate = true;
         });
       }
@@ -3062,6 +3201,75 @@ export class Preview3D {
     }
   }
 
+  /**
+   * Highlight a paint zone on the GLB preview (Colors tab hover/focus).
+   * @param {string|null} zoneName
+   */
+  setHighlightedZone(zoneName) {
+    const next = zoneName || null;
+    if (next === this._highlightedZone) {
+      this._applyHighlightVisuals();
+      return;
+    }
+    this._highlightedZone = next;
+    this._applyHighlightVisuals();
+  }
+
+  _applyHighlightVisuals() {
+    if (!this.root) return;
+    const craft = this.root.getObjectByName("aircraft");
+    const mats = craft && craft.userData && craft.userData.zoneMaterials;
+    if (!mats) return;
+    const hl = this._highlightedZone;
+    Object.keys(mats).forEach((name) => {
+      const m = mats[name];
+      if (!m) return;
+      const base = (m.userData && m.userData.baseColor) || m.color;
+      if (hl && name === hl) {
+        m.color.copy(base);
+        if (m.emissive) m.emissive.setHex(0xff9a4a);
+        m.emissiveIntensity = 0.45;
+      } else if (hl) {
+        // Slight dim so the focused zone pops
+        m.color.copy(base).multiplyScalar(0.72);
+        if (m.emissive) m.emissive.setHex(0x000000);
+        m.emissiveIntensity = 0;
+      } else {
+        m.color.copy(base);
+        if (m.emissive) m.emissive.setHex(0x000000);
+        m.emissiveIntensity = 0;
+      }
+      m.needsUpdate = true;
+    });
+  }
+
+  /**
+   * Raycast pick at canvas client coords → paint zone name or null.
+   */
+  pickZoneAt(clientX, clientY) {
+    if (!this.ok || !this.renderer || !this.camera || !this.root) return null;
+    const craft = this.root.getObjectByName("aircraft");
+    if (!craft) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, this.camera);
+    const hits = raycaster.intersectObject(craft, true);
+    for (const h of hits) {
+      if (!h.object || !h.object.isMesh) continue;
+      if (h.object.userData && h.object.userData.isTextDecal) continue;
+      if (h.object.userData && h.object.userData.zoneSplitParent) continue;
+      if (h.object.userData && h.object.userData.paintZone) {
+        return h.object.userData.paintZone;
+      }
+    }
+    return null;
+  }
+
   _loop = () => {
     this.raf = requestAnimationFrame(this._loop);
     if (!this.ok) return;
@@ -3078,6 +3286,17 @@ export class Preview3D {
     if (this.anim) {
       if (this.anim.mainRotor) this.anim.mainRotor.rotation.y += 0.12;
       if (this.anim.tailRotor) this.anim.tailRotor.rotation.x += 0.25;
+    }
+
+    // Soft pulse on highlighted zone
+    if (this._highlightedZone && this.modelMode === "glb") {
+      const craft = this.root && this.root.getObjectByName("aircraft");
+      const mats = craft && craft.userData && craft.userData.zoneMaterials;
+      const m = mats && mats[this._highlightedZone];
+      if (m) {
+        const pulse = 0.32 + 0.22 * Math.sin(performance.now() * 0.005);
+        m.emissiveIntensity = pulse;
+      }
     }
 
     this.controls.update();
