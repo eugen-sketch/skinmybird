@@ -15,6 +15,13 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.6.2 notes
+- **Fuselage side text (critical)**: airline title + aft registration project onto the **true lateral fuselage** (window-band / side skin), never the crown/roof ridge.
+- Side-decal targets prefer `windowband` > `fuselage` > `accent` > `doors` (optional fairings); **exclude** `crown`, `cockpit`, `belly`, wings, engines, tail.
+- Raycast hard-rejects crown/cockpit/belly zones and faces with `|worldNormal.y| > 0.45`; aims at mid-tube window belt with lower-Y fallbacks.
+- Flip checkboxes stay default **unchecked** (v0.6.1 orientation). Default `textPosY` remains **-10** (slightly below mid-side on the wall).
+- Cache-bust `?v=0.6.2`
+
 ### v0.6.1 notes
 - **Hangar text orientation**: after face-split DecalGeometry U, neither fuselage side needs a default U-flip — airline + registration read L→R from outside with both Text-tab flip checkboxes **unchecked**. Checkboxes remain as manual "fix if still mirrored" overrides (XOR auto, which is none).
 - Side decal raycast prefers windowband/fuselage (penalizes crown ridge); zone-split meshes get bounding volumes for reliable hits.
@@ -25,7 +32,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - **Crown/spine coverage** fixed (wider high-Y / low-|Z| classify) so the roof ridge is never left white.
 - **Zone highlight**: hover or focus a Colors field to pulse that zone on the 3D model; click the plane to focus its zone input.
 - Higher preview clarity: pixel ratio up to 2.5, brighter key/fill, flat solid materials.
-- Cache-bust `?v=0.6.1`
+- Cache-bust `?v=0.6.0`
 
 ### v0.5.8 notes
 - **Two editions (one codebase)**: **Commercial** (default) = Airbus + Boeing fixed-wing airliners only; **Personal** = same + H135 helicopter, hot-air balloon, Cessna 172 stub.
@@ -69,7 +76,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.6.1 (selector)
+## Models v0.6.2 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -123,8 +130,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.6.1`
-   - Personal → `http://127.0.0.1:5174/?v=0.6.1`
+   - Commercial → `http://127.0.0.1:5173/?v=0.6.2`
+   - Personal → `http://127.0.0.1:5174/?v=0.6.2`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -208,4 +215,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.6.1 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.6.2 — commercial + personal editions · GLB hangar · Two-Tone

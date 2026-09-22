@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.1 — face-solid GLB paint + auto outward text orientation.
+ * SkinMyBird 3D hangar preview v0.6.2 — side-belt fuselage decals (not crown) + face-solid paint.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1539,18 +1539,16 @@ function collectDecalTargetMeshes(craft) {
   craft.updateMatrixWorld(true);
   const craftBox = new THREE.Box3().setFromObject(craft);
   const scored = [];
-  // Side-skin zones for airline/reg decals (avoid crown ridge / belly for fuselage sides)
+  // Side-skin priority for airline/reg decals (window belt first). Crown/cockpit/belly
+  // are NEVER side-decal targets — they map to other roles and are excluded below.
   const SIDE_ZONE_PRI = {
     windowband: 0,
     fuselage: 1,
     accent: 2,
     doors: 3,
     fairings: 4,
-    nose: 5,
-    cockpit: 6,
-    belly: 8,
-    crown: 9,
   };
+  const SIDE_ZONES = new Set(["windowband", "fuselage", "accent", "doors", "fairings"]);
   craft.traverse((child) => {
     if (!child.isMesh || !child.geometry) return;
     if (child.name === "textDecals" || (child.parent && child.parent.name === "textDecals"))
@@ -1565,28 +1563,29 @@ function collectDecalTargetMeshes(craft) {
     if (vol < 0.02 && !isZonePart) return;
     let role = classifyMeshRole(child.name, box, craftBox);
     let paintZone = isZonePart ? child.userData.paintZone : null;
-    // Map paint-zone parts to decal roles (body zones → fuselage target)
+    // Map paint-zone parts to decal roles. Side skins only → "fuselage" for lateral titles.
     if (isZonePart && paintZone) {
       const z = paintZone;
-      if (
-        z === "fuselage" || z === "crown" || z === "belly" || z === "nose" ||
-        z === "cockpit" || z === "windowband" || z === "accent" || z === "doors" ||
-        z === "fairings"
-      ) role = "fuselage";
+      if (SIDE_ZONES.has(z)) role = "fuselage";
+      else if (z === "belly") role = "belly";
+      else if (z === "crown" || z === "cockpit") role = "crown"; // roof — not side targets
+      else if (z === "nose") role = "nose";
       else if (z === "wings" || z === "winglet") role = "wings";
       else if (z === "tail" || z === "stabilizer") role = "tail";
       else if (z === "engines" || z === "pylons") role = "engines";
     }
     const sidePri = paintZone != null && SIDE_ZONE_PRI[paintZone] != null
       ? SIDE_ZONE_PRI[paintZone]
-      : 7;
+      : (role === "fuselage" ? 5 : 9);
     scored.push({ mesh: child, role, vol, box, size, paintZone, sidePri });
   });
   scored.sort((a, b) => a.sidePri - b.sidePri || b.vol - a.vol);
+  // fuselage list = true lateral skins only (no crown/cockpit/belly)
   const fuselage = scored.filter((s) => s.role === "fuselage");
   const wings = scored.filter((s) => s.role === "wings");
   const tail = scored.filter((s) => s.role === "tail");
-  return { all: scored.map((s) => s.mesh), fuselage, wings, tail, craftBox, scored };
+  const belly = scored.filter((s) => s.role === "belly");
+  return { all: scored.map((s) => s.mesh), fuselage, wings, tail, belly, craftBox, scored };
 }
 
 /**
@@ -1641,20 +1640,22 @@ function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ, pre
     if (h.object.userData && h.object.userData.isTextDecal) continue;
     if (h.object.userData && h.object.userData.zoneSplitParent) continue;
     const az = Math.abs(h.point.z - center.z);
-    if (az > maxAbsZ) continue;
-    // World normal: prefer side skin (|Nz| high) over crown/belly (|Ny| high)
+    if (az > maxAbsZ) continue; // wing / outboard rejection
+    const zone = h.object.userData && h.object.userData.paintZone;
+    // Hard reject roof/canopy/underside zone meshes — never treat crown as fuselage success
+    if (zone === "crown" || zone === "cockpit" || zone === "belly") continue;
+    // World normal: keep mostly sideways; reject roof/belly-facing faces
     nMat.getNormalMatrix(h.object.matrixWorld);
     wN.copy(h.face.normal).applyNormalMatrix(nMat).normalize();
+    if (Math.abs(wN.y) > 0.45) continue; // |Ny| dominant → crown ridge / belly
     const sideFacing = Math.abs(wN.z); // 1 = pure side
     const vertical = Math.abs(wN.y);
-    const zone = h.object.userData && h.object.userData.paintZone;
     let zonePen = 0;
-    if (zone === "crown") zonePen = 3.0;
-    else if (zone === "belly") zonePen = 1.5;
-    else if (zone === "windowband" || zone === "fuselage" || zone === "accent" || zone === "doors")
+    if (zone === "windowband" || zone === "fuselage" || zone === "accent" || zone === "doors")
       zonePen = -2.0;
-    const yErr = preferY != null ? Math.abs(h.point.y - preferY) * 2 : 0;
-    // Lower score wins: side-facing window-band beats crown ridge
+    else if (zone === "fairings") zonePen = -0.5;
+    const yErr = preferY != null ? Math.abs(h.point.y - preferY) * 2.5 : 0;
+    // Lower score wins: side-facing window-band near aim Y
     const score =
       az * 6 +
       h.distance +
@@ -1884,13 +1885,20 @@ function addTextDecals(craft, state) {
   if (place === "tail") xMain = center.x - size.x * (0.28 + posX * 0.1);
   else if (place === "wing") xMain = center.x - size.x * 0.02;
 
-  // Height on body: 0 ≈ mid, negative = lower (user asked lower + free place)
-  const yBelt = center.y + size.y * posY;
+  // Aim at true lateral window-belt (mid-tube), NOT crown/roof.
+  // Base ≈ craft mid + small up-bias (window line); textPosY offsets around that belt.
+  // Default textPosY=-10 → slightly below mid-side, still on the vertical wall.
+  const beltBase = 0.03; // fraction of craft bbox height (~window line)
+  const yBelt = center.y + size.y * (beltBase + posY * 0.4);
+  // Prefer belt, then lower samples; higher (roof-ward) sample last / lowest priority
   const yAlts = [
     yBelt,
-    yBelt - size.y * 0.04,
-    yBelt + size.y * 0.04,
-    yBelt - size.y * 0.08,
+    yBelt - size.y * 0.03,
+    yBelt - size.y * 0.06,
+    yBelt - size.y * 0.10,
+    yBelt - size.y * 0.14,
+    yBelt - size.y * 0.18,
+    yBelt + size.y * 0.025,
   ];
   const yWindow = yBelt;
 
@@ -1902,27 +1910,34 @@ function addTextDecals(craft, state) {
   function meshesForPlace() {
     if (place === "wing" && targets.wings.length)
       return targets.wings.map((t) => t.mesh);
+    if (place === "belly") {
+      const list = (targets.belly || []).map((t) => t.mesh);
+      const fus = targets.fuselage.map((t) => t.mesh);
+      if (list.length || fus.length) return list.concat(fus);
+    }
     if (place === "tail") {
       const list = targets.tail.map((t) => t.mesh);
       const fus = targets.fuselage.map((t) => t.mesh);
       if (list.length || fus.length) return list.concat(fus);
     }
-    // Fuselage / belly: never include wing-role meshes (crown kept; raycast scoring deprioritizes it)
+    // Fuselage / registration sides: ONLY lateral skins (windowband>fuselage>accent>doors)
+    // Crown / cockpit / belly / wings / engines / tail are excluded from targets.fuselage.
     if (targets.fuselage.length) {
-      return targets.fuselage
-        .filter((t) => t.role !== "wings")
-        .map((t) => t.mesh);
+      return targets.fuselage.map((t) => t.mesh);
     }
     const cz = center.z;
     const nearCenter = targets.scored
       .filter((s) => {
-        if (s.role === "wings" || s.role === "engines") return false;
+        if (s.role === "wings" || s.role === "engines" || s.role === "crown" || s.role === "belly" || s.role === "nose")
+          return false;
+        if (s.paintZone === "crown" || s.paintZone === "cockpit" || s.paintZone === "belly")
+          return false;
         const c = s.box.getCenter(new THREE.Vector3());
         return Math.abs(c.z - cz) < fusR * 2.2;
       })
       .map((s) => s.mesh);
     if (nearCenter.length) return nearCenter.slice(0, 8);
-    // Single-mesh airliners: still ok — hit filter rejects wing Z
+    // Single-mesh airliners: still ok — normal + zone filters reject roof hits
     return targets.all.slice(0, 4);
   }
 
@@ -1930,7 +1945,16 @@ function addTextDecals(craft, state) {
 
   function trySideHit(sideSign, x, yCandidates) {
     // sideSign: +1 = +Z (right), −1 = −Z (left)
-    for (const y of yCandidates) {
+    const probeYs = Array.isArray(yCandidates) ? yCandidates.slice() : [yCandidates];
+    // If only roof-level hits exist higher up, keep probing lower on the side wall
+    if (place !== "belly" && place !== "wing") {
+      probeYs.push(
+        yBelt - size.y * 0.22,
+        yBelt - size.y * 0.28,
+        center.y - size.y * 0.05
+      );
+    }
+    for (const y of probeYs) {
       let origin, dir, hit;
       if (place === "belly") {
         origin = new THREE.Vector3(x, center.y - reach, center.z + sideSign * 0.05);
@@ -1945,7 +1969,7 @@ function addTextDecals(craft, state) {
         dir = new THREE.Vector3(0, -1, 0);
         hit = raycastBestHit(meshList, origin, dir, raycaster);
       } else {
-        // Fuselage / tail: start JUST outside the body (not past the wing tip)
+        // Fuselage / tail / registration: horizontal ray from side into body at belt Y
         const zDist = fusR * 2.4;
         origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
         dir = new THREE.Vector3(0, 0, -sideSign);
@@ -1993,7 +2017,7 @@ function addTextDecals(craft, state) {
     }
   }
 
-  // One aft registration per side (real-airliner style). Not stacked with airline on the main wrap.
+  // One aft registration per side (real-airliner style) — same lateral-side rules, not spine/crown.
   let regTex = null;
   if (state.registration && place !== "tail" && place !== "wing") {
     regTex = makeRegTexture(state);

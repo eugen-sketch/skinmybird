@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.6.1 — face-solid GLB paint + auto text orientation + zone highlight.
+ * SkinMyBird web editor v0.6.2 — side-belt fuselage text + face-solid paint + zone highlight.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.1";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.2";
 
 const $ = (id) => document.getElementById(id);
 
