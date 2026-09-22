@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SkinMyBird — Canva for MSFS liveries</title>
   <link rel="icon" type="image/png" href="icon.png" />
-  <link rel="stylesheet" href="css/styles.css?v=0.5.7" />
+  <link rel="stylesheet" href="css/styles.css?v=0.5.8" />
   <script type="importmap">
   {
     "imports": {
@@ -15,7 +15,7 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=0.5.7"></script>
+  <script type="module" src="js/app.js?v=0.5.8"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -110,6 +110,20 @@
                   </span>
                 </label>
                 <label class="color-field">
+                  <span>Crown / roof</span>
+                  <span class="color-row">
+                    <input type="color" id="c-crown" value="#f2f4f7" />
+                    <code class="hex" id="hex-crown">#f2f4f7</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Cockpit</span>
+                  <span class="color-row">
+                    <input type="color" id="c-cockpit" value="#f2f4f7" />
+                    <code class="hex" id="hex-cockpit">#f2f4f7</code>
+                  </span>
+                </label>
+                <label class="color-field">
                   <span>Tail / fin</span>
                   <span class="color-row">
                     <input type="color" id="c-tail" value="#f2f4f7" />
@@ -148,6 +162,20 @@
                   <span class="color-row">
                     <input type="color" id="c-engines" value="#1b2430" />
                     <code class="hex" id="hex-engines">#1b2430</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Pylons</span>
+                  <span class="color-row">
+                    <input type="color" id="c-pylons" value="#1b2430" />
+                    <code class="hex" id="hex-pylons">#1b2430</code>
+                  </span>
+                </label>
+                <label class="color-field">
+                  <span>Wing-root fairings</span>
+                  <span class="color-row">
+                    <input type="color" id="c-fairings" value="#f2f4f7" />
+                    <code class="hex" id="hex-fairings">#f2f4f7</code>
                   </span>
                 </label>
               </div>
@@ -420,6 +448,10 @@
 
         <div class="stage" id="stage">
           <canvas id="preview3d" aria-label="3D livery preview"></canvas>
+          <div class="stage-brand" aria-hidden="true">
+            <img src="icon.png" alt="" width="28" height="28" />
+            <span>SkinMyBird</span>
+          </div>
           <div class="stage-hint" id="stage-hint">Drag to orbit · scroll zoom · right-click pan</div>
           <div class="stage-fallback" id="stage-fallback" hidden>
             <p>3D preview could not start. Retry or use Export without preview.</p>
@@ -474,7 +506,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.5.7 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
+      <span>v0.5.8 · 3D GLB hangar · multi-aircraft · DDS BC7</span>
     </footer>
   </div>
 </body>

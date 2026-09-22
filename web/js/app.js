@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.5.7 — commercial/personal editions + 3D hangar preview (Three.js).
+ * SkinMyBird web editor v0.5.8 — commercial/personal editions + 3D hangar preview (Three.js).
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.7";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.5.8";
 
 const $ = (id) => document.getElementById(id);
 
@@ -47,6 +47,10 @@ const $ = (id) => document.getElementById(id);
       doors: "#f2f4f7",
       windowband: "#f2f4f7",
       accent: "#f2f4f7",
+      crown: "#f2f4f7",
+      cockpit: "#f2f4f7",
+      pylons: "#1b2430",
+      fairings: "#f2f4f7",
     },
     name: "Two-Tone",
     registration: "YR-EUG",
@@ -126,6 +130,10 @@ const $ = (id) => document.getElementById(id);
     if ($("c-doors")) $("c-doors").value = state.colors.doors || state.colors.fuselage || "#f2f4f7";
     if ($("c-windowband")) $("c-windowband").value = state.colors.windowband || state.colors.fuselage || "#f2f4f7";
     if ($("c-accent")) $("c-accent").value = state.colors.accent || "#f2f4f7";
+    if ($("c-crown")) $("c-crown").value = state.colors.crown || state.colors.fuselage || "#f2f4f7";
+    if ($("c-cockpit")) $("c-cockpit").value = state.colors.cockpit || state.colors.fuselage || "#f2f4f7";
+    if ($("c-pylons")) $("c-pylons").value = state.colors.pylons || state.colors.engines || "#1b2430";
+    if ($("c-fairings")) $("c-fairings").value = state.colors.fairings || state.colors.fuselage || "#f2f4f7";
     $("livery-name").value = state.name;
     $("registration").value = state.registration;
     $("airline").value = state.airline;
@@ -208,6 +216,10 @@ const $ = (id) => document.getElementById(id);
       doors: "hex-doors",
       windowband: "hex-windowband",
       accent: "hex-accent",
+      crown: "hex-crown",
+      cockpit: "hex-cockpit",
+      pylons: "hex-pylons",
+      fairings: "hex-fairings",
     };
     Object.keys(map).forEach((k) => {
       const el = $(map[k]);
@@ -227,6 +239,10 @@ const $ = (id) => document.getElementById(id);
     state.colors.doors = $("c-doors") ? $("c-doors").value : (state.colors.doors || state.colors.fuselage || "#f2f4f7");
     state.colors.windowband = $("c-windowband") ? $("c-windowband").value : (state.colors.windowband || state.colors.fuselage || "#f2f4f7");
     state.colors.accent = $("c-accent") ? $("c-accent").value : (state.colors.accent || "#f2f4f7");
+    state.colors.crown = $("c-crown") ? $("c-crown").value : (state.colors.crown || state.colors.fuselage || "#f2f4f7");
+    state.colors.cockpit = $("c-cockpit") ? $("c-cockpit").value : (state.colors.cockpit || state.colors.fuselage || "#f2f4f7");
+    state.colors.pylons = $("c-pylons") ? $("c-pylons").value : (state.colors.pylons || state.colors.engines || "#1b2430");
+    state.colors.fairings = $("c-fairings") ? $("c-fairings").value : (state.colors.fairings || state.colors.fuselage || "#f2f4f7");
     state.name = $("livery-name").value.trim() || "Custom";
     state.registration = $("registration").value.trim() || "SMB-001";
     state.airline = $("airline").value.trim() || "SkinMyBird";
@@ -359,12 +375,16 @@ const $ = (id) => document.getElementById(id);
     const el = $("swatches");
     const entries = [
       ["Body", state.colors.fuselage],
+      ["Crown", state.colors.crown],
+      ["Cockpit", state.colors.cockpit],
       ["Nose", state.colors.nose],
       ["Belly", state.colors.belly],
+      ["Fairings", state.colors.fairings],
       ["Wings", state.colors.wings],
       ["Winglet", state.colors.winglet],
       ["Stab", state.colors.stabilizer],
       ["Engines", state.colors.engines],
+      ["Pylons", state.colors.pylons],
       ["Tail", state.colors.tail],
       ["Doors", state.colors.doors],
       ["Windows", state.colors.windowband],
@@ -386,12 +406,16 @@ const $ = (id) => document.getElementById(id);
     }
     const items = [
       { on: true, label: "Fuselage", meta: state.colors.fuselage, color: state.colors.fuselage },
+      { on: true, label: "Crown / roof", meta: state.colors.crown, color: state.colors.crown },
+      { on: true, label: "Cockpit", meta: state.colors.cockpit, color: state.colors.cockpit },
       { on: true, label: "Nose", meta: state.colors.nose, color: state.colors.nose },
       { on: true, label: "Belly", meta: state.colors.belly, color: state.colors.belly },
+      { on: true, label: "Fairings", meta: state.colors.fairings, color: state.colors.fairings },
       { on: true, label: "Wings", meta: state.colors.wings, color: state.colors.wings },
       { on: true, label: "Winglet", meta: state.colors.winglet, color: state.colors.winglet },
       { on: true, label: "Stabilizer", meta: state.colors.stabilizer, color: state.colors.stabilizer },
       { on: true, label: "Engines", meta: state.colors.engines, color: state.colors.engines },
+      { on: true, label: "Pylons", meta: state.colors.pylons, color: state.colors.pylons },
       { on: true, label: "Tail", meta: state.colors.tail, color: state.colors.tail },
       { on: true, label: "Doors", meta: state.colors.doors, color: state.colors.doors },
       { on: true, label: "Window band", meta: state.colors.windowband, color: state.colors.windowband },
@@ -871,9 +895,13 @@ const $ = (id) => document.getElementById(id);
     "c-fuselage",
     "c-nose",
     "c-belly",
+    "c-crown",
+    "c-cockpit",
     "c-wings",
     "c-winglet",
     "c-engines",
+    "c-pylons",
+    "c-fairings",
     "c-tail",
     "c-stabilizer",
     "c-doors",

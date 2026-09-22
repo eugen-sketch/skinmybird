@@ -15,9 +15,9 @@ if (-not $env:SKINMYBIRD_TEXCONV) {
 
 $py = if (Test-Path '.\.venv\Scripts\python.exe') { '.\.venv\Scripts\python.exe' } else { 'python' }
 
-Write-Host "SkinMyBird v0.5.7 [$($env:SKINMYBIRD_EDITION)] → http://127.0.0.1:$($env:SKINMYBIRD_PORT)" -ForegroundColor Cyan
+Write-Host "SkinMyBird v0.5.8 [$($env:SKINMYBIRD_EDITION)] → http://127.0.0.1:$($env:SKINMYBIRD_PORT)" -ForegroundColor Cyan
 Write-Host "Community: $env:SKINMYBIRD_COMMUNITY"
 Write-Host "texconv:   $env:SKINMYBIRD_TEXCONV"
 
-Start-Process "http://127.0.0.1:$($env:SKINMYBIRD_PORT)/?v=0.5.7"
+Start-Process "http://127.0.0.1:$($env:SKINMYBIRD_PORT)/?v=0.5.8"
 & $py server.py

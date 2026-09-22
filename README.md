@@ -15,11 +15,11 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
-### v0.5.7 notes
+### v0.5.8 notes
 - **Two editions (one codebase)**: **Commercial** (default) = Airbus + Boeing fixed-wing airliners only; **Personal** = same + H135 helicopter, hot-air balloon, Cessna 172 stub.
 - Launchers: `SkinMyBird.bat` → commercial on **:5173**; `SkinMyBird-Personal.bat` → personal on **:5174**. Env: `SKINMYBIRD_EDITION`, `SKINMYBIRD_PORT`.
 - Profile JSON tagged with `"edition": "commercial"|"personal"`; UI header badge shows which edition is running.
-- Cache-bust `?v=0.5.7`
+- Cache-bust `?v=0.5.8`
 
 ### v0.5.6 notes
 - **Hangar GLB paint zones**: single-material airframes (A320/737/747/787/…) recolor by **vertex geometry region** (wings / engines / tail / nose / belly / …), not the old fuselage-only tint. Procedural path unchanged.
@@ -57,7 +57,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.5.7 (selector)
+## Models v0.5.8 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -111,8 +111,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.5.7`
-   - Personal → `http://127.0.0.1:5174/?v=0.5.7`
+   - Commercial → `http://127.0.0.1:5173/?v=0.5.8`
+   - Personal → `http://127.0.0.1:5174/?v=0.5.8`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -196,4 +196,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.5.7 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.5.8 — commercial + personal editions · GLB hangar · Two-Tone

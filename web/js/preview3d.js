@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.5.7 — real airliner GLBs + procedural helo/balloon.
+ * SkinMyBird 3D hangar preview v0.5.8 — real airliner GLBs + procedural helo/balloon.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -66,10 +66,13 @@ function stripAndNeutralizeMaterial(m) {
     try { m.emissiveMap.dispose(); } catch (_) {}
     m.emissiveMap = null;
   }
-  if (m.color) m.color.set(0xf2f4f6);
+  if (m.envMap) m.envMap = null;
+  if (m.color) m.color.set(0xffffff);
   if (m.emissive) m.emissive.set(0x000000);
-  if ("metalness" in m) m.metalness = Math.min(m.metalness ?? 0.15, 0.35);
-  if ("roughness" in m) m.roughness = Math.max(m.roughness ?? 0.55, 0.45);
+  // Solid paint, not chrome — keep metalness low so zone colors read clearly
+  if ("metalness" in m) m.metalness = Math.min(m.metalness ?? 0.12, 0.18);
+  if ("roughness" in m) m.roughness = Math.max(m.roughness ?? 0.62, 0.62);
+  m.vertexColors = true;
   m.needsUpdate = true;
 }
 
@@ -433,6 +436,11 @@ const ZONE_ID = {
   doors: 8,
   windowband: 9,
   accent: 10,
+  // v0.5.8 — more specific body / mount zones (ids appended; old ids stable)
+  crown: 11,
+  cockpit: 12,
+  pylons: 13,
+  fairings: 14,
 };
 const ZONE_NAMES = [
   "fuselage",
@@ -446,6 +454,10 @@ const ZONE_NAMES = [
   "doors",
   "windowband",
   "accent",
+  "crown",
+  "cockpit",
+  "pylons",
+  "fairings",
 ];
 
 /**
@@ -529,6 +541,7 @@ function classifyVertexZone(x, y, z, ctx) {
   const absZ = Math.abs(z);
   const { sy, halfZ, wingY, seeds, engineR } = ctx;
 
+  // Engines (nacelle seeds)
   for (let i = 0; i < seeds.length; i++) {
     const s = seeds[i];
     const dx = x - s[0];
@@ -537,26 +550,67 @@ function classifyVertexZone(x, y, z, ctx) {
     if (dx * dx + dy * dy + dz * dz < engineR * engineR) return ZONE_ID.engines;
   }
 
+  // Pylons: above nacelle seeds, between engine and wing plane
+  for (let i = 0; i < seeds.length; i++) {
+    const s = seeds[i];
+    const dx = x - s[0];
+    const dy = y - s[1];
+    const dz = z - s[2];
+    const horiz = Math.sqrt(dx * dx + dz * dz);
+    if (
+      horiz < engineR * 0.9 &&
+      dy > engineR * 0.15 &&
+      dy < engineR * 1.55 &&
+      y < wingY + sy * 0.1
+    ) {
+      return ZONE_ID.pylons;
+    }
+  }
+
   if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return ZONE_ID.winglet;
   if (u < 0.22 && v > 0.45 && w < 0.40) return ZONE_ID.tail;
   if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75)
     return ZONE_ID.stabilizer;
   if (u > 0.9 && w < 0.35) return ZONE_ID.nose;
 
-  if (w > 0.18 && absZ > halfZ * 0.1 && u > 0.26 && u < 0.84) {
-    const nearWingPlane = Math.abs(y - wingY) < sy * 0.2;
-    if (nearWingPlane && v > 0.08 && v < 0.6) return ZONE_ID.wings;
-    if (w > 0.3 && v > 0.1 && v < 0.55) return ZONE_ID.wings;
+  // Wings — tightened so fuselage sides are not stolen
+  if (w > 0.28 && absZ > halfZ * 0.18 && u > 0.28 && u < 0.82) {
+    const nearWingPlane = Math.abs(y - wingY) < sy * 0.16;
+    if (nearWingPlane && v > 0.08 && v < 0.58) return ZONE_ID.wings;
+    if (w > 0.42 && v > 0.1 && v < 0.52) return ZONE_ID.wings;
   }
 
-  if (w < 0.2 && u > 0.12 && u < 0.92) {
-    if (v < 0.24) return ZONE_ID.belly;
-    if (v > 0.38 && v < 0.55) return ZONE_ID.windowband;
-    if (v > 0.3 && v < 0.38) return ZONE_ID.accent;
+  // Fairings: wing-root / belly fairing (low-mid v, moderate w, mid u)
+  if (
+    w > 0.14 &&
+    w < 0.38 &&
+    v > 0.12 &&
+    v < 0.38 &&
+    u > 0.35 &&
+    u < 0.72 &&
+    Math.abs(y - wingY) < sy * 0.22
+  ) {
+    return ZONE_ID.fairings;
+  }
+
+  // Cockpit: forward upper canopy
+  if (u > 0.78 && u < 0.95 && v > 0.55 && w < 0.28) return ZONE_ID.cockpit;
+
+  // Crown: upper fuselage roof (high v, low w, mid body)
+  if (v > 0.62 && w < 0.22 && u > 0.18 && u < 0.82) return ZONE_ID.crown;
+
+  // Body side — thin windowband/accent so fuselage + crown own most of the tube
+  // (v0.5.7 windowband was too tall for w<0.2 → looked like uncovered gray metal)
+  if (w < 0.22 && u > 0.14 && u < 0.9) {
+    if (v < 0.22) return ZONE_ID.belly;
+    if (v > 0.42 && v < 0.5 && w > 0.05) return ZONE_ID.windowband;
+    if (v > 0.36 && v < 0.42 && w > 0.05) return ZONE_ID.accent;
   }
   if (w > 0.1 && w < 0.24 && v > 0.28 && v < 0.52 && u > 0.28 && u < 0.78)
     return ZONE_ID.doors;
   if (u > 0.86 && w < 0.28) return ZONE_ID.nose;
+
+  // Always paintable — never leave raw GLB gray
   return ZONE_ID.fuselage;
 }
 
@@ -671,8 +725,11 @@ function applyGlbVertexPaint(craft, colorsByZone) {
         } catch (_) {}
         m.emissiveMap = null;
       }
+      if (m.envMap) m.envMap = null;
       m.vertexColors = true;
       if (m.color) m.color.set(0xffffff);
+      if ("metalness" in m) m.metalness = Math.min(m.metalness ?? 0.12, 0.18);
+      if ("roughness" in m) m.roughness = Math.max(m.roughness ?? 0.62, 0.62);
       m.needsUpdate = true;
     });
   });
@@ -2549,7 +2606,7 @@ export class Preview3D {
     this.scene = new THREE.Scene();
 
     this.camera = new THREE.PerspectiveCamera(42, w / h, 0.1, 200);
-    this.camera.position.set(9, 4, 7.5);
+    this.camera.position.set(9, 5.8, 7.5);
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
@@ -2557,7 +2614,7 @@ export class Preview3D {
     this.controls.minDistance = 4;
     this.controls.maxDistance = 40;
     this.controls.maxPolarAngle = Math.PI * 0.49;
-    this.controls.target.set(0, 0.5, 0);
+    this.controls.target.set(0, 1.25, 0);
     this.controls.autoRotate = true;
     this.controls.autoRotateSpeed = 0.6;
     this.controls.update();
@@ -2573,10 +2630,30 @@ export class Preview3D {
     this.controls.addEventListener("start", onStart);
     this.controls.addEventListener("end", onEnd);
 
-    // Lights
-    const hemi = new THREE.HemisphereLight(0xc8d0e0, 0x1a1a1e, 0.7);
+    // Soft dawn sky (friendlier than near-black hangar)
+    try {
+      const skyCanvas = document.createElement("canvas");
+      skyCanvas.width = 4;
+      skyCanvas.height = 256;
+      const sctx = skyCanvas.getContext("2d");
+      const grad = sctx.createLinearGradient(0, 0, 0, 256);
+      grad.addColorStop(0, "#c8d6e6");
+      grad.addColorStop(0.4, "#9eafc0");
+      grad.addColorStop(0.72, "#5a6572");
+      grad.addColorStop(1, "#2e343c");
+      sctx.fillStyle = grad;
+      sctx.fillRect(0, 0, 4, 256);
+      const skyTex = new THREE.CanvasTexture(skyCanvas);
+      skyTex.colorSpace = THREE.SRGBColorSpace;
+      this.scene.background = skyTex;
+    } catch (_) {
+      this.scene.background = new THREE.Color(0x8a9aab);
+    }
+
+    // Lights — brighter fill so paint colors pop
+    const hemi = new THREE.HemisphereLight(0xe8eef6, 0x3a4048, 1.05);
     this.scene.add(hemi);
-    const key = new THREE.DirectionalLight(0xfff0e0, 1.15);
+    const key = new THREE.DirectionalLight(0xfff5ea, 1.35);
     key.position.set(6, 12, 8);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
@@ -2587,19 +2664,19 @@ export class Preview3D {
     key.shadow.camera.top = 15;
     key.shadow.camera.bottom = -15;
     this.scene.add(key);
-    const fill = new THREE.DirectionalLight(0x88a0c0, 0.35);
+    const fill = new THREE.DirectionalLight(0xa8c0d8, 0.55);
     fill.position.set(-8, 4, -6);
     this.scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xb8c8d8, 0.18);
+    const rim = new THREE.DirectionalLight(0xd0dde8, 0.32);
     rim.position.set(-4, 6, 10);
     this.scene.add(rim);
 
-    // Hangar floor
+    // Hangar floor — lighter concrete-ish
     const floorGeo = new THREE.CircleGeometry(18, 48);
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x1a1a1e,
-      metalness: 0.2,
-      roughness: 0.85,
+      color: 0x2a3038,
+      metalness: 0.12,
+      roughness: 0.9,
     });
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
@@ -2608,10 +2685,10 @@ export class Preview3D {
     this.scene.add(floor);
 
     // Soft grid helper
-    const grid = new THREE.GridHelper(24, 24, 0x2a2a32, 0x1e1e24);
+    const grid = new THREE.GridHelper(24, 24, 0x4a5560, 0x343a42);
     grid.position.y = -1.34;
     grid.material.transparent = true;
-    grid.material.opacity = 0.45;
+    grid.material.opacity = 0.28;
     this.scene.add(grid);
 
     this.root = new THREE.Group();
@@ -2660,9 +2737,10 @@ export class Preview3D {
           : family === "helicopter"
             ? 10
             : 12.5;
-    // Classic 3/4 front-side view, slightly above
-    this.camera.position.set(dist * 0.72, dist * 0.32, dist * 0.58);
-    this.controls.target.set(0, family === "balloon" ? 1.6 : 0.35, 0);
+    // Classic 3/4 front-side view — elevated so zoom keeps model off the bottom
+    const targetY = family === "balloon" ? 1.6 : 1.25;
+    this.camera.position.set(dist * 0.72, dist * 0.42 + targetY * 0.15, dist * 0.58);
+    this.controls.target.set(0, targetY, 0);
     this.controls.autoRotate = true;
     this.controls.update();
   }
@@ -2772,8 +2850,8 @@ export class Preview3D {
       });
     });
 
-    // Sit slightly above hangar floor grid BEFORE decals so raycasts/world matches final pose
-    craft.position.y = 0.02;
+    // Lift GLB to match procedural airliner framing (~0.55) — gear not glued to bottom
+    craft.position.y = 0.55;
     this.root.add(craft);
     craft.updateMatrixWorld(true);
 
@@ -2866,6 +2944,10 @@ export class Preview3D {
         doors: hexToThree(state.colors.doors || state.colors.fuselage || "#f2f4f7"),
         windowband: hexToThree(state.colors.windowband || state.colors.fuselage || "#f2f4f7"),
         accent: hexToThree(state.colors.accent || state.colors.fuselage || "#f2f4f7"),
+        crown: hexToThree(state.colors.crown || state.colors.fuselage || "#f2f4f7"),
+        cockpit: hexToThree(state.colors.cockpit || state.colors.fuselage || "#f2f4f7"),
+        pylons: hexToThree(state.colors.pylons || state.colors.engines || "#1b2430"),
+        fairings: hexToThree(state.colors.fairings || state.colors.fuselage || "#f2f4f7"),
       };
       const craft = this.root.getObjectByName("aircraft");
       // Prefer per-vertex zone paint (works for 1-mesh / 1-material airframes)
