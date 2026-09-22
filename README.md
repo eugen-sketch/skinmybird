@@ -15,6 +15,14 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.6.7 notes
+- **QA fix FAIL_CROPPED_BY_WING**: title was still clipped by the wing LE on some side views (even on cyan windowband).
+- Move title further forward: `xMain ≈ center.x + size.x * 0.24` (range 0.22–0.26, was 0.18).
+- Shorter panel: `panelLen ≈ fusLen * 0.28` (range 0.26–0.30, was 0.33) so the panel cannot overlap the wing root.
+- Keep v0.6.6 windowband-only `yAim` (band AABB mid) and band-height Y probes; registration stays aft on the same band.
+- Both sides, L→R, no crown.
+- Cache-bust `?v=0.6.7`
+
 ### v0.6.6 notes
 - **Deterministic window-band placement**: title + registration aim only at the cabin window line — not the teal strip above the wing root.
 - **`sideBeltMeshes`**: only `paintZone` in `{windowband, accent}`; fallback `fuselage` **only if no windowband**. Never belly / crown / cockpit / fairings / wings for side casts.
@@ -36,7 +44,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Raised defaults: `textPosY` **+8**, `beltBase` **0.10**; shorter fuselage panel (`fusLen * 0.36`); forward X (`center.x + size.x * 0.15`).
 - Y probes prefer belt → slight up → modest down; removed aggressive low probes (`-0.22/-0.28`); reject hits below wing-plane estimate.
 - Registration stays aft on the **same raised belt** (not dropped toward the wing).
-- Cache-bust `?v=0.6.4` (superseded by 0.6.5/0.6.6)
+- Cache-bust `?v=0.6.4` (superseded by 0.6.5/0.6.6/0.6.7)
 
 ### v0.6.3 notes
 - **Aft registration visibility**: Live hangar now probes several aft X stations (0.18 / 0.22 / 0.28 / 0.32 × fuselage length behind center) plus lower-Y belt samples so YR-… marks land on true lateral skin when the window-band ends aft of the wing.
@@ -104,7 +112,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.6.6 (selector)
+## Models v0.6.7 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -158,8 +166,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.6.6`
-   - Personal → `http://127.0.0.1:5174/?v=0.6.6`
+   - Commercial → `http://127.0.0.1:5173/?v=0.6.7`
+   - Personal → `http://127.0.0.1:5174/?v=0.6.7`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -243,4 +251,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.6.6 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.6.7 — commercial + personal editions · GLB hangar · Two-Tone

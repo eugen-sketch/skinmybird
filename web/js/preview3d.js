@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.6 — deterministic window-band title/reg (sideBeltMeshes + yAim from band AABB).
+ * SkinMyBird 3D hangar preview v0.6.7 — title further forward + shorter panel (clear of wing LE); windowband yAim.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1873,7 +1873,7 @@ function addTextDecals(craft, state) {
 
   const fusLen = size.x;
 
-  // --- v0.6.6 deterministic window-band belt ---------------------------------
+  // --- v0.6.7 window-band belt (forward xMain + short panelLen; yAim unchanged) ---
   // sideBeltMeshes: ONLY windowband + accent. Fallback fuselage ONLY if no windowband.
   // Never belly / crown / cockpit / fairings / wings for title/reg side casts.
   const scored = targets.scored || [];
@@ -1927,11 +1927,11 @@ function addTextDecals(craft, state) {
   // Hard floor: anything below band bottom is wing-root / belly — reject
   const yBandFloor = yAim - bandH;
 
-  // Title panel: fit INSIDE the window band; forward cabin (nose-ward of wing)
+  // Title panel: fit INSIDE the window band; short so it cannot overlap wing root
   const panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
-    fusLen * 0.33; // ~0.30–0.36 fusLen
+    fusLen * 0.28; // v0.6.7 ~0.26–0.30 fusLen (was 0.33)
   const titlePanelH =
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
     place === "belly" || place === "tail" ? Math.max(0.32, Math.min(size.y * 0.28, 0.72)) :
@@ -1949,8 +1949,8 @@ function addTextDecals(craft, state) {
     panelDepth
   );
 
-  // Title X: forward cabin, nose-ward of wing (~0.18 × fusLen ahead of center)
-  let xMain = center.x + size.x * (0.18 - posX * 0.35);
+  // Title X: further forward cabin, nose-ward of wing LE (~0.24 × fusLen ahead of center)
+  let xMain = center.x + size.x * (0.24 - posX * 0.35);
   if (place === "tail") xMain = center.x - size.x * (0.28 + posX * 0.1);
   else if (place === "wing") xMain = center.x - size.x * 0.02;
 

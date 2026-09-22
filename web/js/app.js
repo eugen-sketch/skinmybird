@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.6.6 — deterministic window-band title/reg (sideBeltMeshes + yAim from band AABB) + face-solid paint + zone highlight.
+ * SkinMyBird web editor v0.6.7 — title further forward + shorter panel (clear of wing); windowband yAim + face-solid paint + zone highlight.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.6";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.7";
 
 const $ = (id) => document.getElementById(id);
 
