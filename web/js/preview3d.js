@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.8.11 — tail-fin logos centered + no U-flip (same upright orientation both sides); aft hard-clip; Main vs ID text.
+ * SkinMyBird 3D hangar preview v0.8.13 — fin logo geometric center; export bake scale matches hangar text/logo size.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -2840,8 +2840,8 @@ function makeRegTexture(state) {
 }
 
 /**
- * v0.8.11 — Custom logo/image decals on the VERTICAL STABILIZER (tail fin) only.
- * Centered on fin geometry; same upright/readable orientation on both faces (no U-flip).
+ * v0.8.13 — Custom logo/image decals on the VERTICAL STABILIZER (tail fin) only.
+ * Dead-center of the visible fin face (raycast probe); upright both faces.
  * posX/posY nudge within the fin; scale / opacity / rotate / side.
  */
 function ensureCustomSlotImage(slot) {
@@ -2893,14 +2893,16 @@ function placeFallbackPlaneDecal(group, craft, side, x, y, fusR, center, decalSi
 
 function estimateTailFinAim(craft, size, center, targets) {
   const fusLen = size.x;
-  // Visual mid-panel of the vertical stabilizer (airline logo sweet spot).
-  // Tip / upper-aft corner looks wrong; root/HT junction is too low.
-  let xAim = center.x - fusLen * 0.41;
-  let yAim = center.y + size.y * 0.20;
+  // Fallback seed (overwritten by vert scan / raycast probe).
+  let xAim = center.x - fusLen * 0.40;
+  let yAim = center.y + size.y * 0.22;
   let finH = Math.max(0.55, size.y * 0.34);
   let finW = Math.max(0.45, fusLen * 0.12);
+  let tipOnly = false;
 
-  // Collect aft + elevated + near-centerline verts → vertical-fin face bounds.
+  // Collect aft + elevated + near-centerline verts → vertical-fin tip/face bounds.
+  // Low-poly hangar GLBs (a320.glb) often only have TIP verts for the fin —
+  // mid-face is large triangles with no intermediate samples.
   const vBox = new THREE.Box3();
   let vCount = 0;
   const tmp = new THREE.Vector3();
@@ -2928,33 +2930,168 @@ function estimateTailFinAim(craft, size, center, targets) {
     });
   }
 
-  if (vCount >= 30 && Number.isFinite(vBox.min.x)) {
-    const fw = vBox.max.x - vBox.min.x;
+  if (vCount >= 20 && Number.isFinite(vBox.min.x)) {
+    const fw = Math.max(0.2, vBox.max.x - vBox.min.x);
     const fh = vBox.max.y - vBox.min.y;
-    // If scan only caught the tip (tiny height), synthesize full fin panel height
+    const tipLE = vBox.max.x; // noseward
+    const tipTE = vBox.min.x; // aft
     if (fh >= size.y * 0.18) {
-      // LE = max.x (noseward), TE = min.x (aft). Visual center is slightly aft of mid-chord on swept fins.
-      xAim = vBox.max.x - fw * 0.55;
+      // Full fin face sampled — geometric center = mid-chord × mid-height.
+      xAim = (tipLE + tipTE) * 0.5;
       yAim = vBox.min.y + fh * 0.50;
       finH = Math.max(0.45, fh);
       finW = Math.max(0.35, fw);
     } else {
-      // Tip-only scan: keep X from verts, Y at visual mid between fuse top & tip
-      xAim = (vBox.min.x + vBox.max.x) * 0.5;
+      // TIP-ONLY (common on a320.glb): tip chord is the MOST AFT section of a
+      // swept-back fin. Using tip mid-X at mid-height puts the logo on the TE.
+      // Synthesize mid-panel center by sweeping the tip chord FORWARD toward the root.
+      tipOnly = true;
       const tipY = Math.max(vBox.max.y, center.y + size.y * 0.42);
-      const rootY = center.y + size.y * 0.04;
-      yAim = rootY + (tipY - rootY) * 0.48;
+      const rootY = center.y + size.y * 0.05;
       finH = Math.max(0.55, tipY - rootY);
       finW = Math.max(0.4, fw, fusLen * 0.11);
+      // A320-ish sweep: LE/TE move forward ~0.40·finH from tip → root.
+      const sweep = Math.min(finW * 0.85, finH * 0.42);
+      const midFrac = 0.50; // geometric mid-height of the visible panel
+      const yFromTip = finH * midFrac;
+      const sweepAtMid = sweep * (yFromTip / Math.max(finH, 1e-6));
+      // Mid-height chord = tip chord shifted forward by sweepAtMid
+      const midLE = tipLE + sweepAtMid;
+      const midTE = tipTE + sweepAtMid;
+      xAim = (midLE + midTE) * 0.5;
+      yAim = tipY - yFromTip;
     }
   }
 
-  // Soft clamp: empennage mid-fin (never tip spike, never mid-cabin)
-  xAim = Math.min(xAim, center.x - fusLen * 0.32);
-  xAim = Math.max(xAim, center.x - fusLen * 0.52);
-  yAim = Math.max(yAim, center.y + size.y * 0.12);
-  yAim = Math.min(yAim, center.y + size.y * 0.36);
-  return { xAim, yAim, finH, finW, vCount };
+  // Soft clamp: empennage panel (never tip spike, never mid-cabin)
+  xAim = Math.min(xAim, center.x - fusLen * 0.30);
+  xAim = Math.max(xAim, center.x - fusLen * 0.50);
+  yAim = Math.max(yAim, center.y + size.y * 0.10);
+  yAim = Math.min(yAim, center.y + size.y * 0.38);
+  return { xAim, yAim, finH, finW, vCount, tipOnly };
+}
+
+/**
+ * v0.8.13 — Probe the VERTICAL STABILIZER face with a side-ray grid and return
+ * the geometric center of hittable fin-skin points. Fixes tip-only GLBs where
+ * vert bounds alone put the logo on the trailing edge.
+ */
+function probeFinFaceCenter(meshList, fin, center, size, raycaster, side) {
+  const fusLen = size.x;
+  const fusR = estimateFuselageHalfWidth(size);
+  const originZ = center.z + side * Math.max(fusR * 2.4, size.z * 0.20);
+  const nMat = new THREE.Matrix3();
+  const wN = new THREE.Vector3();
+  const hits = [];
+
+  // Dense grid over the estimated fin panel (slightly padded)
+  const x0 = fin.xAim - fin.finW * 0.42;
+  const x1 = fin.xAim + fin.finW * 0.42;
+  const y0 = fin.yAim - fin.finH * 0.42;
+  const y1 = fin.yAim + fin.finH * 0.42;
+  const nx = 9, ny = 9;
+  for (let iy = 0; iy < ny; iy++) {
+    for (let ix = 0; ix < nx; ix++) {
+      const tx = x0 + ((x1 - x0) * ix) / (nx - 1);
+      const ty = y0 + ((y1 - y0) * iy) / (ny - 1);
+      const origin = new THREE.Vector3(tx, ty, originZ);
+      const dir = new THREE.Vector3(0, 0, -side);
+      let h = raycastBestHit(meshList, origin, dir, raycaster);
+      if (!h) {
+        origin.z = center.z + side * Math.max(fusR * 3.5, size.z * 0.30);
+        h = raycastBestHit(meshList, origin, dir, raycaster);
+      }
+      if (!h || !h.point || !h.face) continue;
+      // Empennage only — reject cabin / wing / belly
+      if (h.point.x > center.x - fusLen * 0.22) continue;
+      if (h.point.y < center.y + size.y * 0.08) continue;
+      if (h.point.y > center.y + size.y * 0.48) continue;
+      nMat.getNormalMatrix(h.object.matrixWorld);
+      wN.copy(h.face.normal).applyNormalMatrix(nMat).normalize();
+      const sideFacing = Math.abs(wN.z);
+      if (sideFacing < 0.40) continue;
+      if (Math.abs(wN.y) > 0.70) continue;
+      // Keep near centerline (fin, not HT tip)
+      if (Math.abs(h.point.z - center.z) > Math.max(0.55, size.z * 0.08)) continue;
+      hits.push(h.point.clone());
+    }
+  }
+  if (hits.length < 5) return null;
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let sx = 0, sy = 0, sz = 0;
+  for (const p of hits) {
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+    sx += p.x; sy += p.y; sz += p.z;
+  }
+  const n = hits.length;
+  const fh = Math.max(0.40, maxY - minY);
+  const fw = Math.max(0.35, maxX - minX);
+
+  // Per-band mid-chord (fixes swept-fin bias: tip TE pulls bbox mid aft).
+  // Slice hits into Y bands; each band's mid-X is the local chord center;
+  // average those mids (weighted by band hit count) around mid-height.
+  const nBands = 7;
+  const bandMids = [];
+  for (let b = 0; b < nBands; b++) {
+    const yLo = minY + (fh * b) / nBands;
+    const yHi = minY + (fh * (b + 1)) / nBands;
+    let bMinX = Infinity, bMaxX = -Infinity, bN = 0, bSy = 0;
+    for (const p of hits) {
+      if (p.y < yLo || p.y >= yHi) continue;
+      bMinX = Math.min(bMinX, p.x);
+      bMaxX = Math.max(bMaxX, p.x);
+      bSy += p.y;
+      bN++;
+    }
+    if (bN < 2 || !Number.isFinite(bMinX)) continue;
+    bandMids.push({
+      x: (bMinX + bMaxX) * 0.5,
+      y: bSy / bN,
+      w: bMaxX - bMinX,
+      n: bN,
+      // Prefer bands near mid-height of the panel
+      midness: 1 - Math.abs((b + 0.5) / nBands - 0.5) * 2,
+    });
+  }
+
+  let xAim, yAim;
+  if (bandMids.length >= 2) {
+    let wX = 0, wY = 0, wSum = 0;
+    for (const bm of bandMids) {
+      // Weight: mid-height bands + hit count
+      const w = (0.35 + 0.65 * bm.midness) * bm.n;
+      wX += bm.x * w;
+      wY += bm.y * w;
+      wSum += w;
+    }
+    xAim = wX / wSum;
+    yAim = wY / wSum;
+    // Chord width from mid-height bands
+    const midBands = bandMids.filter((bm) => bm.midness >= 0.5);
+    if (midBands.length) {
+      const avgW = midBands.reduce((s, bm) => s + bm.w, 0) / midBands.length;
+      if (avgW > 0.25) {
+        // keep as local finW hint via closure-friendly return field below
+      }
+    }
+  } else {
+    // Fallback: area centroid (less TE-biased than raw bbox on swept fins)
+    xAim = sx / n;
+    yAim = sy / n;
+  }
+
+  return {
+    xAim,
+    yAim,
+    zAim: sz / n,
+    finW: fw,
+    finH: fh,
+    hitCount: n,
+    com: { x: sx / n, y: sy / n, z: sz / n },
+    bands: bandMids.length,
+  };
 }
 
 function addCustomTextureDecals(craft, state, group, targets, box, size, center, raycaster) {
@@ -2975,7 +3112,53 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
     : allMeshes.slice();
   if (!meshList.length) meshList = allMeshes.slice();
 
-  const fin = estimateTailFinAim(craft, size, center, targets);
+  const finSeed = estimateTailFinAim(craft, size, center, targets);
+  // Probe BOTH sides once — geometric center of the hittable fin face.
+  // Falls back to seed aim if the mesh is too sparse for a stable probe.
+  let fin = { ...finSeed };
+  {
+    const probeL = probeFinFaceCenter(meshList, finSeed, center, size, raycaster, -1);
+    const probeR = probeFinFaceCenter(meshList, finSeed, center, size, raycaster, 1);
+    const probes = [probeL, probeR].filter(Boolean);
+    if (probes.length) {
+      let xAim = probes.reduce((s, p) => s + p.xAim, 0) / probes.length;
+      const yAim = probes.reduce((s, p) => s + p.yAim, 0) / probes.length;
+      const finW = Math.max(finSeed.finW * 0.7, ...probes.map((p) => p.finW));
+      const finH = Math.max(finSeed.finH * 0.7, ...probes.map((p) => p.finH));
+      // Swept-fin visual correction: probe mids still sit ~8–10% chord aft of the
+      // perceived panel center (slanted LE looks longer). Nudge noseward (+X).
+      xAim += finW * 0.09;
+      fin = {
+        ...finSeed,
+        xAim,
+        yAim,
+        finW,
+        finH,
+        probed: true,
+        hitCount: probes.reduce((s, p) => s + p.hitCount, 0),
+      };
+      console.info(
+        "FIN probe center",
+        "x=" + xAim.toFixed(3),
+        "y=" + yAim.toFixed(3),
+        "w=" + finW.toFixed(3),
+        "h=" + finH.toFixed(3),
+        "hits=" + fin.hitCount,
+        finSeed.tipOnly ? "(tipOnly seed)" : ""
+      );
+    } else {
+      console.info(
+        "FIN seed center (no probe)",
+        "x=" + fin.xAim.toFixed(3),
+        "y=" + fin.yAim.toFixed(3),
+        finSeed.tipOnly ? "tipOnly" : "full"
+      );
+    }
+  }
+  // Expose for QA
+  try {
+    if (typeof window !== "undefined") window.__SMB_FIN_AIM = { ...fin };
+  } catch (_) {}
 
   slots.forEach((slot, idx) => {
     if (!slot || !slot.dataUrl) return;
@@ -3009,7 +3192,6 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
     if (tint) {
       const hex = tint.startsWith("#") ? tint : "#" + tint;
       if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
-        // Optional color tint via source-atop multiply
         ctx2d.globalCompositeOperation = "source-atop";
         ctx2d.globalAlpha = 0.55;
         ctx2d.fillStyle = hex;
@@ -3035,30 +3217,30 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
       toneMapped: false,
     };
 
-    // Size relative to fin panel (cap so mid-fin logos are not tip-clipped)
-    const baseW = Math.max(0.28, Math.min(fin.finW * 0.55, fusLen * 0.14)) * scale;
+    // Size relative to probed fin panel (keep inside LE/TE with margin)
+    const baseW = Math.max(0.28, Math.min(fin.finW * 0.48, fusLen * 0.12)) * scale;
     const baseH = baseW * (dh / Math.max(dw, 1e-6));
     const depth = Math.max(0.25, Math.min(size.y * 0.28, 0.55));
     const decalSize = new THREE.Vector3(baseW, Math.max(0.28, baseH), depth);
 
-    // Centered on fin + nudge (posX: − noseward / + aft on fin chord; posY: − low / + high)
+    // Dead-center of fin face + nudge (posX: − noseward / + aft; posY: − low / + high)
     const x0 = fin.xAim - fin.finW * nudgeX * 0.35;
     const y0 = fin.yAim + fin.finH * nudgeY * 0.35;
 
-    // Tight samples around the fin center — avoid tip/LE wander that looks off-center
+    // Tight samples around geometric center only
     const xSamples = [
       x0,
-      x0 + fin.finW * 0.04,
-      x0 - fin.finW * 0.04,
-      x0 + fin.finW * 0.08,
-      x0 - fin.finW * 0.08,
+      x0 + fin.finW * 0.03,
+      x0 - fin.finW * 0.03,
+      x0 + fin.finW * 0.06,
+      x0 - fin.finW * 0.06,
     ];
     const yCands = [
       y0,
-      y0 - fin.finH * 0.05,
-      y0 + fin.finH * 0.05,
-      y0 - fin.finH * 0.10,
-      y0 + fin.finH * 0.10,
+      y0 - fin.finH * 0.04,
+      y0 + fin.finH * 0.04,
+      y0 - fin.finH * 0.08,
+      y0 + fin.finH * 0.08,
     ];
 
     let sides;
@@ -3066,10 +3248,7 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
     else if (sideMode === "right") sides = [1];
     else sides = [-1, 1];
 
-    // v0.8.11: ALWAYS U-flip fin logos on BOTH faces.
-    // DecalGeometry UV on vertical fins reads mirrored from outside; flipping the
-    // canvas once per side keeps HB/owl upright + readable the same way on L and R
-    // (do NOT flip only one side — that left the other face backwards).
+    // ALWAYS U-flip fin logos on BOTH faces (DecalGeometry UV mirrors on vertical fins).
     const flipU = true;
     const nMat = new THREE.Matrix3();
     const wN = new THREE.Vector3();
@@ -3079,7 +3258,6 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
       let bestErr = Infinity;
       for (const tx of xSamples) {
         for (const y of yCands) {
-          // Cast toward fin face from outboard
           const origin = new THREE.Vector3(tx, y, center.z + side * Math.max(fusR * 2.2, size.z * 0.18));
           const dir = new THREE.Vector3(0, 0, -side);
           let h = raycastBestHit(meshList, origin, dir, raycaster);
@@ -3087,28 +3265,26 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
             origin.z = center.z + side * Math.max(fusR * 3.5, size.z * 0.28);
             h = raycastBestHit(meshList, origin, dir, raycaster);
           }
-          // Slight aft cast if miss (fin LE / tip) — keep Y near aim (no tip climb)
           if (!h) {
             const o2 = new THREE.Vector3(
-              tx - fusLen * 0.02,
+              tx - fusLen * 0.015,
               y,
               center.z + side * size.z * 0.12
             );
             h = raycastBestHit(meshList, o2, new THREE.Vector3(0, 0, -side).normalize(), raycaster);
           }
           if (!h || !h.point || !h.face) continue;
-          // Prefer hits on aft/high fin, reject mid-cabin / wing / belly
           if (h.point.x > center.x - fusLen * 0.18) continue;
           if (h.point.y < center.y + size.y * 0.05) continue;
           nMat.getNormalMatrix(h.object.matrixWorld);
           wN.copy(h.face.normal).applyNormalMatrix(nMat).normalize();
-          // Prefer side-facing fin skin (|Nz| high); reject crown/HT-ish hits
           const sideFacing = Math.abs(wN.z);
           if (sideFacing < 0.35) continue;
           if (Math.abs(wN.y) > 0.72) continue;
+          // Strongly prefer hits at geometric center — reject LE/TE wander
           const err =
-            Math.abs(h.point.y - y0) * 2.8 +
-            Math.abs(h.point.x - x0) * 2.2 +
+            Math.abs(h.point.y - y0) * 3.2 +
+            Math.abs(h.point.x - x0) * 3.0 +
             Math.abs(h.point.z - center.z) * 0.08 +
             (1 - sideFacing) * 0.35;
           if (err < bestErr) {

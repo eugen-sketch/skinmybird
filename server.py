@@ -25,7 +25,7 @@ DEFAULT_COMMUNITY = Path(
     )
 )
 
-app = FastAPI(title="SkinMyBird", version="0.8.11")
+app = FastAPI(title="SkinMyBird", version="0.8.13")
 
 
 class ExportRequest(BaseModel):
@@ -43,6 +43,9 @@ class ExportRequest(BaseModel):
         }
     )
     stickers: list[dict[str, Any]] = Field(default_factory=list)
+    text: dict[str, Any] = Field(default_factory=dict)
+    textScale: float | int = 200
+    logoScale: float | int = 100
     force_png: bool = False
     make_zip: bool = True
     logo: str | None = None
@@ -62,7 +65,7 @@ def health() -> dict:
     edition = get_edition()
     return {
         "ok": True,
-        "version": "0.8.11",
+        "version": "0.8.13",
         "edition": edition,
         "texconv": str(tex) if tex else None,
         "wine": bool(shutil.which("wine")),
@@ -74,7 +77,7 @@ def health() -> dict:
 def api_edition() -> dict:
     from exporter.profiles import get_edition
 
-    return {"edition": get_edition(), "version": "0.8.11"}
+    return {"edition": get_edition(), "version": "0.8.13"}
 
 
 @app.get("/api/profiles")
@@ -139,6 +142,9 @@ def api_export(body: ExportRequest) -> dict:
             {"type": "team_stripe", "enabled": True},
             {"type": "heart", "enabled": False},
         ],
+        "text": body.text or {},
+        "textScale": body.textScale,
+        "logoScale": body.logoScale,
         "profile": body.profile_id,
         "logo": logo_path,
         "soacraPhoto": logo_path,
@@ -186,6 +192,9 @@ async def api_export_form(
     icao: str = Form("SMB"),
     colors_json: str = Form("{}"),
     stickers_json: str = Form("[]"),
+    text_json: str = Form("{}"),
+    textScale: float = Form(200),
+    logoScale: float = Form(100),
     force_png: bool = Form(False),
     make_zip: bool = Form(True),
     photo: UploadFile | None = File(None),
@@ -194,6 +203,7 @@ async def api_export_form(
     """Multipart export with optional TAIL logo (logo/photo — never fuselage)."""
     colors = json.loads(colors_json) if colors_json else {}
     stickers = json.loads(stickers_json) if stickers_json else []
+    text_cfg = json.loads(text_json) if text_json else {}
     photo_path = None
     logo_path = None
     tmpdir = None
@@ -218,6 +228,9 @@ async def api_export_form(
             "tail": "#1e1e1e",
         },
         stickers=stickers,
+        text=text_cfg or {},
+        textScale=textScale,
+        logoScale=logoScale,
         force_png=force_png,
         make_zip=make_zip,
     )
@@ -237,6 +250,9 @@ async def api_export_form(
             or [
                 {"type": "team_stripe", "enabled": True},
             ],
+            "text": body.text or {},
+            "textScale": body.textScale,
+            "logoScale": body.logoScale,
             "profile": body.profile_id,
             "logo": str(logo_path) if logo_path else None,
             "soacraPhoto": str(logo_path) if logo_path else None,

@@ -1,0 +1,44 @@
+{
+  "version": "0.8.13",
+  "problem": "Hangar XXL/title large orange; MSFS tiny white smudge; fin logo tiny",
+  "root_causes": [
+    "Export ignored hangar textSize/textScale \u2014 always painted into fixed airline UV rects (820x90)",
+    "paste_text_in_rect capped font at 96px even when rect grew",
+    "Text color hardcoded white \u2014 hangar uses textColor/accent orange",
+    "TAIL19 diam 420 based on wrong tip-only chord (~400px); real mid-chord ~950px \u2192 logo looked small vs hangar finW*0.48"
+  ],
+  "scale_factors": {
+    "hangar_default": "textSize XL (1.15) \u00d7 textScale 200% = 2.30",
+    "test_export": "textSize XXL (1.35) \u00d7 textScale 200% = 2.70 \u2192 clamped bake_text_scale=2.00",
+    "title_upper_uv_px": {
+      "before": [
+        820,
+        90
+      ],
+      "after": [
+        1500,
+        180
+      ],
+      "mul": 2.0
+    },
+    "tail_logo_diam_px": {
+      "before": 420,
+      "after": 580,
+      "chord_mid_px": 950,
+      "fraction_of_chord": 0.611
+    },
+    "hangar_fin_logo_frac": "finW * 0.48 * (logoScale/100)",
+    "color": {
+      "before": "#FFFFFF",
+      "after": "#E85A00 (textColor/accent)"
+    }
+  },
+  "previews": {
+    "before_fuselage": "work/export_diag/huc_FUSELAGE19.png",
+    "after_fuselage": "work/scale_diag_0813/after_FUSELAGE19.png",
+    "before_tail": "work/export_diag/huc_TAIL19.png",
+    "after_tail": "work/scale_diag_0813/after_TAIL19.png",
+    "compare_title": "work/scale_diag_0813/before_after_title.png",
+    "compare_tail": "work/scale_diag_0813/before_after_tail.png"
+  }
+}

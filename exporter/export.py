@@ -65,8 +65,11 @@ A320NEO_TEXTS_UV = {
 # LatinVFR A319 TAIL19 mid-fin logo (cx, cy, diam). Do NOT fill whole UV rect —
 # oversized pastes spill onto nose/fuselage islands on the same atlas.
 A319_TAIL_LOGO_CENTERS = {
-    "upper": (780, 600, 520),
-    "lower": (780, 1620, 520),
+    # v0.8.13 — geometric center of TAIL19 fin face; diam ~0.61 of real mid-chord (~950px).
+    # v0.8.12 diam 420 looked tiny vs hangar (finW*0.48) and vs TAR fin art.
+    # Prior tip-only chord estimate (~400px) was wrong — safe diam is ~580–620.
+    "upper": (730, 590, 580),
+    "lower": (730, 1610, 580),
 }
 
 DDS_JSON_TEMPLATE = {
@@ -89,6 +92,133 @@ def hex_to_rgb(h: str) -> tuple[int, int, int]:
     if len(h) == 3:
         h = "".join(c * 2 for c in h)
     return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+
+
+def hex_to_rgba(h: str, alpha: int = 255) -> tuple[int, int, int, int]:
+    r, g, b = hex_to_rgb(h or "#FFFFFF")
+    return (r, g, b, int(alpha))
+
+
+def _text_size_mul(size_key: str | None) -> float:
+    """Match web/js/preview3d.js textSizeMul."""
+    k = str(size_key or "XL").upper()
+    return {"S": 0.55, "M": 0.75, "L": 0.95, "XXL": 1.35}.get(k, 1.15)
+
+
+def bake_text_scale(cfg: dict | None) -> float:
+    """Hangar→UV scale: textSizeMul * (textScale%/100).
+
+    Base UV rects ≈ airline / hangar L@100%. Default editor XL@200% → ~2.3;
+    clamped so XXL titles stay on the fuselage island (not nose/door marks).
+    """
+    cfg = cfg or {}
+    text = cfg.get("text") if isinstance(cfg.get("text"), dict) else {}
+    size_key = text.get("size") or cfg.get("textSize") or "XL"
+    # stickers custom_text may carry size
+    for st in cfg.get("stickers") or []:
+        if st.get("type") == "custom_text" and st.get("size"):
+            size_key = st.get("size") or size_key
+            break
+    scale_pct = text.get("scale")
+    if scale_pct is None:
+        scale_pct = cfg.get("textScale", 200)
+    try:
+        scale_pct = float(scale_pct)
+    except (TypeError, ValueError):
+        scale_pct = 200.0
+    mul = _text_size_mul(str(size_key)) * max(0.8, min(3.5, scale_pct / 100.0))
+    # Airline UV baseline ≈ 1.0; hangar default ~2.3 — allow up to 2.0 for atlas fit
+    return max(0.85, min(2.0, mul))
+
+
+def bake_text_color(cfg: dict | None, colors: dict | None = None) -> tuple[int, int, int, int]:
+    """Prefer hangar textColor; fallback accent (orange) then white."""
+    cfg = cfg or {}
+    colors = colors or cfg.get("colors") or {}
+    text = cfg.get("text") if isinstance(cfg.get("text"), dict) else {}
+    candidates = [
+        text.get("color"),
+        cfg.get("textColor"),
+    ]
+    for st in cfg.get("stickers") or []:
+        if st.get("type") == "custom_text" and st.get("color"):
+            candidates.append(st.get("color"))
+            break
+    candidates.append(colors.get("accent"))
+    candidates.append("#FFFFFF")
+    for c in candidates:
+        if c and isinstance(c, str) and c.strip().startswith("#") and len(c.strip()) >= 4:
+            return hex_to_rgba(c.strip())
+    return (255, 255, 255, 255)
+
+
+def bake_reg_color(cfg: dict | None, colors: dict | None = None) -> tuple[int, int, int, int]:
+    cfg = cfg or {}
+    text = cfg.get("text") if isinstance(cfg.get("text"), dict) else {}
+    c = text.get("regColor") or cfg.get("regColor")
+    if c and isinstance(c, str) and c.strip().startswith("#"):
+        return hex_to_rgba(c.strip())
+    return bake_text_color(cfg, colors)
+
+
+def scale_uv_rect(
+    rect: tuple[int, int, int, int] | list[int],
+    scale: float,
+    *,
+    tex_size: int = TEX_SIZE,
+    max_w: int | None = None,
+    max_h: int | None = None,
+) -> tuple[int, int, int, int]:
+    """Scale rect about its center; clamp to atlas and optional max size."""
+    x0, y0, x1, y1 = (int(v) for v in rect)
+    cx = (x0 + x1) / 2.0
+    cy = (y0 + y1) / 2.0
+    rw = max(1, x1 - x0)
+    rh = max(1, y1 - y0)
+    nw = rw * scale
+    nh = rh * scale
+    if max_w is not None:
+        nw = min(nw, max_w)
+    if max_h is not None:
+        nh = min(nh, max_h)
+    nx0 = int(round(cx - nw / 2.0))
+    ny0 = int(round(cy - nh / 2.0))
+    nx1 = int(round(cx + nw / 2.0))
+    ny1 = int(round(cy + nh / 2.0))
+    # Keep inside atlas
+    if nx0 < 4:
+        nx1 += 4 - nx0
+        nx0 = 4
+    if ny0 < 4:
+        ny1 += 4 - ny0
+        ny0 = 4
+    if nx1 > tex_size - 4:
+        nx0 -= nx1 - (tex_size - 4)
+        nx1 = tex_size - 4
+    if ny1 > tex_size - 4:
+        ny0 -= ny1 - (tex_size - 4)
+        ny1 = tex_size - 4
+    nx0 = max(0, nx0)
+    ny0 = max(0, ny0)
+    nx1 = min(tex_size, max(nx0 + 8, nx1))
+    ny1 = min(tex_size, max(ny0 + 8, ny1))
+    return (nx0, ny0, nx1, ny1)
+
+
+def bake_logo_diam(base_diam: int, cfg: dict | None = None) -> int:
+    """Scale fin logo diam by hangar customTextures scale% (default 100)."""
+    cfg = cfg or {}
+    scale_pct = cfg.get("logoScale", 100)
+    text = cfg.get("text") if isinstance(cfg.get("text"), dict) else {}
+    if cfg.get("logoScale") is None and text.get("logoScale") is not None:
+        scale_pct = text.get("logoScale")
+    try:
+        scale_pct = float(scale_pct)
+    except (TypeError, ValueError):
+        scale_pct = 100.0
+    mul = max(0.5, min(2.5, scale_pct / 100.0))
+    return int(round(base_diam * mul))
+
 
 
 def load_config(path: Path | None, preset: str | None) -> dict[str, Any]:
@@ -250,22 +380,28 @@ def make_texts_layer(
     registration: str,
     airline: str | None = None,
     uv: dict | None = None,
+    cfg: dict | None = None,
+    colors: dict | None = None,
 ) -> Image.Image:
     """Paint titles/registration into LIVERY_TEXTS UV slots."""
     uv = uv or A320NEO_TEXTS_UV
+    cfg = cfg or {}
     img = Image.new("RGBA", (TEX_SIZE, TEX_SIZE), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     title = (airline or registration or "SkinMyBird").strip()
+    title_rgba = bake_text_color(cfg, colors)
+    reg_rgba = bake_reg_color(cfg, colors)
+    tscale = bake_text_scale(cfg)
 
     for key, mirror in (("side_title_upper", False), ("side_title_lower", True)):
         if key not in uv:
             continue
-        rect = uv[key]
-        x0, y0, x1, y1 = (tuple(rect) if not isinstance(rect, tuple) else rect)
+        rect = scale_uv_rect(uv[key], tscale, tex_size=TEX_SIZE, max_w=1800, max_h=420)
+        x0, y0, x1, y1 = rect
         rw, rh = x1 - x0, y1 - y0
         layer = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
         ld = ImageDraw.Draw(layer)
-        font = _font(max(28, min(110, rh // 2)), bold=True)
+        font = _font(max(28, min(rh - 4, int(rh * 0.85))), bold=True)
         bbox = ld.textbbox((0, 0), title, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         while tw > rw * 0.92 and getattr(font, "size", 24) > 24:
@@ -274,18 +410,24 @@ def make_texts_layer(
             tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         tx = (rw - tw) // 2 - bbox[0]
         ty = (rh - th) // 2 - bbox[1]
-        ld.text((tx, ty), title, fill=(255, 255, 255, 255), font=font)
+        outline = max(1, min(8, font.size // 16))  # type: ignore[attr-defined]
+        for ox, oy in (
+            (-outline, 0), (outline, 0), (0, -outline), (0, outline),
+            (-outline, -outline), (outline, -outline), (-outline, outline), (outline, outline),
+        ):
+            ld.text((tx + ox, ty + oy), title, fill=(0, 0, 0, 160), font=font)
+        ld.text((tx, ty), title, fill=title_rgba, font=font)
         if mirror:
             layer = ImageOps.mirror(layer)
         img.paste(layer, (x0, y0), layer)
 
     if "reg_slot" in uv:
-        x0, y0, x1, y1 = tuple(uv["reg_slot"])
-        font = _font(64, bold=True)
+        x0, y0, x1, y1 = scale_uv_rect(uv["reg_slot"], max(1.0, tscale * 0.8), tex_size=TEX_SIZE)
+        font = _font(max(48, min(120, (y1 - y0) // 2)), bold=True)
         draw.text(
             (x0 + 40, y0 + (y1 - y0) // 3),
             registration,
-            fill=(255, 255, 255, 240),
+            fill=reg_rgba,
             font=font,
         )
     return img
@@ -324,15 +466,23 @@ def paste_text_in_rect(
     rw, rh = max(1, x1 - x0), max(1, y1 - y0)
     layer = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
     ld = ImageDraw.Draw(layer)
-    font = _font(max(16, min(96, rh - 4)), bold=True)
+    # v0.8.13: fill rect height (no hard 96px cap — blocked XXL UV scales)
+    font = _font(max(16, min(rh - 4, int(rh * 0.92))), bold=True)
     bbox = ld.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     while tw > rw * 0.95 and getattr(font, "size", 16) > 12:
         font = _font(font.size - 2, bold=True)  # type: ignore[attr-defined]
         bbox = ld.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    # Soft dark outline so orange/light titles stay readable on any fuselage
     tx = (rw - tw) // 2 - bbox[0]
     ty = (rh - th) // 2 - bbox[1]
+    outline = max(1, min(6, font.size // 18))  # type: ignore[attr-defined]
+    for ox, oy in (
+        (-outline, 0), (outline, 0), (0, -outline), (0, outline),
+        (-outline, -outline), (outline, -outline), (-outline, outline), (outline, outline),
+    ):
+        ld.text((tx + ox, ty + oy), text, fill=(0, 0, 0, 160), font=font)
     ld.text((tx, ty), text, fill=color, font=font)
     if invert:
         layer = layer.rotate(180)
@@ -351,15 +501,23 @@ def make_a319_style_map(
     photo_path: Path | None,
     size: int,
     profile: dict | None = None,
+    cfg: dict | None = None,
 ) -> Image.Image:
     """Paint LatinVFR-style maps (fuselage titles + TAIL-ONLY logo).
 
     Logo/photo MUST only hit the tail fin texture. Pasting onto fuselage
     (or filling the whole TAR UV footprint) showed a huge distorted emblem
     on the nose in MSFS while the fin also had the mark.
+
+    v0.8.13: scale title/reg UV rects from hangar textSize×textScale; paint
+    hangar textColor (accent fallback); fin logo diam matches hangar fraction.
     """
+    cfg = cfg or {}
     color = _role_color(colors, role)
     img = make_solid(color, stem, size=size)
+    title_scale = bake_text_scale(cfg)
+    title_rgba = bake_text_color(cfg, colors)
+    reg_rgba = bake_reg_color(cfg, colors)
 
     if role == "fuselage" and uv:
         title = airline or registration
@@ -375,7 +533,18 @@ def make_a319_style_map(
             txt = registration if key.startswith("reg") else (
                 title if key != "belly" else (airline or "SkinMyBird")
             )
-            paste_text_in_rect(img, txt, uv[key], invert=invert)
+            # Titles/slogan track hangar XXL; reg slightly less aggressive
+            if key.startswith("title") or key == "belly":
+                rect = scale_uv_rect(
+                    uv[key], title_scale, tex_size=size, max_w=1500, max_h=220
+                )
+                col = title_rgba
+            else:
+                rect = scale_uv_rect(
+                    uv[key], max(1.0, title_scale * 0.75), tex_size=size, max_w=420, max_h=120
+                )
+                col = reg_rgba
+            paste_text_in_rect(img, txt, rect, invert=invert, color=col)
 
         for st in stickers:
             if st.get("enabled") and st.get("type") == "team_stripe":
@@ -408,17 +577,18 @@ def make_a319_style_map(
                         c = centers[side_key]
                         cx = int(c["cx"])
                         cy = int(c["cy"])
-                        diam = int(c.get("diam", 520))
+                        diam = int(c.get("diam", 580))
                     elif side_key in A319_TAIL_LOGO_CENTERS:
                         cx, cy, diam = A319_TAIL_LOGO_CENTERS[side_key]
                     elif uv and uv_key in uv:
                         x0, y0, x1, y1 = tuple(uv[uv_key])
                         cx = (x0 + x1) // 2
                         cy = (y0 + y1) // 2
-                        diam = int(min(x1 - x0, y1 - y0) * 0.55)
+                        diam = int(min(x1 - x0, y1 - y0) * 0.62)
                     else:
                         continue
-                    diam = max(64, min(diam, size // 2))
+                    diam = bake_logo_diam(diam, cfg)
+                    diam = max(96, min(diam, int(size * 0.48)))
                     owl = emblem.copy()
                     owl.thumbnail((diam, diam), Image.Resampling.LANCZOS)
                     side = max(owl.width, owl.height)
@@ -432,7 +602,10 @@ def make_a319_style_map(
         elif uv and airline:
             for key in ("tail_logo_upper", "tail_logo_lower"):
                 if key in uv:
-                    paste_text_in_rect(img, (airline[:12] or "SMB"), uv[key])
+                    rect = scale_uv_rect(uv[key], min(1.35, title_scale), tex_size=size)
+                    paste_text_in_rect(
+                        img, (airline[:12] or "SMB"), rect, color=title_rgba
+                    )
 
     return img
 
@@ -864,7 +1037,7 @@ def build_images_for_profile(
             ),
             "A320NEO_AIRFRAME_LIVERY_ALBD": make_livery_layer(stickers, registration),
             "A320NEO_AIRFRAME_LIVERY_TEXTS_ALBD": make_texts_layer(
-                registration, airline, uv or A320NEO_TEXTS_UV
+                registration, airline, uv or A320NEO_TEXTS_UV, cfg=cfg, colors=colors
             ),
         }
         return images
@@ -885,19 +1058,20 @@ def build_images_for_profile(
                 photo_path,
                 size,
                 profile=profile,
+                cfg=cfg,
             )
         elif paint_mode == "uv_rects" and role == "texts":
-            images[stem] = make_texts_layer(registration, airline, uv)
+            images[stem] = make_texts_layer(registration, airline, uv, cfg=cfg, colors=colors)
         elif paint_mode == "uv_rects" and role == "fuselage":
             images[stem] = make_a319_style_map(
                 stem, role, colors, stickers, registration, airline, uv,
-                logo_path, photo_path, size, profile=profile,
-            )
+                logo_path, photo_path, size, profile=profile, cfg=cfg,
+                )
         elif paint_mode == "uv_rects" and role == "tail":
             images[stem] = make_a319_style_map(
                 stem, role, colors, stickers, registration, airline, uv,
-                logo_path, photo_path, size, profile=profile,
-            )
+                logo_path, photo_path, size, profile=profile, cfg=cfg,
+                )
         elif paint_mode == "uv_rects" and role == "livery":
             images[stem] = make_livery_layer(stickers, registration)
         else:

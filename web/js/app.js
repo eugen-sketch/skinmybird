@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.8.11 — tail-fin logos centered + upright both sides; aft clip; Main vs ID text.
+ * SkinMyBird web editor v0.8.13 — fin logo geometric center (raycast probe) + TAIL19 mid-panel; upright both sides.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.11";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.13";
 
 const $ = (id) => document.getElementById(id);
 
@@ -633,6 +633,7 @@ const $ = (id) => document.getElementById(id);
     readInputs();
     setBusy(true, "Exporting Community package (DDS)…");
     try {
+      const ct0 = (state.customTextures || []).find((s) => s && s.dataUrl);
       const payload = {
         profile_id: state.profile.id,
         name: state.name,
@@ -641,6 +642,17 @@ const $ = (id) => document.getElementById(id);
         icao: "SMB",
         colors: state.colors,
         stickers: buildStickersPayload(),
+        text: {
+          color: state.textColor,
+          regColor: state.regColor || state.textColor,
+          sloganColor: state.sloganColor || state.textColor,
+          size: state.textSize,
+          scale: state.textScale,
+          font: state.textFont,
+          style: state.textStyle,
+        },
+        textScale: state.textScale ?? 200,
+        logoScale: (ct0 && ct0.scale != null) ? ct0.scale : 100,
         make_zip: true,
         force_png: false,
       };
@@ -657,6 +669,9 @@ const $ = (id) => document.getElementById(id);
         fd.append("icao", payload.icao);
         fd.append("colors_json", JSON.stringify(payload.colors));
         fd.append("stickers_json", JSON.stringify(payload.stickers));
+        fd.append("text_json", JSON.stringify(payload.text || {}));
+        fd.append("textScale", String(payload.textScale ?? 200));
+        fd.append("logoScale", String(payload.logoScale ?? 100));
         fd.append("make_zip", "true");
         if (ctLogo && ctLogo.dataUrl) {
           const blob = await (await fetch(ctLogo.dataUrl)).blob();
@@ -810,7 +825,7 @@ const $ = (id) => document.getElementById(id);
     for (let n = 1; n <= 3; n++) {
       const slot = ensureCustomTextureSlot(n - 1);
       const place = document.querySelector('.ct-place[data-slot="' + n + '"]');
-      // v0.8.11: logos always on tail fin only (hidden placement field for export compat)
+      // v0.8.13: logos always on tail fin only (hidden placement field for export compat)
       slot.placement = "tail";
       if (place) place.value = "tail";
       const side = document.querySelector('.ct-side[data-slot="' + n + '"]');
