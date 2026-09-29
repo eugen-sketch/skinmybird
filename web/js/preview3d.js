@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.8.1 — hangar axis/fin fix, text/sticker flank hits+fallback, role Y stacking, panel fit; paint zones v0.7.5 tube shield kept.
+ * SkinMyBird 3D hangar preview v0.8.2 — under-title slogan Y clearance vs title panel; hangar axis/fin + flank hits from v0.8.1; paint zones v0.7.5 tube shield kept.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1530,10 +1530,12 @@ const TEXT_ZONE_DEFS = {
   belly:      { xFrac: 0.06, yMode: "belly", yBias: 0.00, panelFrac: 0.34, hMul: 0.95, place: "belly" },
 };
 
-/** Per-role vertical stacking so slogan/reg never sit on the title glyph band. */
+/** Per-role vertical stacking so slogan/reg never sit on the title glyph band.
+ * v0.8.2: slogan default ~1.05·bandH; under-title mode uses title panelH clearance instead.
+ */
 const ROLE_Y_STACK = {
   title: 0.0,
-  slogan: -0.72, // bandH multiples below title aim
+  slogan: -1.05, // bandH multiples below title aim (fallback when no title snapshot)
   reg: -0.38,
 };
 
@@ -1558,7 +1560,7 @@ function textSizeMul(sizeKey) {
 function canvasBasePx(sizeKey, role) {
   const k = String(sizeKey || "XL").toUpperCase();
   const titlePx = k === "S" ? 220 : k === "M" ? 320 : k === "L" ? 420 : k === "XXL" ? 620 : 520;
-  if (role === "slogan") return Math.round(titlePx * 0.52);
+  if (role === "slogan") return Math.round(titlePx * 0.42); // v0.8.2: fit under title band
   if (role === "reg") return Math.round(titlePx * 0.48);
   return titlePx;
 }
@@ -2946,7 +2948,7 @@ function estimateFuselageHalfWidth(size) {
 }
 
 /**
- * Mesh-projected text/sticker decals — v0.8.1 per-role zones + flank fallback + Y stack.
+ * Mesh-projected text/sticker decals — v0.8.2 under-title slogan clearance + v0.8.1 zones/flank/Y stack.
  */
 function addTextDecals(craft, state) {
   craft.updateMatrixWorld(true);
@@ -3160,69 +3162,155 @@ function addTextDecals(craft, state) {
     const aim = resolveTextZoneAim(zoneId, craft, size, center, wingLeX, wbScored, targets);
     let xMain = aim.xMain - size.x * posXNudge * 0.28;
     let yAim = aim.yAim + aim.bandH * (posYNudge * 0.22);
+    let underTitleSlogan = false;
 
     // Per-role Y stacking: slogan below title; reg lower and stays clear when zones coincide
     const stackMul = ROLE_Y_STACK[role] != null ? ROLE_Y_STACK[role] : 0;
+    const htPreview = aim.titlePanelH * scalePct * sizeMul * (panelScale || 1);
+
     if (role === "slogan") {
-      const baseY = titleAimSnapshot ? titleAimSnapshot.yAim : yAim;
       const sameZone = titleAimSnapshot && titleAimSnapshot.zone === aim.zone;
       const nearTitleX = titleAimSnapshot && Math.abs(titleAimSnapshot.xMain - xMain) < fusLen * 0.22;
-      if (sameZone || nearTitleX || aim.zone === "mid" || aim.zone === "windowband" || aim.zone === "forward") {
-        yAim = baseY + aim.bandH * stackMul;
-      } else {
+      // "Under title / Mid" (and same/near title) — force Y clear of title panel, share X
+      underTitleSlogan =
+        !!titleAimSnapshot &&
+        (aim.zone === "mid" || sameZone || nearTitleX || aim.zone === "windowband" || aim.zone === "forward");
+
+      if (underTitleSlogan) {
+        // Prefer same X as title so left/right don't drift differently
+        xMain = titleAimSnapshot.xMain;
+        const titleY =
+          titleAimSnapshot.hitY != null ? titleAimSnapshot.hitY : titleAimSnapshot.yAim;
+        const titleH = Math.max(
+          0.28,
+          titleAimSnapshot.panelH != null ? titleAimSnapshot.panelH : titleAimSnapshot.bandH * 1.2
+        );
+        const sloganH = Math.max(0.28, htPreview);
+        // Gap ≥ ~0.55–0.7 of title glyph (~0.32·panelH) or ~0.40·bandH
+        const gap = Math.max(
+          titleH * 0.32,
+          (titleAimSnapshot.bandH || aim.bandH) * 0.42,
+          aim.bandH * 0.40
+        );
+        // Centers: title mid − half title − gap − half slogan
+        yAim = titleY - titleH * 0.5 - gap - sloganH * 0.48;
+        // Floor: at least half title + 0.55·glyph(~0.32 panel) + half slogan below title mid
+        const minDrop = titleH * 0.5 + gap + sloganH * 0.45;
+        yAim = Math.min(yAim, titleY - minDrop);
+      } else if (titleAimSnapshot) {
+        const baseY = titleAimSnapshot.yAim;
         yAim = yAim + aim.bandH * Math.min(0, stackMul * 0.45);
+        if (aim.zone === "aft") yAim = Math.max(yAim, aim.yAim + aim.bandH * -0.25);
+      } else {
+        yAim = yAim + aim.bandH * stackMul;
       }
       // If slogan shares aft with reg, bias slogan slightly higher and leave reg lower
-      if (aim.zone === "aft") yAim = Math.max(yAim, aim.yAim + aim.bandH * -0.25);
+      if (aim.zone === "aft" && !underTitleSlogan) {
+        yAim = Math.max(yAim, aim.yAim + aim.bandH * -0.25);
+      }
     } else if (role === "reg") {
       yAim = yAim + aim.bandH * stackMul;
       if (titleAimSnapshot && Math.abs(titleAimSnapshot.xMain - xMain) < fusLen * 0.18) {
-        yAim = Math.min(yAim, titleAimSnapshot.yAim - aim.bandH * 0.55);
+        const titleY =
+          titleAimSnapshot.hitY != null ? titleAimSnapshot.hitY : titleAimSnapshot.yAim;
+        const titleH = titleAimSnapshot.panelH != null
+          ? titleAimSnapshot.panelH
+          : aim.bandH * 1.2;
+        yAim = Math.min(yAim, titleY - titleH * 0.55 - aim.bandH * 0.35);
       }
-    }
-
-    if (role === "title") {
-      titleAimSnapshot = { yAim, xMain, zone: aim.zone, bandH: aim.bandH };
     }
 
     const place = aim.place;
     const meshList = meshesForPlace(place);
     const roleTex = makeRoleTexture(state, role);
     let len = aim.panelLen * scalePct * sizeMul * (panelScale || 1);
-    const ht = aim.titlePanelH * scalePct * sizeMul * (panelScale || 1);
+    const ht = Math.max(0.28, htPreview);
     // Extra X shrink for XL/XXL near nose so glyphs aren't clipped
     if (role === "title" && (aim.zone === "windowband" || aim.zone === "forward" || aim.zone === "nose")) {
       const noseLimit = (aim.solidMaxX != null ? aim.solidMaxX : center.x + fusLen * 0.36) - xMain;
       const maxLen = Math.max(0.45, noseLimit * 1.9);
       if (len > maxLen) len = maxLen;
     }
-    const decalSize = new THREE.Vector3(len, Math.max(0.28, ht), panelDepth);
-    const yAlts = [
-      yAim,
-      yAim - aim.bandH * 0.12,
-      yAim + aim.bandH * 0.1,
-      yAim - aim.bandH * 0.28,
-      yAim + aim.bandH * 0.2,
-      size.y * 0.36,
-      size.y * 0.42,
-      size.y * 0.48,
-      aim.bandMidY,
-    ];
-    const xCands = [
-      xMain,
-      xMain + fusLen * 0.025,
-      xMain - fusLen * 0.025,
-      xMain + fusLen * 0.05,
-      xMain - fusLen * 0.05,
-      xMain - fusLen * 0.08,
-    ];
+    const decalSize = new THREE.Vector3(len, ht, panelDepth);
+
+    // Under-title: only probe at/below aim so raycasts cannot climb into the title band
+    const yAlts = underTitleSlogan
+      ? [
+          yAim,
+          yAim - aim.bandH * 0.08,
+          yAim - aim.bandH * 0.18,
+          yAim - aim.bandH * 0.28,
+          yAim + aim.bandH * 0.04,
+        ]
+      : [
+          yAim,
+          yAim - aim.bandH * 0.12,
+          yAim + aim.bandH * 0.1,
+          yAim - aim.bandH * 0.28,
+          yAim + aim.bandH * 0.2,
+          size.y * 0.36,
+          size.y * 0.42,
+          size.y * 0.48,
+          aim.bandMidY,
+        ];
+    const xCands = underTitleSlogan
+      ? [xMain, xMain + fusLen * 0.02, xMain - fusLen * 0.02]
+      : [
+          xMain,
+          xMain + fusLen * 0.025,
+          xMain - fusLen * 0.025,
+          xMain + fusLen * 0.05,
+          xMain - fusLen * 0.05,
+          xMain - fusLen * 0.08,
+        ];
+
+    // Max Y for slogan hits (below title bottom + small gap)
+    let sloganMaxY = null;
+    if (underTitleSlogan && titleAimSnapshot) {
+      const titleH = Math.max(
+        0.28,
+        titleAimSnapshot.panelH != null ? titleAimSnapshot.panelH : titleAimSnapshot.bandH * 1.2
+      );
+      const titleY =
+        titleAimSnapshot.hitY != null ? titleAimSnapshot.hitY : titleAimSnapshot.yAim;
+      const gap = Math.max(titleH * 0.28, (titleAimSnapshot.bandH || aim.bandH) * 0.35);
+      sloganMaxY = titleY - titleH * 0.5 - gap - ht * 0.35;
+    }
+
+    if (role === "title") {
+      titleAimSnapshot = {
+        yAim,
+        xMain,
+        zone: aim.zone,
+        bandH: aim.bandH,
+        panelH: ht,
+        hitY: null,
+        hitBySide: {},
+      };
+    }
 
     const sides = place === "belly" ? [1] : [-1, 1];
     let mounted = 0;
+    const hitYs = [];
     sides.forEach((side) => {
       let hit = null;
+      // Per-side title Y clamp for slogan
+      let maxY = sloganMaxY;
+      if (
+        underTitleSlogan &&
+        titleAimSnapshot &&
+        titleAimSnapshot.hitBySide &&
+        titleAimSnapshot.hitBySide[side] != null
+      ) {
+        const titleH = Math.max(0.28, titleAimSnapshot.panelH || titleAimSnapshot.bandH * 1.2);
+        const gap = Math.max(titleH * 0.28, (titleAimSnapshot.bandH || aim.bandH) * 0.35);
+        maxY = titleAimSnapshot.hitBySide[side] - titleH * 0.5 - gap - ht * 0.35;
+      }
+      const preferFloor = underTitleSlogan
+        ? yAim - aim.bandH * 0.55
+        : aim.yPreferFloor;
       for (const tx of xCands) {
-        hit = trySideHit(side, tx, yAlts, meshList, place, yAim, aim.yBandFloor, aim.yPreferFloor, {
+        hit = trySideHit(side, tx, yAlts, meshList, place, yAim, aim.yBandFloor, preferFloor, {
           maxNy: place === "fuselage" ? 0.75 : 0.95,
           preferSideZones: false,
         });
@@ -3232,6 +3320,17 @@ function addTextDecals(craft, state) {
         const origin = new THREE.Vector3(xMain, center.y - reach, center.z);
         hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, 1, 0), raycaster);
       }
+      // If slogan raycast climbed back into the title, drop to plane fallback at intended Y
+      if (hit && maxY != null && hit.point && hit.point.y > maxY) {
+        console.warn(
+          "addTextDecals: slogan hit climbed into title (y=" +
+            hit.point.y.toFixed(2) +
+            " > max " +
+            maxY.toFixed(2) +
+            ") — plane fallback"
+        );
+        hit = null;
+      }
       const flipU = hit
         ? resolveFlipU(hit, side, flipLeft, flipRight)
         : side < 0;
@@ -3240,7 +3339,13 @@ function addTextDecals(craft, state) {
         ? new THREE.Vector3(len, Math.max(0.28, ht * 0.9), panelDepth)
         : decalSize.clone();
       if (hit) {
-        if (projectDecal(group, hit, sizeVec, mat, renderOrder)) mounted++;
+        if (projectDecal(group, hit, sizeVec, mat, renderOrder)) {
+          mounted++;
+          hitYs.push(hit.point.y);
+          if (role === "title" && titleAimSnapshot) {
+            titleAimSnapshot.hitBySide[side] = hit.point.y;
+          }
+        }
       } else {
         // PlaneGeometry flank fallback (same as stickers) — never leave blank sides
         console.warn("addTextDecals: no hit", role, "zone", aim.zone, "side", side, "— plane fallback");
@@ -3257,9 +3362,31 @@ function addTextDecals(craft, state) {
           renderOrder
         );
         mounted++;
+        hitYs.push(yAim);
+        if (role === "title" && titleAimSnapshot) {
+          titleAimSnapshot.hitBySide[side] = yAim;
+        }
       }
     });
-    console.info("addTextDecals:", role, "zone", aim.zone, "x", xMain.toFixed(2), "y", yAim.toFixed(2), "mounted", mounted);
+    if (role === "title" && titleAimSnapshot && hitYs.length) {
+      titleAimSnapshot.hitY = hitYs.reduce((a, b) => a + b, 0) / hitYs.length;
+      titleAimSnapshot.panelH = ht;
+    }
+    console.info(
+      "addTextDecals:",
+      role,
+      "zone",
+      aim.zone,
+      "x",
+      xMain.toFixed(2),
+      "y",
+      yAim.toFixed(2),
+      underTitleSlogan ? "(under-title)" : "",
+      "ht",
+      ht.toFixed(2),
+      "mounted",
+      mounted
+    );
     return roleTex;
   }
 
@@ -3269,7 +3396,8 @@ function addTextDecals(craft, state) {
   const regZone = normalizeTextZone(state.regZone, "aft");
 
   const titleTex = mountRole("title", titleZone, 2, 1.0);
-  const sloganTex = mountRole("slogan", sloganZone, 2, 0.72);
+  // v0.8.2: slightly shorter slogan panel so glyphs fit under the title band
+  const sloganTex = mountRole("slogan", sloganZone, 2, 0.58);
   const regTex = mountRole("reg", regZone, 3, 0.55);
 
   try {

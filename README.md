@@ -15,6 +15,11 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.8.2 notes
+- **Under-title slogan clearance**: when Slogan zone is Mid / under title (or near the title), aim Y is forced below the title decal using title panel height — gap ≥ ~0.32·titlePanelH (~0.55–0.7 glyph) or ~0.40·bandH; slogan shares title X; raycasts that climb into the title fall back to a plane at the lower Y.
+- Slightly smaller slogan canvas font (0.42× title px) and panel scale (0.58) so “Fly your story” fits under “SkinMyBird” on Window band.
+- Paint zone shader cache key still `smb_body_zone_shader_v075` (tube shield unchanged). Cache-bust `?v=0.8.2`
+
 ### v0.8.1 notes
 - Hangar `fitAircraftToHangar`: fuselage axis from vertical-fin offset (not merely longest extent) so A350/787 no longer map wings→+X; always flip so nose=+X (fixes 747 aft/nose).
 - Text/sticker raycasts: all craft meshes + looser Ny + PlaneGeometry flank fallback; role Y stacking (slogan below title, reg lower); panel auto-shrink inside solid fuselage interval.
@@ -26,7 +31,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - **Airline fonts**: Montserrat (default), Oswald, Bebas Neue, Anton, Roboto Condensed, PT Sans Narrow, Helvetica-like; Comic Sans removed. Google Fonts loaded before canvas draw (`document.fonts.ready`).
 - **Larger title**: default XL / 200% scale (up to XXL / 350%); `fitFontPx` floor raised so long airline names stay readable along the fuselage.
 - **Stickers / logos**: removed fixed Place-on Fuselage/Wings/Tail/Belly. Free Nose↔Tail + Low↔High aim with raycast on craft surface; Side Left/Right/Both; Scale / Opacity / Rotate.
-- Paint zone shader (v0.7.5 tube shield / body classify) untouched. Cache-bust `?v=0.8.1`
+- Paint zone shader (v0.7.5 tube shield / body classify) untouched. Cache-bust `?v=0.8.0`
 
 ### v0.7.5 notes
 - **Fuselage tube shield**: if `absZ <= fuseHalf*1.25`, skip geometric under-wing pod, geometric pylon, and wings rules (tube points never become wings/engines). Seed hits still allowed only when `absZ > fuseHalf`.
