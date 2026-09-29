@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.8.0 — text positioning zones, airline fonts, free stickers; paint zones unchanged from v0.7.5.
+ * SkinMyBird web editor v0.8.1 — hangar axis/fin fix, text flank hits+fallback, role Y stacking; paint zones v0.7.5 tube shield kept.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.0";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.1";
 
 const $ = (id) => document.getElementById(id);
 

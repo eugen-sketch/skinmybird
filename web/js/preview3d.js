@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.8.0 — text positioning zones, airline fonts, free sticker placement; paint zones from v0.7.5 unchanged.
+ * SkinMyBird 3D hangar preview v0.8.1 — hangar axis/fin fix, text/sticker flank hits+fallback, role Y stacking, panel fit; paint zones v0.7.5 tube shield kept.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -329,50 +329,124 @@ function loadGlbCached(url) {
 }
 
 /**
- * Orient so smallest extent → +Y (up), longest → +X (forward), then
- * scale to ~span 12 and sit on y=0.
+ * Orient craft into hangar frame: +Y up, +X nose, +Z span.
+ * v0.8.1: pick fuselage axis by vertical-fin offset (not merely longest extent).
+ * When span ≈ length (A350/787), longest-axis alone mapped wings to +X and broke
+ * zone paint + side raycasts. Always flip so the fin sits at −X (nose at +X).
  */
 function fitAircraftToHangar(model, targetSpan = GLB_TARGET_SPAN) {
   model.updateMatrixWorld(true);
   const box0 = new THREE.Box3().setFromObject(model);
   const size0 = box0.getSize(new THREE.Vector3());
+  const c0 = box0.getCenter(new THREE.Vector3());
+
+  // Sample world verts to locate the vertical fin (high-Y cluster)
+  const samples = [];
+  const tmp = new THREE.Vector3();
+  model.traverse((child) => {
+    if (!child.isMesh || !child.geometry) return;
+    const pos = child.geometry.getAttribute("position");
+    if (!pos || !pos.count) return;
+    const step = Math.max(1, Math.floor(pos.count / 2000));
+    for (let i = 0; i < pos.count; i += step) {
+      tmp.fromBufferAttribute(pos, i).applyMatrix4(child.matrixWorld);
+      samples.push([tmp.x, tmp.y, tmp.z]);
+    }
+  });
+  const ys = samples.map((s) => s[1]).sort((a, b) => a - b);
+  const yThresh = ys.length ? ys[Math.floor(ys.length * 0.92)] : 0;
+  const high = samples.filter((s) => s[1] >= yThresh);
+  const highRef = high.length ? high : samples;
 
   const axes = [
-    { len: size0.x, dir: new THREE.Vector3(1, 0, 0) },
-    { len: size0.y, dir: new THREE.Vector3(0, 1, 0) },
-    { len: size0.z, dir: new THREE.Vector3(0, 0, 1) },
+    { len: size0.x, dir: new THREE.Vector3(1, 0, 0), idx: 0 },
+    { len: size0.y, dir: new THREE.Vector3(0, 1, 0), idx: 1 },
+    { len: size0.z, dir: new THREE.Vector3(0, 0, 1), idx: 2 },
   ].sort((a, b) => a.len - b.len);
 
-  const up = axes[0].dir.clone();
-  const forward = axes[2].dir.clone();
-  let right = new THREE.Vector3().crossVectors(forward, up);
-  if (right.lengthSq() < 1e-8) {
-    right = axes[1].dir.clone();
+  const upAxis = axes[0];
+  const horiz = [axes[1], axes[2]];
+  const finOff = (axis) => {
+    if (!highRef.length) return 0;
+    const avg = highRef.reduce((a, s) => a + s[axis.idx], 0) / highRef.length;
+    return avg - c0.getComponent(axis.idx);
+  };
+  const o0 = Math.abs(finOff(horiz[0]));
+  const o1 = Math.abs(finOff(horiz[1]));
+  // Fuselage = horizontal axis with larger |fin offset|; ambiguous → longer extent
+  let fusAxis;
+  let spanAxis;
+  const ambig = Math.max(o0, o1) < Math.max(horiz[0].len, horiz[1].len) * 0.04;
+  if (ambig) {
+    fusAxis = horiz[0].len >= horiz[1].len ? horiz[0] : horiz[1];
+    spanAxis = fusAxis === horiz[0] ? horiz[1] : horiz[0];
+  } else if (o0 >= o1) {
+    fusAxis = horiz[0];
+    spanAxis = horiz[1];
+  } else {
+    fusAxis = horiz[1];
+    spanAxis = horiz[0];
   }
+
+  // Map fuselage so fin → −X (nose → +X)
+  const fo = finOff(fusAxis);
+  const forward = fusAxis.dir.clone();
+  if (fo > 0) forward.negate();
+  const up = upAxis.dir.clone();
+  let right = new THREE.Vector3().crossVectors(forward, up);
+  if (right.lengthSq() < 1e-8) right = spanAxis.dir.clone();
   right.normalize();
-  const upOrtho = new THREE.Vector3().crossVectors(right, forward).normalize();
+  let upOrtho = new THREE.Vector3().crossVectors(right, forward).normalize();
+  if (upOrtho.dot(up) < 0) {
+    right.negate();
+    upOrtho.crossVectors(right, forward).normalize();
+  }
   forward.normalize();
 
-  // Matrix whose columns map unit axes → (forward, up, right); invert to remap model
   const basis = new THREE.Matrix4().makeBasis(forward, upOrtho, right);
-  const inv = basis.clone().invert();
-  model.applyMatrix4(inv);
+  model.applyMatrix4(basis.clone().invert());
 
   model.updateMatrixWorld(true);
   let box = new THREE.Box3().setFromObject(model);
   let size = box.getSize(new THREE.Vector3());
-  // Prefer wing span (Z after remap) but fall back to max horizontal
   const span = Math.max(size.z, size.x * 0.85, 0.001);
-  const scale = targetSpan / span;
-  model.scale.multiplyScalar(scale);
+  model.scale.multiplyScalar(targetSpan / span);
 
-  model.updateMatrixWorld(true);
-  box = new THREE.Box3().setFromObject(model);
-  const center = box.getCenter(new THREE.Vector3());
-  model.position.x -= center.x;
-  model.position.z -= center.z;
-  model.position.y -= box.min.y;
+  const recenter = () => {
+    model.updateMatrixWorld(true);
+    box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.x -= center.x;
+    model.position.z -= center.z;
+    model.position.y -= box.min.y;
+    model.updateMatrixWorld(true);
+  };
+  recenter();
 
+  // World-space fin check; rotate 180° about Y if fin still at +X
+  const finWorldX = () => {
+    const s = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.geometry) return;
+      const pos = child.geometry.getAttribute("position");
+      if (!pos) return;
+      const step = Math.max(1, Math.floor(pos.count / 2000));
+      for (let i = 0; i < pos.count; i += step) {
+        tmp.fromBufferAttribute(pos, i).applyMatrix4(child.matrixWorld);
+        s.push([tmp.x, tmp.y, tmp.z]);
+      }
+    });
+    if (!s.length) return -1;
+    const yy = s.map((p) => p[1]).sort((a, b) => a - b);
+    const hi = s.filter((p) => p[1] >= yy[Math.floor(yy.length * 0.92)]);
+    return hi.reduce((a, p) => a + p[0], 0) / hi.length;
+  };
+  if (finWorldX() > 0) {
+    model.rotateY(Math.PI);
+    recenter();
+  }
+
+  model.userData.hangarNoseSign = 1; // nose is +X after fit
   model.updateMatrixWorld(true);
   return model;
 }
@@ -1367,11 +1441,30 @@ function applyGlbZonePaint(craft, colorsByZone) {
   return true;
 }
 
+/** Primary CSS family names — must match Google Fonts CSS + canvas ctx.font exactly. */
+const FONT_PRIMARY = {
+  montserrat: "Montserrat",
+  oswald: "Oswald",
+  bebas: "Bebas Neue",
+  anton: "Anton",
+  "roboto-condensed": "Roboto Condensed",
+  "pt-sans-narrow": "PT Sans Narrow",
+  helvetica: "Arial",
+  arial: "Arial",
+  segoe: "Segoe UI",
+  georgia: "Georgia",
+  impact: "Impact",
+  trebuchet: "Trebuchet MS",
+  courier: "Courier New",
+  verdana: "Verdana",
+  comic: "Segoe UI",
+};
+
 const FONT_STACKS = {
   montserrat: '"Montserrat", "Segoe UI", system-ui, sans-serif',
   oswald: '"Oswald", "Arial Narrow", sans-serif',
-  bebas: '"Bebas Neue", Impact, sans-serif',
-  anton: '"Anton", Impact, sans-serif',
+  bebas: '"Bebas Neue", "Arial Narrow", sans-serif',
+  anton: '"Anton", "Arial Black", sans-serif',
   "roboto-condensed": '"Roboto Condensed", "Arial Narrow", sans-serif',
   "pt-sans-narrow": '"PT Sans Narrow", "Arial Narrow", sans-serif',
   helvetica: 'Arial, Helvetica, "Helvetica Neue", sans-serif',
@@ -1380,7 +1473,6 @@ const FONT_STACKS = {
   georgia: 'Georgia, "Times New Roman", serif',
   impact: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif',
   trebuchet: '"Trebuchet MS", "Segoe UI", sans-serif',
-  // legacy aliases
   courier: '"Courier New", Courier, monospace',
   verdana: 'Verdana, Geneva, sans-serif',
   comic: '"Segoe UI", system-ui, sans-serif',
@@ -1391,6 +1483,7 @@ const AIRLINE_FONT_SPECS = [
   '600 64px "Montserrat"',
   '700 64px "Montserrat"',
   '400 64px "Oswald"',
+  '600 64px "Oswald"',
   '700 64px "Oswald"',
   '400 64px "Bebas Neue"',
   '400 64px "Anton"',
@@ -1408,19 +1501,40 @@ function ensureAirlineFonts() {
   if (_fontsReadyPromise) return _fontsReadyPromise;
   _fontsReadyPromise = Promise.all(
     AIRLINE_FONT_SPECS.map((spec) => document.fonts.load(spec).catch(() => null))
-  ).then(() => document.fonts.ready).catch(() => null);
+  )
+    .then(() => document.fonts.ready)
+    .then(() => {
+      // Verify primary families resolved (avoid silent Impact/Arial Black fallback)
+      try {
+        for (const name of Object.values(FONT_PRIMARY)) {
+          if (!document.fonts.check(`400 64px "${name}"`) && !document.fonts.check(`700 64px "${name}"`)) {
+            // system fonts (Arial etc.) may still check false for quoted web names — ignore
+          }
+        }
+      } catch (_) {}
+      return true;
+    })
+    .catch(() => null);
   return _fontsReadyPromise;
 }
 
 /** Named positioning zones for Title / Slogan / Registration (craft: +X = nose). */
 const TEXT_ZONE_DEFS = {
-  windowband: { xFrac: 0.16, yMode: "window", yBias: 0.00, panelFrac: 0.48, hMul: 1.20, place: "fuselage" },
-  forward:    { xFrac: 0.26, yMode: "window", yBias: 0.00, panelFrac: 0.40, hMul: 1.05, place: "fuselage" },
-  mid:        { xFrac: 0.04, yMode: "window", yBias: -0.35, panelFrac: 0.42, hMul: 1.00, place: "fuselage" },
-  aft:        { xFrac: -0.24, yMode: "window", yBias: 0.00, panelFrac: 0.28, hMul: 0.85, place: "fuselage" },
-  nose:       { xFrac: 0.38, yMode: "window", yBias: -0.10, panelFrac: 0.22, hMul: 0.95, place: "fuselage" },
-  tail:       { xFrac: -0.40, yMode: "tail", yBias: 0.35, panelFrac: 0.30, hMul: 1.25, place: "tail" },
+  // panelFrac reduced vs v0.8.0 so XL/XXL titles stay inside solid fuselage (less nose clip)
+  windowband: { xFrac: 0.12, yMode: "window", yBias: 0.00, panelFrac: 0.40, hMul: 1.15, place: "fuselage" },
+  forward:    { xFrac: 0.22, yMode: "window", yBias: 0.00, panelFrac: 0.34, hMul: 1.00, place: "fuselage" },
+  mid:        { xFrac: 0.02, yMode: "window", yBias: -0.55, panelFrac: 0.36, hMul: 0.92, place: "fuselage" },
+  aft:        { xFrac: -0.26, yMode: "window", yBias: -0.15, panelFrac: 0.26, hMul: 0.80, place: "fuselage" },
+  nose:       { xFrac: 0.34, yMode: "window", yBias: -0.10, panelFrac: 0.18, hMul: 0.90, place: "fuselage" },
+  tail:       { xFrac: -0.40, yMode: "tail", yBias: 0.35, panelFrac: 0.28, hMul: 1.20, place: "tail" },
   belly:      { xFrac: 0.06, yMode: "belly", yBias: 0.00, panelFrac: 0.34, hMul: 0.95, place: "belly" },
+};
+
+/** Per-role vertical stacking so slogan/reg never sit on the title glyph band. */
+const ROLE_Y_STACK = {
+  title: 0.0,
+  slogan: -0.72, // bandH multiples below title aim
+  reg: -0.38,
 };
 
 function normalizeTextZone(id, fallback) {
@@ -1462,7 +1576,22 @@ function resolveFontFace(state, px) {
   else if (style === "normal" || style === "regular") weight = "400";
   else if (style === "italic") weight = "400";
   else if (style.includes("bold")) weight = "700";
-  const stack = resolveFontStack(state.textFont);
+  const key = state.textFont || "montserrat";
+  const primary = FONT_PRIMARY[key];
+  // Prefer exact loaded family name (matches Google Fonts CSS) then full stack
+  if (primary && typeof document !== "undefined" && document.fonts) {
+    const face = `${italic}${weight} ${Math.round(px)}px "${primary}"`;
+    try {
+      if (document.fonts.check(`${weight} ${Math.round(px)}px "${primary}"`) ||
+          document.fonts.check(`400 64px "${primary}"`) ||
+          document.fonts.check(`700 64px "${primary}"`)) {
+        return face;
+      }
+    } catch (_) {}
+    // Still use quoted primary first so browser prefers it once CSS arrives
+    return `${italic}${weight} ${Math.round(px)}px "${primary}", ${resolveFontStack(key)}`;
+  }
+  const stack = resolveFontStack(key);
   return `${italic}${weight} ${Math.round(px)}px ${stack}`;
 }
 
@@ -2221,13 +2350,13 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H) {
 
 /**
  * Collect mesh targets for decal projection. Prefer fuselage-role / larger meshes.
+ * v0.8.1: always keep opaque craft meshes in `all` so single-role GLBs without
+ * windowband/fuselage paintZone tags still raycast (A350/747/787).
  */
 function collectDecalTargetMeshes(craft) {
   craft.updateMatrixWorld(true);
   const craftBox = new THREE.Box3().setFromObject(craft);
   const scored = [];
-  // Side-skin priority for airline/reg decals (window belt first). Crown/cockpit/belly
-  // are NEVER side-decal targets — they map to other roles and are excluded below.
   const SIDE_ZONE_PRI = {
     windowband: 0,
     fuselage: 1,
@@ -2237,17 +2366,22 @@ function collectDecalTargetMeshes(craft) {
     if (!child.isMesh || !child.geometry) return;
     if (child.name === "textDecals" || (child.parent && child.parent.name === "textDecals"))
       return;
-    // Skip existing decal meshes + empty zone-split parents
     if (child.userData && child.userData.isTextDecal) return;
     if (child.userData && child.userData.zoneSplitParent) return;
+    if (child.userData && child.userData.skinHiddenLivery) return;
+    if (child.visible === false) return;
     const box = new THREE.Box3().setFromObject(child);
     const size = box.getSize(new THREE.Vector3());
     const vol = Math.max(size.x, 0.001) * Math.max(size.y, 0.001) * Math.max(size.z, 0.001);
     const isZonePart = !!(child.userData && child.userData.zonePaintPart);
     const isBodyShaded = !!(child.userData && child.userData.bodyZoneShaded);
-    if (vol < 0.02 && !isZonePart && !isBodyShaded) return;
+    // Keep tiny parts only when zone-tagged; otherwise require meaningful volume
+    if (vol < 0.01 && !isZonePart && !isBodyShaded) return;
+    // Ensure raycastable bounds
+    try {
+      if (child.geometry && !child.geometry.boundingSphere) child.geometry.computeBoundingSphere();
+    } catch (_) {}
     let role = classifyMeshRole(child.name, box, craftBox);
-    // v0.7.3: read paintZone from solid-role / body-shaded meshes (not only zonePaintPart)
     let paintZone = (child.userData && child.userData.paintZone) || null;
     if (paintZone) {
       const z = paintZone;
@@ -2263,12 +2397,11 @@ function collectDecalTargetMeshes(craft) {
     }
     const sidePri = paintZone != null && SIDE_ZONE_PRI[paintZone] != null
       ? SIDE_ZONE_PRI[paintZone]
-      : (role === "fuselage" ? 5 : 9);
-    scored.push({ mesh: child, role, vol, box, size, paintZone, sidePri });
+      : (role === "fuselage" || isBodyShaded ? 5 : 9);
+    scored.push({ mesh: child, role, vol, box, size, paintZone, sidePri, isBodyShaded });
   });
   scored.sort((a, b) => a.sidePri - b.sidePri || b.vol - a.vol);
-  // fuselage list = true lateral skins only (no crown/cockpit/belly)
-  const fuselage = scored.filter((s) => s.role === "fuselage");
+  const fuselage = scored.filter((s) => s.role === "fuselage" || s.isBodyShaded);
   const wings = scored.filter((s) => s.role === "wings");
   const tail = scored.filter((s) => s.role === "tail");
   const belly = scored.filter((s) => s.role === "belly");
@@ -2558,12 +2691,12 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
   const slots = state.customTextures || [];
   if (!slots.length || !group) return;
   const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
-  const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
-  const maxFusAbsZ = fusR * 2.8;
+  const fusR = estimateFuselageHalfWidth(size);
+  const maxFusAbsZ = Math.max(fusR * 2.8, size.z * 0.22);
   const scored = targets.scored || [];
   const fusLen = size.x;
 
-  // Prefer body/side meshes but allow ANY craft mesh so stickers can leave the fuselage
+  // v0.8.1: always include every opaque craft mesh (single-role GLBs have no zone tags)
   const bodyMeshes = scored
     .filter(
       (s) =>
@@ -2576,15 +2709,17 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
         s.role === "nose" ||
         s.role === "belly" ||
         s.role === "tail" ||
+        s.isBodyShaded ||
         (s.mesh && s.mesh.userData && s.mesh.userData.bodyZoneShaded)
     )
     .map((s) => s.mesh);
   const allMeshes = (targets.all && targets.all.length)
     ? targets.all
     : scored.map((s) => s.mesh);
-  const meshList = bodyMeshes.length ? bodyMeshes.concat(
-    allMeshes.filter((m) => !bodyMeshes.includes(m))
-  ) : allMeshes;
+  let meshList = bodyMeshes.length
+    ? bodyMeshes.concat(allMeshes.filter((m) => !bodyMeshes.includes(m)))
+    : allMeshes.slice();
+  if (!meshList.length) meshList = allMeshes.slice();
 
   const est = estimateWindowBandWorld(craft, size, center);
   const bandH = est.bandH || Math.max(0.12, size.y * 0.1);
@@ -2656,6 +2791,9 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
       y0 + bandH * 0.15,
       y0 - size.y * 0.06,
       y0 + size.y * 0.06,
+      size.y * 0.36,
+      size.y * 0.42,
+      size.y * 0.48,
       est.yAim,
     ];
 
@@ -2677,6 +2815,10 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
           });
           if (!h) {
             origin.z = center.z + side * fusR * 3.8;
+            h = raycastBestHit(meshList, origin, dir, raycaster);
+          }
+          if (!h) {
+            origin.z = center.z + side * fusR * 5.2;
             h = raycastBestHit(meshList, origin, dir, raycaster);
           }
           // Belly-ish: also try upward cast when aiming low
@@ -2702,7 +2844,8 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
         console.warn("addCustomTextureDecals: no hit side", side, slot.name || idx, "— plane fallback");
         const flipU = side < 0;
         const mat = sideMaterialFromTex(tex, flipU, matOpts);
-        placeFallbackPlaneDecal(group, craft, side, x0, y0, fusR * 1.02, center, decalSize, mat, 4 + idx);
+        const yPlane = Math.max(size.y * 0.28, Math.min(y0, size.y * 0.55));
+        placeFallbackPlaneDecal(group, craft, side, x0, yPlane, fusR * 1.02, center, decalSize, mat, 4 + idx);
         return;
       }
       const flipU = resolveFlipU(best, side, false, false);
@@ -2714,7 +2857,7 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
 
 /**
  * Resolve a named text zone into world aim X/Y + panel size + place mode.
- * Craft hangar: +X = nose, −X = tail.
+ * Craft hangar: +X = nose, −X = tail (guaranteed by fitAircraftToHangar v0.8.1).
  */
 function resolveTextZoneAim(zoneId, craft, size, center, wingLeX, wbScored, targets) {
   const zone = normalizeTextZone(zoneId, "windowband");
@@ -2729,10 +2872,13 @@ function resolveTextZoneAim(zoneId, craft, size, center, wingLeX, wbScored, targ
   }
   const est = estimateWindowBandWorld(craft, size, center);
   let bandH = est.bandH;
-  let yAim = est.yAim;
-  let yBandFloor = est.yBandFloor;
-  let yPreferFloor = est.yPreferFloor;
-  let bandMidY = est.bandMidY;
+  // Prefer mid-cabin height (~0.38–0.48 of craft height) — shader bandMid can sit
+  // above sparse low-poly flanks and cause no-hit on non-A320 GLBs.
+  let yAim = Math.min(est.yAim, center.y + size.y * 0.02);
+  yAim = Math.max(size.y * 0.32, Math.min(yAim, size.y * 0.52));
+  let yBandFloor = Math.min(est.yBandFloor, size.y * 0.18);
+  let yPreferFloor = Math.min(est.yPreferFloor, size.y * 0.26);
+  let bandMidY = (yAim + yBandFloor) * 0.5 + bandH * 0.15;
 
   if (def.yMode === "window" && wbScored && wbScored.length) {
     const xPad = Math.max(fusLen * 0.12, 0.4);
@@ -2742,9 +2888,9 @@ function resolveTextZoneAim(zoneId, craft, size, center, wingLeX, wbScored, targ
     for (const s of useWb) union.union(s.box);
     bandH = Math.max(0.06, union.max.y - union.min.y);
     bandMidY = (union.min.y + union.max.y) * 0.5;
-    yAim = union.min.y + bandH * 0.50;
-    yBandFloor = union.min.y + bandH * 0.12;
-    yPreferFloor = union.min.y + bandH * 0.22;
+    yAim = union.min.y + bandH * 0.45;
+    yBandFloor = union.min.y + bandH * 0.08;
+    yPreferFloor = union.min.y + bandH * 0.18;
   }
   if (def.yMode === "belly") {
     yAim = center.y - size.y * 0.18;
@@ -2762,7 +2908,16 @@ function resolveTextZoneAim(zoneId, craft, size, center, wingLeX, wbScored, targ
   }
   yAim += bandH * (def.yBias || 0);
 
-  const panelLen = Math.max(0.55, fusLen * def.panelFrac);
+  // Solid fuselage X interval (keep panels off nose taper / extreme aft cone)
+  const solidMinX = center.x - fusLen * 0.38;
+  const solidMaxX = center.x + fusLen * 0.36;
+  xMain = Math.max(solidMinX, Math.min(solidMaxX, xMain));
+
+  let panelLen = Math.max(0.50, fusLen * def.panelFrac);
+  // Auto-shrink along X so panel stays inside solid interval (keep height)
+  const maxHalf = Math.min(xMain - solidMinX, solidMaxX - xMain) * 1.85;
+  if (panelLen > maxHalf && maxHalf > 0.4) panelLen = maxHalf;
+
   const titlePanelH =
     def.yMode === "belly" || def.yMode === "tail"
       ? Math.max(0.38, Math.min(size.y * 0.35, panelLen * 0.45)) * def.hMul
@@ -2779,11 +2934,19 @@ function resolveTextZoneAim(zoneId, craft, size, center, wingLeX, wbScored, targ
     yPreferFloor,
     panelLen,
     titlePanelH,
+    solidMinX,
+    solidMaxX,
   };
 }
 
+/** Estimate fuselage half-width from craft bbox (flank ray origin distance). */
+function estimateFuselageHalfWidth(size) {
+  // Low-poly hangar GLBs have tube ~0.55–0.9; cap prevents origin inside wings
+  return Math.max(0.45, Math.min(size.y * 0.28, size.z * 0.12, 1.15));
+}
+
 /**
- * Mesh-projected text/sticker decals — v0.8.0 per-role zones (title / slogan / reg).
+ * Mesh-projected text/sticker decals — v0.8.1 per-role zones + flank fallback + Y stack.
  */
 function addTextDecals(craft, state) {
   craft.updateMatrixWorld(true);
@@ -2863,27 +3026,21 @@ function addTextDecals(craft, state) {
 
   const scored = targets.scored || [];
   const wbScored = scored.filter((s) => s.paintZone === "windowband");
-  const fuselageScored = scored.filter((s) => s.paintZone === "fuselage");
+  const fuselageScored = scored.filter(
+    (s) => s.paintZone === "fuselage" || s.isBodyShaded || s.role === "fuselage"
+  );
   let sideBeltMeshes = (wbScored.length ? wbScored.concat(fuselageScored) : fuselageScored)
     .map((s) => s.mesh);
+  // v0.8.1: single-mesh GLBs — fall back to ALL opaque craft meshes
   if (!sideBeltMeshes.length) {
-    sideBeltMeshes = scored
-      .filter(
-        (s) =>
-          s.role === "fuselage" ||
-          (s.mesh && s.mesh.userData && s.mesh.userData.bodyZoneShaded)
-      )
-      .map((s) => s.mesh);
+    sideBeltMeshes = (targets.all && targets.all.length)
+      ? targets.all.slice()
+      : scored.map((s) => s.mesh);
   }
-  const fuselageSideMeshes = scored
-    .filter(
-      (s) =>
-        s.paintZone === "fuselage" ||
-        s.paintZone === "windowband" ||
-        s.role === "fuselage" ||
-        (s.mesh && s.mesh.userData && s.mesh.userData.bodyZoneShaded)
-    )
-    .map((s) => s.mesh);
+  const fuselageSideMeshes = sideBeltMeshes.slice();
+  const allCraftMeshes = (targets.all && targets.all.length)
+    ? targets.all.slice()
+    : scored.map((s) => s.mesh);
 
   const posXNudge = Number(state.textPosX || 0) / 100;
   const posYNudge = Number(state.textPosY || 0) / 100;
@@ -2892,9 +3049,12 @@ function addTextDecals(craft, state) {
   const flipLeft = !!state.textFlipLeft;
   const flipRight = !!state.textFlipRight;
   const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
-  const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
-  const maxFusAbsZ = fusR * 2.35;
+  const fusR = estimateFuselageHalfWidth(size);
+  const maxFusAbsZ = Math.max(fusR * 2.8, size.z * 0.22);
   const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
+
+  // Track title aim so slogan/reg can stack clear of it
+  let titleAimSnapshot = null;
 
   // Flags still use the combined decal when present (centered forward)
   if (flagCodes.length) {
@@ -2904,12 +3064,12 @@ function addTextDecals(craft, state) {
       Math.max(0.35, flagAim.bandH * 1.1),
       panelDepth
     );
-    const meshes = sideBeltMeshes.length ? sideBeltMeshes : fuselageSideMeshes;
+    const meshes = allCraftMeshes.length ? allCraftMeshes : sideBeltMeshes;
     [-1, 1].forEach((side) => {
       const origin = new THREE.Vector3(flagAim.xMain, flagAim.yAim, center.z + side * fusR * 2.5);
       const hit = raycastFuselageHit(meshes, origin, new THREE.Vector3(0, 0, -side), raycaster, center, maxFusAbsZ, flagAim.yAim, {
-        maxNy: 0.55,
-        preferSideZones: true,
+        maxNy: 0.72,
+        preferSideZones: false,
       }) || raycastBestHit(meshes, origin, new THREE.Vector3(0, 0, -side), raycaster);
       if (!hit) return;
       const flipU = resolveFlipU(hit, side, flipLeft, flipRight);
@@ -2921,21 +3081,22 @@ function addTextDecals(craft, state) {
   function meshesForPlace(place) {
     if (place === "tail") {
       const list = (targets.tail || []).map((t) => t.mesh);
-      return list.concat(fuselageSideMeshes);
+      return list.concat(allCraftMeshes);
     }
     if (place === "belly") {
       const list = (targets.belly || []).map((t) => t.mesh);
-      return list.concat(fuselageSideMeshes);
+      return list.concat(allCraftMeshes);
     }
-    if (sideBeltMeshes.length) return sideBeltMeshes;
-    if (fuselageSideMeshes.length) return fuselageSideMeshes;
-    if (targets.fuselage.length) return targets.fuselage.map((t) => t.mesh);
-    return targets.all.slice(0, 6);
+    if (sideBeltMeshes.length) return sideBeltMeshes.concat(
+      allCraftMeshes.filter((m) => !sideBeltMeshes.includes(m))
+    );
+    return allCraftMeshes;
   }
 
   function trySideHit(sideSign, x, yCandidates, meshList, place, yAim, yBandFloor, yPreferFloor, castOpts) {
     const probeYs = Array.isArray(yCandidates) ? yCandidates.slice() : [yCandidates];
-    const opts = Object.assign({ maxNy: 0.55, preferSideZones: place === "fuselage" }, castOpts || {});
+    // v0.8.1: looser Ny + do not require paintZone tags (empty on single-mesh GLBs)
+    const opts = Object.assign({ maxNy: 0.72, preferSideZones: false }, castOpts || {});
     function castAtY(y) {
       let origin, dir, hit;
       if (place === "belly") {
@@ -2944,7 +3105,6 @@ function addTextDecals(craft, state) {
         return raycastBestHit(meshList, origin, dir, raycaster);
       }
       if (place === "tail") {
-        // Lateral toward vertical stabilizer / aft fuselage
         const zDist = fusR * 2.6;
         origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
         dir = new THREE.Vector3(0, 0, -sideSign);
@@ -2955,15 +3115,19 @@ function addTextDecals(craft, state) {
         }
         return hit;
       }
-      const zDist = fusR * 2.4;
-      origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
-      dir = new THREE.Vector3(0, 0, -sideSign);
-      hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
-      if (!hit) {
-        origin = new THREE.Vector3(x, y, center.z + sideSign * (fusR * 3.6));
+      for (const zMul of [2.4, 3.6, 5.0]) {
+        origin = new THREE.Vector3(x, y, center.z + sideSign * (fusR * zMul));
+        dir = new THREE.Vector3(0, 0, -sideSign);
         hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
+        if (hit) break;
+        hit = raycastBestHit(meshList, origin, dir, raycaster);
+        if (hit && hit.point && Math.abs(hit.point.z - center.z) <= maxFusAbsZ) break;
+        hit = null;
       }
-      if (hit && hit.point && place === "fuselage" && hit.point.y < yBandFloor) hit = null;
+      // Soft floor: only reject if clearly below craft belly
+      if (hit && hit.point && place === "fuselage" && hit.point.y < Math.min(yBandFloor, size.y * 0.12)) {
+        hit = null;
+      }
       return hit;
     }
     let best = null;
@@ -2994,21 +3158,54 @@ function addTextDecals(craft, state) {
     if (!raw) return null;
 
     const aim = resolveTextZoneAim(zoneId, craft, size, center, wingLeX, wbScored, targets);
-    // User fine nudge (secondary)
     let xMain = aim.xMain - size.x * posXNudge * 0.28;
     let yAim = aim.yAim + aim.bandH * (posYNudge * 0.22);
+
+    // Per-role Y stacking: slogan below title; reg lower and stays clear when zones coincide
+    const stackMul = ROLE_Y_STACK[role] != null ? ROLE_Y_STACK[role] : 0;
+    if (role === "slogan") {
+      const baseY = titleAimSnapshot ? titleAimSnapshot.yAim : yAim;
+      const sameZone = titleAimSnapshot && titleAimSnapshot.zone === aim.zone;
+      const nearTitleX = titleAimSnapshot && Math.abs(titleAimSnapshot.xMain - xMain) < fusLen * 0.22;
+      if (sameZone || nearTitleX || aim.zone === "mid" || aim.zone === "windowband" || aim.zone === "forward") {
+        yAim = baseY + aim.bandH * stackMul;
+      } else {
+        yAim = yAim + aim.bandH * Math.min(0, stackMul * 0.45);
+      }
+      // If slogan shares aft with reg, bias slogan slightly higher and leave reg lower
+      if (aim.zone === "aft") yAim = Math.max(yAim, aim.yAim + aim.bandH * -0.25);
+    } else if (role === "reg") {
+      yAim = yAim + aim.bandH * stackMul;
+      if (titleAimSnapshot && Math.abs(titleAimSnapshot.xMain - xMain) < fusLen * 0.18) {
+        yAim = Math.min(yAim, titleAimSnapshot.yAim - aim.bandH * 0.55);
+      }
+    }
+
+    if (role === "title") {
+      titleAimSnapshot = { yAim, xMain, zone: aim.zone, bandH: aim.bandH };
+    }
+
     const place = aim.place;
     const meshList = meshesForPlace(place);
     const roleTex = makeRoleTexture(state, role);
-    const len = aim.panelLen * scalePct * sizeMul * (panelScale || 1);
+    let len = aim.panelLen * scalePct * sizeMul * (panelScale || 1);
     const ht = aim.titlePanelH * scalePct * sizeMul * (panelScale || 1);
+    // Extra X shrink for XL/XXL near nose so glyphs aren't clipped
+    if (role === "title" && (aim.zone === "windowband" || aim.zone === "forward" || aim.zone === "nose")) {
+      const noseLimit = (aim.solidMaxX != null ? aim.solidMaxX : center.x + fusLen * 0.36) - xMain;
+      const maxLen = Math.max(0.45, noseLimit * 1.9);
+      if (len > maxLen) len = maxLen;
+    }
     const decalSize = new THREE.Vector3(len, Math.max(0.28, ht), panelDepth);
     const yAlts = [
       yAim,
-      yAim - aim.bandH * 0.1,
+      yAim - aim.bandH * 0.12,
       yAim + aim.bandH * 0.1,
-      yAim - aim.bandH * 0.22,
-      yAim + aim.bandH * 0.18,
+      yAim - aim.bandH * 0.28,
+      yAim + aim.bandH * 0.2,
+      size.y * 0.36,
+      size.y * 0.42,
+      size.y * 0.48,
       aim.bandMidY,
     ];
     const xCands = [
@@ -3017,6 +3214,7 @@ function addTextDecals(craft, state) {
       xMain - fusLen * 0.025,
       xMain + fusLen * 0.05,
       xMain - fusLen * 0.05,
+      xMain - fusLen * 0.08,
     ];
 
     const sides = place === "belly" ? [1] : [-1, 1];
@@ -3025,8 +3223,8 @@ function addTextDecals(craft, state) {
       let hit = null;
       for (const tx of xCands) {
         hit = trySideHit(side, tx, yAlts, meshList, place, yAim, aim.yBandFloor, aim.yPreferFloor, {
-          maxNy: place === "fuselage" ? 0.55 : 0.92,
-          preferSideZones: place === "fuselage",
+          maxNy: place === "fuselage" ? 0.75 : 0.95,
+          preferSideZones: false,
         });
         if (hit) break;
       }
@@ -3034,16 +3232,32 @@ function addTextDecals(craft, state) {
         const origin = new THREE.Vector3(xMain, center.y - reach, center.z);
         hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, 1, 0), raycaster);
       }
-      if (!hit) {
-        console.warn("addTextDecals: no hit", role, "zone", aim.zone, "side", side);
-        return;
-      }
-      const flipU = resolveFlipU(hit, side, flipLeft, flipRight);
+      const flipU = hit
+        ? resolveFlipU(hit, side, flipLeft, flipRight)
+        : side < 0;
       const mat = sideMaterialFromTex(roleTex, flipU, sharedMatOpts);
       const sizeVec = place === "belly"
         ? new THREE.Vector3(len, Math.max(0.28, ht * 0.9), panelDepth)
         : decalSize.clone();
-      if (projectDecal(group, hit, sizeVec, mat, renderOrder)) mounted++;
+      if (hit) {
+        if (projectDecal(group, hit, sizeVec, mat, renderOrder)) mounted++;
+      } else {
+        // PlaneGeometry flank fallback (same as stickers) — never leave blank sides
+        console.warn("addTextDecals: no hit", role, "zone", aim.zone, "side", side, "— plane fallback");
+        placeFallbackPlaneDecal(
+          group,
+          craft,
+          side,
+          xMain,
+          yAim,
+          fusR * 1.05,
+          center,
+          sizeVec,
+          mat,
+          renderOrder
+        );
+        mounted++;
+      }
     });
     console.info("addTextDecals:", role, "zone", aim.zone, "x", xMain.toFixed(2), "y", yAim.toFixed(2), "mounted", mounted);
     return roleTex;

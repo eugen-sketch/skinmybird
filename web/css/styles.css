@@ -1,4 +1,4 @@
-/* SkinMyBird v0.7.5 — fuselage tube shield · tighter wings/pylon · constant windowband · custom textures · larger text */
+/* SkinMyBird v0.8.1 — hangar axis fix · text flank hits · role Y stack · tube shield (v0.7.5) */
 :root {
   --bg: #0b0b0d;
   --bg-elev: #121214;
@@ -997,7 +997,7 @@ input[type="text"]:focus {
   padding-right: 0.25rem;
 }
 
-/* v0.8.0 — positioning zone chips + fine nudge */
+/* v0.8.0+ — positioning zone chips + fine nudge */
 .zone-chips .seg {
   font-size: 0.72rem;
   padding: 0.32rem 0.55rem;
