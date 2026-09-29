@@ -6,7 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SkinMyBird — Canva for MSFS liveries</title>
   <link rel="icon" type="image/png" href="icon.png" />
-  <link rel="stylesheet" href="css/styles.css?v=0.7.5" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600;700&family=PT+Sans+Narrow:wght@400;700&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css?v=0.8.0" />
   <script type="importmap">
   {
     "imports": {
@@ -15,7 +18,7 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=0.7.5"></script>
+  <script type="module" src="js/app.js?v=0.8.0"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -157,22 +160,61 @@
             <p class="hint">Changes appear instantly in the hangar. Title sits on the window band.</p>
           </div>
 
-          <div class="tab-panel" id="tab-text" role="tabpanel" hidden>
+                    <div class="tab-panel" id="tab-text" role="tabpanel" hidden>
             <h2>Text on aircraft</h2>
-            <p class="hint">Three writing zones: <strong>Title</strong> (window band), <strong>Slogan</strong> (under title), <strong>Registration</strong> (aft).</p>
+            <p class="hint">Pick a <strong>positioning zone</strong> for Title, Slogan, and Registration. Zones move the letters on the hangar for real.</p>
 
             <label class="field">
-              <span>Title <em>(airline name — large on window band)</em></span>
+              <span>Title <em>(airline name)</em></span>
               <input type="text" id="airline" value="SkinMyBird" maxlength="56" placeholder="e.g. Huculeaks Air" />
             </label>
             <label class="field">
-              <span>Slogan <em>(optional — under title)</em></span>
+              <span>Title zone</span>
+              <div class="segmented wrap zone-chips" role="group" aria-label="Title zone">
+                <button type="button" class="seg active" data-title-zone="windowband">Window band</button>
+                <button type="button" class="seg" data-title-zone="forward">Forward cabin</button>
+                <button type="button" class="seg" data-title-zone="mid">Mid fuselage</button>
+                <button type="button" class="seg" data-title-zone="aft">Aft fuselage</button>
+                <button type="button" class="seg" data-title-zone="nose">Nose</button>
+                <button type="button" class="seg" data-title-zone="tail">Tail fin</button>
+                <button type="button" class="seg" data-title-zone="belly">Belly</button>
+              </div>
+              <input type="hidden" id="title-zone" value="windowband" />
+            </label>
+
+            <label class="field">
+              <span>Slogan <em>(optional)</em></span>
               <input type="text" id="slogan" value="" maxlength="72" placeholder="e.g. Fly your story" />
             </label>
             <label class="field">
-              <span>Registration <em>(aft fuselage)</em></span>
+              <span>Slogan zone</span>
+              <div class="segmented wrap zone-chips" role="group" aria-label="Slogan zone">
+                <button type="button" class="seg active" data-slogan-zone="mid">Under title / Mid</button>
+                <button type="button" class="seg" data-slogan-zone="windowband">Window band</button>
+                <button type="button" class="seg" data-slogan-zone="forward">Forward cabin</button>
+                <button type="button" class="seg" data-slogan-zone="aft">Aft fuselage</button>
+                <button type="button" class="seg" data-slogan-zone="belly">Belly</button>
+              </div>
+              <input type="hidden" id="slogan-zone" value="mid" />
+            </label>
+
+            <label class="field">
+              <span>Registration</span>
               <input type="text" id="registration" value="YR-EUG" maxlength="10" placeholder="YR-…" />
             </label>
+            <label class="field">
+              <span>Registration zone</span>
+              <div class="segmented wrap zone-chips" role="group" aria-label="Registration zone">
+                <button type="button" class="seg active" data-reg-zone="aft">Aft fuselage</button>
+                <button type="button" class="seg" data-reg-zone="mid">Mid fuselage</button>
+                <button type="button" class="seg" data-reg-zone="tail">Tail fin</button>
+                <button type="button" class="seg" data-reg-zone="belly">Belly</button>
+              </div>
+              <input type="hidden" id="reg-zone" value="aft" />
+            </label>
+
+            <!-- Legacy placement field kept hidden for export compat -->
+            <input type="hidden" id="text-placement" value="fuselage" />
 
             <div class="field-row">
               <label class="field shrink">
@@ -181,26 +223,31 @@
               </label>
               <label class="field grow">
                 <span>Title size</span>
-                <div class="segmented" role="group" aria-label="Text size">
+                <div class="segmented wrap" role="group" aria-label="Text size">
                   <button type="button" class="seg" data-size="S">S</button>
                   <button type="button" class="seg" data-size="M">M</button>
-                  <button type="button" class="seg active" data-size="L">L</button>
+                  <button type="button" class="seg" data-size="L">L</button>
+                  <button type="button" class="seg active" data-size="XL">XL</button>
+                  <button type="button" class="seg" data-size="XXL">XXL</button>
                 </div>
-                <input type="hidden" id="text-size" value="L" />
+                <input type="hidden" id="text-size" value="XL" />
               </label>
             </div>
 
             <label class="field">
-              <span>Font</span>
+              <span>Airline font</span>
               <select id="text-font" class="select">
-                <option value="segoe" selected>Segoe UI</option>
-                <option value="arial">Arial</option>
-                <option value="georgia">Georgia</option>
+                <option value="montserrat" selected>Montserrat</option>
+                <option value="oswald">Oswald</option>
+                <option value="bebas">Bebas Neue</option>
+                <option value="anton">Anton</option>
+                <option value="roboto-condensed">Roboto Condensed</option>
+                <option value="pt-sans-narrow">PT Sans Narrow</option>
+                <option value="helvetica">Helvetica-like (Arial)</option>
+                <option value="segoe">Segoe UI</option>
                 <option value="impact">Impact</option>
-                <option value="courier">Courier New</option>
+                <option value="georgia">Georgia</option>
                 <option value="trebuchet">Trebuchet MS</option>
-                <option value="verdana">Verdana</option>
-                <option value="comic">Comic Sans</option>
               </select>
             </label>
 
@@ -215,30 +262,20 @@
               <input type="hidden" id="text-style" value="bold" />
             </label>
 
-            <label class="field">
-              <span>Title placement</span>
-              <div class="segmented wrap" role="group" aria-label="Text placement">
-                <button type="button" class="seg active" data-place="fuselage">Fuselage</button>
-                <button type="button" class="seg" data-place="tail">Tail</button>
-                <button type="button" class="seg" data-place="belly">Belly</button>
-                <button type="button" class="seg" data-place="wing">Wing</button>
-              </div>
-              <input type="hidden" id="text-placement" value="fuselage" />
-            </label>
-
-            <div class="field-group" id="text-custom-pos">
-              <h3 class="subhead">Free position (title)</h3>
+            <details class="field-group fine-tune" id="text-custom-pos">
+              <summary class="subhead">Fine nudge (optional)</summary>
+              <p class="hint">Zones do the main placement. Use these only for a small extra shift.</p>
               <label class="field">
-                <span>Nose ← → Tail <em id="lab-text-x">0</em></span>
-                <input type="range" id="text-pos-x" min="-50" max="50" value="0" step="1" />
+                <span>Nose ← → Tail nudge <em id="lab-text-x">0</em></span>
+                <input type="range" id="text-pos-x" min="-40" max="40" value="0" step="1" />
               </label>
               <label class="field">
-                <span>Low ← → High <em id="lab-text-y">8</em></span>
-                <input type="range" id="text-pos-y" min="-50" max="50" value="8" step="1" />
+                <span>Low ← → High nudge <em id="lab-text-y">0</em></span>
+                <input type="range" id="text-pos-y" min="-40" max="40" value="0" step="1" />
               </label>
               <label class="field">
-                <span>Scale on skin <em id="lab-text-scale">155%</em></span>
-                <input type="range" id="text-scale" min="50" max="200" value="155" step="5" />
+                <span>Scale on skin <em id="lab-text-scale">200%</em></span>
+                <input type="range" id="text-scale" min="80" max="350" value="200" step="5" />
               </label>
               <label class="check">
                 <input type="checkbox" id="text-flip-left" />
@@ -248,17 +285,16 @@
                 <input type="checkbox" id="text-flip-right" />
                 <span>Fix if right still mirrored</span>
               </label>
-              <p class="hint">Title is large on the window band. Slogan sits under it. Registration is placed aft automatically.</p>
-            </div>
+            </details>
           </div>
 
           <div class="tab-panel" id="tab-textures" role="tabpanel" hidden>
-            <h2>Custom textures</h2>
-            <p class="hint">Upload up to 3 images and place them freely on Fuselage, Wings, Tail, or Belly. Both sides for fuselage.</p>
+            <h2>Stickers / logos</h2>
+            <p class="hint">Upload up to 3 images. Slide Nose↔Tail and Low↔High to move them anywhere on the aircraft. Choose Left, Right, or Both sides.</p>
 
             <div class="texture-slots" id="texture-slots">
               <div class="texture-slot" data-slot="1">
-                <h3 class="subhead">Custom 1</h3>
+                <h3 class="subhead">Sticker / logo 1</h3>
                 <label class="file-drop slim">
                   <input type="file" class="ct-file" data-slot="1" accept="image/png,image/jpeg,image/jpg,image/webp" />
                   <span class="file-ico">🖼</span>
@@ -266,33 +302,38 @@
                 </label>
                 <button type="button" class="btn ghost slim ct-clear" data-slot="1" hidden>Remove</button>
                 <label class="field">
-                  <span>Place on</span>
-                  <select class="select ct-place" data-slot="1">
-                    <option value="fuselage" selected>Fuselage (both sides)</option>
-                    <option value="wings">Wings</option>
-                    <option value="tail">Tail</option>
-                    <option value="belly">Belly</option>
+                  <span>Side</span>
+                  <select class="select ct-side" data-slot="1">
+                    <option value="both" selected>Both sides</option>
+                    <option value="left">Left only</option>
+                    <option value="right">Right only</option>
                   </select>
                 </label>
+                <!-- legacy place field kept for older saved state; ignored by hangar -->
+                <input type="hidden" class="ct-place" data-slot="1" value="free" />
                 <label class="field">
                   <span>Opacity <em class="ct-lab-op" id="ct-lab-op-1">100%</em></span>
                   <input type="range" class="ct-opacity" data-slot="1" min="10" max="100" value="100" step="5" />
                 </label>
                 <label class="field">
                   <span>Scale <em class="ct-lab-sc" id="ct-lab-sc-1">100%</em></span>
-                  <input type="range" class="ct-scale" data-slot="1" min="30" max="250" value="100" step="5" />
+                  <input type="range" class="ct-scale" data-slot="1" min="20" max="300" value="100" step="5" />
+                </label>
+                <label class="field">
+                  <span>Rotate <em class="ct-lab-rot" id="ct-lab-rot-1">0°</em></span>
+                  <input type="range" class="ct-rotate" data-slot="1" min="-180" max="180" value="0" step="5" />
                 </label>
                 <label class="field">
                   <span>Nose ← → Tail <em class="ct-lab-x" id="ct-lab-x-1">0</em></span>
-                  <input type="range" class="ct-pos-x" data-slot="1" min="-50" max="50" value="0" step="1" />
+                  <input type="range" class="ct-pos-x" data-slot="1" min="-100" max="100" value="0" step="1" />
                 </label>
                 <label class="field">
                   <span>Low ← → High <em class="ct-lab-y" id="ct-lab-y-1">0</em></span>
-                  <input type="range" class="ct-pos-y" data-slot="1" min="-50" max="50" value="0" step="1" />
+                  <input type="range" class="ct-pos-y" data-slot="1" min="-100" max="100" value="0" step="1" />
                 </label>
               </div>
               <div class="texture-slot" data-slot="2">
-                <h3 class="subhead">Custom 2</h3>
+                <h3 class="subhead">Sticker / logo 2</h3>
                 <label class="file-drop slim">
                   <input type="file" class="ct-file" data-slot="2" accept="image/png,image/jpeg,image/jpg,image/webp" />
                   <span class="file-ico">🖼</span>
@@ -300,33 +341,38 @@
                 </label>
                 <button type="button" class="btn ghost slim ct-clear" data-slot="2" hidden>Remove</button>
                 <label class="field">
-                  <span>Place on</span>
-                  <select class="select ct-place" data-slot="2">
-                    <option value="fuselage" selected>Fuselage (both sides)</option>
-                    <option value="wings">Wings</option>
-                    <option value="tail">Tail</option>
-                    <option value="belly">Belly</option>
+                  <span>Side</span>
+                  <select class="select ct-side" data-slot="2">
+                    <option value="both" selected>Both sides</option>
+                    <option value="left">Left only</option>
+                    <option value="right">Right only</option>
                   </select>
                 </label>
+                <!-- legacy place field kept for older saved state; ignored by hangar -->
+                <input type="hidden" class="ct-place" data-slot="2" value="free" />
                 <label class="field">
                   <span>Opacity <em class="ct-lab-op" id="ct-lab-op-2">100%</em></span>
                   <input type="range" class="ct-opacity" data-slot="2" min="10" max="100" value="100" step="5" />
                 </label>
                 <label class="field">
                   <span>Scale <em class="ct-lab-sc" id="ct-lab-sc-2">100%</em></span>
-                  <input type="range" class="ct-scale" data-slot="2" min="30" max="250" value="100" step="5" />
+                  <input type="range" class="ct-scale" data-slot="2" min="20" max="300" value="100" step="5" />
+                </label>
+                <label class="field">
+                  <span>Rotate <em class="ct-lab-rot" id="ct-lab-rot-2">0°</em></span>
+                  <input type="range" class="ct-rotate" data-slot="2" min="-180" max="180" value="0" step="5" />
                 </label>
                 <label class="field">
                   <span>Nose ← → Tail <em class="ct-lab-x" id="ct-lab-x-2">0</em></span>
-                  <input type="range" class="ct-pos-x" data-slot="2" min="-50" max="50" value="0" step="1" />
+                  <input type="range" class="ct-pos-x" data-slot="2" min="-100" max="100" value="0" step="1" />
                 </label>
                 <label class="field">
                   <span>Low ← → High <em class="ct-lab-y" id="ct-lab-y-2">0</em></span>
-                  <input type="range" class="ct-pos-y" data-slot="2" min="-50" max="50" value="0" step="1" />
+                  <input type="range" class="ct-pos-y" data-slot="2" min="-100" max="100" value="0" step="1" />
                 </label>
               </div>
               <div class="texture-slot" data-slot="3">
-                <h3 class="subhead">Custom 3</h3>
+                <h3 class="subhead">Sticker / logo 3</h3>
                 <label class="file-drop slim">
                   <input type="file" class="ct-file" data-slot="3" accept="image/png,image/jpeg,image/jpg,image/webp" />
                   <span class="file-ico">🖼</span>
@@ -334,29 +380,34 @@
                 </label>
                 <button type="button" class="btn ghost slim ct-clear" data-slot="3" hidden>Remove</button>
                 <label class="field">
-                  <span>Place on</span>
-                  <select class="select ct-place" data-slot="3">
-                    <option value="fuselage" selected>Fuselage (both sides)</option>
-                    <option value="wings">Wings</option>
-                    <option value="tail">Tail</option>
-                    <option value="belly">Belly</option>
+                  <span>Side</span>
+                  <select class="select ct-side" data-slot="3">
+                    <option value="both" selected>Both sides</option>
+                    <option value="left">Left only</option>
+                    <option value="right">Right only</option>
                   </select>
                 </label>
+                <!-- legacy place field kept for older saved state; ignored by hangar -->
+                <input type="hidden" class="ct-place" data-slot="3" value="free" />
                 <label class="field">
                   <span>Opacity <em class="ct-lab-op" id="ct-lab-op-3">100%</em></span>
                   <input type="range" class="ct-opacity" data-slot="3" min="10" max="100" value="100" step="5" />
                 </label>
                 <label class="field">
                   <span>Scale <em class="ct-lab-sc" id="ct-lab-sc-3">100%</em></span>
-                  <input type="range" class="ct-scale" data-slot="3" min="30" max="250" value="100" step="5" />
+                  <input type="range" class="ct-scale" data-slot="3" min="20" max="300" value="100" step="5" />
+                </label>
+                <label class="field">
+                  <span>Rotate <em class="ct-lab-rot" id="ct-lab-rot-3">0°</em></span>
+                  <input type="range" class="ct-rotate" data-slot="3" min="-180" max="180" value="0" step="5" />
                 </label>
                 <label class="field">
                   <span>Nose ← → Tail <em class="ct-lab-x" id="ct-lab-x-3">0</em></span>
-                  <input type="range" class="ct-pos-x" data-slot="3" min="-50" max="50" value="0" step="1" />
+                  <input type="range" class="ct-pos-x" data-slot="3" min="-100" max="100" value="0" step="1" />
                 </label>
                 <label class="field">
                   <span>Low ← → High <em class="ct-lab-y" id="ct-lab-y-3">0</em></span>
-                  <input type="range" class="ct-pos-y" data-slot="3" min="-50" max="50" value="0" step="1" />
+                  <input type="range" class="ct-pos-y" data-slot="3" min="-100" max="100" value="0" step="1" />
                 </label>
               </div>
             </div>
@@ -371,8 +422,7 @@
             <button type="button" class="btn ghost slim" id="btn-clear-photo" hidden>Remove photo</button>
           </div>
 
-          
-          <div class="tab-panel" id="tab-flags" role="tabpanel" hidden>
+<div class="tab-panel" id="tab-flags" role="tabpanel" hidden>
             <h2>National flags</h2>
             <p class="hint">Simplified geometric flags (no logos). Multi-select — place on left, right, both, or free position.</p>
             <label class="field">
@@ -538,7 +588,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.7.5 · tube shield · no flank slab · nacelles · windowband · custom textures · larger text · flags-only · DDS BC7</span>
+      <span>v0.8.0 · text zones · airline fonts · free stickers · tube shield · flags · DDS BC7</span>
     </footer>
   </div>
 </body>

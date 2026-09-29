@@ -15,6 +15,13 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.8.0 notes
+- **Text UX redesign**: named positioning zones per Title / Slogan / Registration (Window band, Forward cabin, Mid, Aft, Nose, Tail fin, Belly). Separate decals per role so zones actually move text.
+- **Airline fonts**: Montserrat (default), Oswald, Bebas Neue, Anton, Roboto Condensed, PT Sans Narrow, Helvetica-like; Comic Sans removed. Google Fonts loaded before canvas draw (`document.fonts.ready`).
+- **Larger title**: default XL / 200% scale (up to XXL / 350%); `fitFontPx` floor raised so long airline names stay readable along the fuselage.
+- **Stickers / logos**: removed fixed Place-on Fuselage/Wings/Tail/Belly. Free Nose↔Tail + Low↔High aim with raycast on craft surface; Side Left/Right/Both; Scale / Opacity / Rotate.
+- Paint zone shader (v0.7.5 tube shield / body classify) untouched. Cache-bust `?v=0.8.0`
+
 ### v0.7.5 notes
 - **Fuselage tube shield**: if `absZ <= fuseHalf*1.25`, skip geometric under-wing pod, geometric pylon, and wings rules (tube points never become wings/engines). Seed hits still allowed only when `absZ > fuseHalf`.
 - **Wings**: require `absZ > fuseHalf*1.6` (~`halfZ*0.35`) and tighten near-plane to `abs(y-wingY) < sy*0.06` (was `0.15`). Winglet tip rule kept.

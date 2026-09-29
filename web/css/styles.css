@@ -996,3 +996,24 @@ input[type="text"]:focus {
   overflow-y: auto;
   padding-right: 0.25rem;
 }
+
+/* v0.8.0 — positioning zone chips + fine nudge */
+.zone-chips .seg {
+  font-size: 0.72rem;
+  padding: 0.32rem 0.55rem;
+}
+details.fine-tune {
+  margin-top: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  background: rgba(0,0,0,0.18);
+}
+details.fine-tune > summary.subhead {
+  cursor: pointer;
+  list-style: none;
+  margin: 0 0 0.4rem;
+}
+details.fine-tune > summary::-webkit-details-marker { display: none; }
+details.fine-tune[open] > summary { margin-bottom: 0.65rem; }
+.texture-slot .subhead { color: #e8e8f0; }

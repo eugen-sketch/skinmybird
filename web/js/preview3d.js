@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.7.5 — fuselage tube shield + tighter wings/pylon (no flank dark slab), constant windowband, custom textures.
+ * SkinMyBird 3D hangar preview v0.8.0 — text positioning zones, airline fonts, free sticker placement; paint zones from v0.7.5 unchanged.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1368,18 +1368,89 @@ function applyGlbZonePaint(craft, colorsByZone) {
 }
 
 const FONT_STACKS = {
-  segoe: '"Segoe UI", system-ui, sans-serif',
+  montserrat: '"Montserrat", "Segoe UI", system-ui, sans-serif',
+  oswald: '"Oswald", "Arial Narrow", sans-serif',
+  bebas: '"Bebas Neue", Impact, sans-serif',
+  anton: '"Anton", Impact, sans-serif',
+  "roboto-condensed": '"Roboto Condensed", "Arial Narrow", sans-serif',
+  "pt-sans-narrow": '"PT Sans Narrow", "Arial Narrow", sans-serif',
+  helvetica: 'Arial, Helvetica, "Helvetica Neue", sans-serif',
   arial: 'Arial, Helvetica, sans-serif',
+  segoe: '"Segoe UI", system-ui, sans-serif',
   georgia: 'Georgia, "Times New Roman", serif',
   impact: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif',
-  courier: '"Courier New", Courier, monospace',
   trebuchet: '"Trebuchet MS", "Segoe UI", sans-serif',
+  // legacy aliases
+  courier: '"Courier New", Courier, monospace',
   verdana: 'Verdana, Geneva, sans-serif',
-  comic: '"Comic Sans MS", "Comic Sans", cursive',
+  comic: '"Segoe UI", system-ui, sans-serif',
 };
 
+const AIRLINE_FONT_SPECS = [
+  '400 64px "Montserrat"',
+  '600 64px "Montserrat"',
+  '700 64px "Montserrat"',
+  '400 64px "Oswald"',
+  '700 64px "Oswald"',
+  '400 64px "Bebas Neue"',
+  '400 64px "Anton"',
+  '400 64px "Roboto Condensed"',
+  '700 64px "Roboto Condensed"',
+  '400 64px "PT Sans Narrow"',
+  '700 64px "PT Sans Narrow"',
+];
+
+let _fontsReadyPromise = null;
+function ensureAirlineFonts() {
+  if (typeof document === "undefined" || !document.fonts) {
+    return Promise.resolve();
+  }
+  if (_fontsReadyPromise) return _fontsReadyPromise;
+  _fontsReadyPromise = Promise.all(
+    AIRLINE_FONT_SPECS.map((spec) => document.fonts.load(spec).catch(() => null))
+  ).then(() => document.fonts.ready).catch(() => null);
+  return _fontsReadyPromise;
+}
+
+/** Named positioning zones for Title / Slogan / Registration (craft: +X = nose). */
+const TEXT_ZONE_DEFS = {
+  windowband: { xFrac: 0.16, yMode: "window", yBias: 0.00, panelFrac: 0.48, hMul: 1.20, place: "fuselage" },
+  forward:    { xFrac: 0.26, yMode: "window", yBias: 0.00, panelFrac: 0.40, hMul: 1.05, place: "fuselage" },
+  mid:        { xFrac: 0.04, yMode: "window", yBias: -0.35, panelFrac: 0.42, hMul: 1.00, place: "fuselage" },
+  aft:        { xFrac: -0.24, yMode: "window", yBias: 0.00, panelFrac: 0.28, hMul: 0.85, place: "fuselage" },
+  nose:       { xFrac: 0.38, yMode: "window", yBias: -0.10, panelFrac: 0.22, hMul: 0.95, place: "fuselage" },
+  tail:       { xFrac: -0.40, yMode: "tail", yBias: 0.35, panelFrac: 0.30, hMul: 1.25, place: "tail" },
+  belly:      { xFrac: 0.06, yMode: "belly", yBias: 0.00, panelFrac: 0.34, hMul: 0.95, place: "belly" },
+};
+
+function normalizeTextZone(id, fallback) {
+  const key = String(id || fallback || "windowband").toLowerCase();
+  if (TEXT_ZONE_DEFS[key]) return key;
+  // legacy placement mapping
+  if (key === "fuselage") return "windowband";
+  if (key === "wing") return "mid";
+  return fallback || "windowband";
+}
+
+function textSizeMul(sizeKey) {
+  const k = String(sizeKey || "XL").toUpperCase();
+  if (k === "S") return 0.55;
+  if (k === "M") return 0.75;
+  if (k === "L") return 0.95;
+  if (k === "XXL") return 1.35;
+  return 1.15; // XL default
+}
+
+function canvasBasePx(sizeKey, role) {
+  const k = String(sizeKey || "XL").toUpperCase();
+  const titlePx = k === "S" ? 220 : k === "M" ? 320 : k === "L" ? 420 : k === "XXL" ? 620 : 520;
+  if (role === "slogan") return Math.round(titlePx * 0.52);
+  if (role === "reg") return Math.round(titlePx * 0.48);
+  return titlePx;
+}
+
 function resolveFontStack(key) {
-  return FONT_STACKS[key] || FONT_STACKS.segoe;
+  return FONT_STACKS[key] || FONT_STACKS.montserrat || FONT_STACKS.segoe;
 }
 
 /** Map textStyle → CSS font style + weight for canvas. */
@@ -1395,16 +1466,17 @@ function resolveFontFace(state, px) {
   return `${italic}${weight} ${Math.round(px)}px ${stack}`;
 }
 
-/** Shrink font until text fits maxWidth; returns used px. */
-function fitFontPx(ctx, text, maxWidth, basePx, state, minPx = 10) {
+/** Shrink font until text fits maxWidth; returns used px. v0.8.0: keep text large (higher floor). */
+function fitFontPx(ctx, text, maxWidth, basePx, state, minPx = 48) {
+  const floor = Math.max(minPx, Math.round(basePx * 0.42));
   let px = basePx;
-  while (px > minPx) {
+  while (px > floor) {
     ctx.font = resolveFontFace(state, px);
     if (ctx.measureText(text || "").width <= maxWidth) return px;
-    px -= 2;
+    px -= 4;
   }
-  ctx.font = resolveFontFace(state, minPx);
-  return minPx;
+  ctx.font = resolveFontFace(state, floor);
+  return floor;
 }
 
 function drawStar2d(ctx, cx, cy, r, color) {
@@ -2025,9 +2097,9 @@ function paintDecalCanvas(canvas, state) {
   if (!showText) return;
 
   const textColor = state.textColor || "#FFFFFF";
-  const sizeKey = state.textSize || "M";
-  const basePx = sizeKey === "S" ? 140 : sizeKey === "L" ? 320 : 240; // v0.7.2 larger title
-  const maxW = W * 0.92;
+  const sizeKey = state.textSize || "XL";
+  const basePx = canvasBasePx(sizeKey, "title");
+  const maxW = W * 0.96;
 
   ctx.fillStyle = textColor;
   ctx.textAlign = "center";
@@ -2080,6 +2152,67 @@ function makeDecalTexture(state, w = DECAL_W, h = DECAL_H) {
   canvas.width = w;
   canvas.height = h;
   paintDecalCanvas(canvas, state);
+  const tex = new THREE.CanvasTexture(canvas);
+  configurePaintTexture(tex);
+  tex.userData.canvas = canvas;
+  return tex;
+}
+
+/** Single-role text canvas (title / slogan / registration) for independent zone placement. */
+function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H) {
+  let cw = w;
+  let ch = h;
+  if (role === "reg") {
+    cw = REG_W;
+    ch = REG_H;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext("2d");
+  prepareCanvas2d(ctx, cw, ch);
+  const textColor = state.textColor || "#FFFFFF";
+  const sizeKey = state.textSize || "XL";
+  let raw = "";
+  let styleState = state;
+  let basePx = canvasBasePx(sizeKey, role);
+  let minPx = 56;
+  if (role === "title") {
+    raw = String(state.airline || "").trim();
+  } else if (role === "slogan") {
+    raw = String(state.slogan || "").trim();
+    const style = String(state.textStyle || "").toLowerCase();
+    const sloganStyle = style.includes("italic")
+      ? (style.includes("bold") ? "bold-italic" : "italic")
+      : "regular";
+    styleState = { ...state, textStyle: sloganStyle };
+    minPx = 40;
+  } else if (role === "reg") {
+    raw = String(state.registration || "").trim();
+    styleState = { ...state, textStyle: "bold" };
+    minPx = 48;
+  }
+  if (!raw) {
+    const tex = new THREE.CanvasTexture(canvas);
+    configurePaintTexture(tex);
+    tex.userData.canvas = canvas;
+    return tex;
+  }
+  const maxW = cw * 0.96;
+  ctx.fillStyle = textColor;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = role === "title" ? 10 : 7;
+  const px = fitFontPx(ctx, raw, maxW, basePx, styleState, minPx);
+  ctx.font = resolveFontFace(styleState, px);
+  ctx.lineJoin = "round";
+  ctx.miterLimit = 2;
+  ctx.strokeStyle = "rgba(0,0,0,0.5)";
+  ctx.lineWidth = Math.max(2, px * (role === "title" ? 0.075 : 0.055));
+  ctx.strokeText(raw, cw / 2, ch * 0.52);
+  ctx.fillText(raw, cw / 2, ch * 0.52);
+  ctx.shadowBlur = 0;
   const tex = new THREE.CanvasTexture(canvas);
   configurePaintTexture(tex);
   tex.userData.canvas = canvas;
@@ -2370,9 +2503,9 @@ function makeRegTexture(state) {
 }
 
 /**
- * v0.7.3 — Custom uploaded texture decals (Custom 1/2/3).
- * Fuselage placement aims forward of wing LE at windowband mid (same path as titles).
- * Multi-X side raycasts; PlaneGeometry hard fallback if still no hit.
+ * v0.8.0 — Custom sticker/logo decals with free craft-local placement.
+ * Nose↔Tail + Low↔High aim via raycast on any craft mesh (not locked to zone lists).
+ * Side: left / right / both. Scale / opacity / rotate supported.
  */
 function ensureCustomSlotImage(slot) {
   if (!slot || !slot.dataUrl) return null;
@@ -2413,7 +2546,6 @@ function placeFallbackPlaneDecal(group, craft, side, x, y, fusR, center, decalSi
   );
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.set(x, y, z);
-  // Face outward (±Z)
   mesh.lookAt(x, y, z + side * 2);
   mesh.renderOrder = renderOrder;
   mesh.userData.isTextDecal = true;
@@ -2427,11 +2559,274 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
   if (!slots.length || !group) return;
   const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
   const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
-  const maxFusAbsZ = fusR * 2.35;
+  const maxFusAbsZ = fusR * 2.8;
   const scored = targets.scored || [];
   const fusLen = size.x;
 
-  // Wing LE + title-like forward X (fixes v0.7.2 miss at center.x / wing root)
+  // Prefer body/side meshes but allow ANY craft mesh so stickers can leave the fuselage
+  const bodyMeshes = scored
+    .filter(
+      (s) =>
+        s.paintZone === "windowband" ||
+        s.paintZone === "fuselage" ||
+        s.paintZone === "nose" ||
+        s.paintZone === "belly" ||
+        s.paintZone === "tail" ||
+        s.role === "fuselage" ||
+        s.role === "nose" ||
+        s.role === "belly" ||
+        s.role === "tail" ||
+        (s.mesh && s.mesh.userData && s.mesh.userData.bodyZoneShaded)
+    )
+    .map((s) => s.mesh);
+  const allMeshes = (targets.all && targets.all.length)
+    ? targets.all
+    : scored.map((s) => s.mesh);
+  const meshList = bodyMeshes.length ? bodyMeshes.concat(
+    allMeshes.filter((m) => !bodyMeshes.includes(m))
+  ) : allMeshes;
+
+  const est = estimateWindowBandWorld(craft, size, center);
+  const bandH = est.bandH || Math.max(0.12, size.y * 0.1);
+
+  slots.forEach((slot, idx) => {
+    if (!slot || !slot.dataUrl) return;
+    const img = ensureCustomSlotImage(slot);
+    if (!img || !img.complete || !img.naturalWidth) return;
+
+    const opacity = Math.max(0.05, Math.min(1, (Number(slot.opacity) || 100) / 100));
+    const scale = Math.max(0.2, Math.min(3.0, (Number(slot.scale) || 100) / 100));
+    // Wide free range: slider −100…100 → nearly full craft nose↔tail / low↔high
+    const posX = Number(slot.posX || 0) / 100; // + aft (−X), − nose (+X) to match prior UX
+    const posY = Number(slot.posY || 0) / 100;
+    const rotateDeg = Number(slot.rotate || 0) || 0;
+    const sideMode = String(slot.side || "both").toLowerCase();
+
+    const canvas = document.createElement("canvas");
+    const cw = 1024, ch = 1024;
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx2d = canvas.getContext("2d");
+    prepareCanvas2d(ctx2d, cw, ch);
+    ctx2d.save();
+    ctx2d.translate(cw / 2, ch / 2);
+    if (rotateDeg) ctx2d.rotate((rotateDeg * Math.PI) / 180);
+    ctx2d.globalAlpha = opacity;
+    const ir = img.naturalWidth / img.naturalHeight;
+    let dw = cw * 0.92, dh = ch * 0.92;
+    if (ir > 1) dh = dw / ir;
+    else dw = dh * ir;
+    ctx2d.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+    ctx2d.restore();
+    const tex = new THREE.CanvasTexture(canvas);
+    configurePaintTexture(tex);
+    tex.userData.canvas = canvas;
+
+    const matOpts = {
+      map: tex,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+      side: THREE.FrontSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+      opacity: 1,
+    };
+
+    const baseW = Math.max(0.55, Math.min(size.x * 0.38, 3.2)) * scale;
+    const baseH = baseW * (dh / dw);
+    const depth = Math.max(0.3, Math.min(size.y * 0.35, 0.65));
+    const decalSize = new THREE.Vector3(baseW, Math.max(0.35, baseH), depth);
+
+    // Free craft-local aim: center ± ~0.42*fusLen in X, ± ~0.38*size.y in Y
+    const x0 = center.x - fusLen * posX * 0.42;
+    const y0 = center.y + size.y * (0.02 + posY * 0.38);
+
+    const xSamples = [
+      x0,
+      x0 + fusLen * 0.04,
+      x0 - fusLen * 0.04,
+      x0 + fusLen * 0.08,
+      x0 - fusLen * 0.08,
+    ];
+    const yCands = [
+      y0,
+      y0 - bandH * 0.15,
+      y0 + bandH * 0.15,
+      y0 - size.y * 0.06,
+      y0 + size.y * 0.06,
+      est.yAim,
+    ];
+
+    let sides;
+    if (sideMode === "left") sides = [-1];
+    else if (sideMode === "right") sides = [1];
+    else sides = [-1, 1];
+
+    sides.forEach((side) => {
+      let best = null;
+      let bestErr = Infinity;
+      for (const tx of xSamples) {
+        for (const y of yCands) {
+          const origin = new THREE.Vector3(tx, y, center.z + side * fusR * 2.6);
+          const dir = new THREE.Vector3(0, 0, -side);
+          let h = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, {
+            maxNy: 0.88,
+            preferSideZones: false,
+          });
+          if (!h) {
+            origin.z = center.z + side * fusR * 3.8;
+            h = raycastBestHit(meshList, origin, dir, raycaster);
+          }
+          // Belly-ish: also try upward cast when aiming low
+          if (!h && posY < -0.35) {
+            const o2 = new THREE.Vector3(tx, center.y - reach, center.z + side * 0.05);
+            h = raycastBestHit(meshList, o2, new THREE.Vector3(0, 1, 0), raycaster);
+          }
+          // High / crown: downward
+          if (!h && posY > 0.55) {
+            const o3 = new THREE.Vector3(tx, center.y + reach * 0.6, center.z + side * size.z * 0.15);
+            h = raycastBestHit(meshList, o3, new THREE.Vector3(0, -1, 0), raycaster);
+          }
+          if (!h || !h.point) continue;
+          const err = Math.abs(h.point.y - y0) + Math.abs(h.point.x - x0) * 0.2;
+          if (err < bestErr) {
+            bestErr = err;
+            best = h;
+          }
+        }
+        if (best && bestErr < bandH * 0.5) break;
+      }
+      if (!best) {
+        console.warn("addCustomTextureDecals: no hit side", side, slot.name || idx, "— plane fallback");
+        const flipU = side < 0;
+        const mat = sideMaterialFromTex(tex, flipU, matOpts);
+        placeFallbackPlaneDecal(group, craft, side, x0, y0, fusR * 1.02, center, decalSize, mat, 4 + idx);
+        return;
+      }
+      const flipU = resolveFlipU(best, side, false, false);
+      const mat = sideMaterialFromTex(tex, flipU, matOpts);
+      projectDecal(group, best, decalSize, mat, 4 + idx);
+    });
+  });
+}
+
+/**
+ * Resolve a named text zone into world aim X/Y + panel size + place mode.
+ * Craft hangar: +X = nose, −X = tail.
+ */
+function resolveTextZoneAim(zoneId, craft, size, center, wingLeX, wbScored, targets) {
+  const zone = normalizeTextZone(zoneId, "windowband");
+  const def = TEXT_ZONE_DEFS[zone] || TEXT_ZONE_DEFS.windowband;
+  const fusLen = size.x;
+  let xMain = center.x + fusLen * def.xFrac;
+  // Keep windowband / forward titles clear of wing LE when known
+  if ((zone === "windowband" || zone === "forward") && wingLeX != null && Number.isFinite(wingLeX)) {
+    const gap = Math.max(0.04 * fusLen, 0.18);
+    const aftFloor = wingLeX + gap;
+    if (xMain < aftFloor) xMain = aftFloor + fusLen * 0.02;
+  }
+  const est = estimateWindowBandWorld(craft, size, center);
+  let bandH = est.bandH;
+  let yAim = est.yAim;
+  let yBandFloor = est.yBandFloor;
+  let yPreferFloor = est.yPreferFloor;
+  let bandMidY = est.bandMidY;
+
+  if (def.yMode === "window" && wbScored && wbScored.length) {
+    const xPad = Math.max(fusLen * 0.12, 0.4);
+    const localWb = wbScored.filter((s) => s.box && s.box.max.x >= xMain - xPad && s.box.min.x <= xMain + xPad);
+    const useWb = localWb.length ? localWb : wbScored;
+    const union = new THREE.Box3();
+    for (const s of useWb) union.union(s.box);
+    bandH = Math.max(0.06, union.max.y - union.min.y);
+    bandMidY = (union.min.y + union.max.y) * 0.5;
+    yAim = union.min.y + bandH * 0.50;
+    yBandFloor = union.min.y + bandH * 0.12;
+    yPreferFloor = union.min.y + bandH * 0.22;
+  }
+  if (def.yMode === "belly") {
+    yAim = center.y - size.y * 0.18;
+    bandH = Math.max(0.15, size.y * 0.12);
+    yBandFloor = center.y - size.y * 0.45;
+    yPreferFloor = yAim - bandH;
+    bandMidY = yAim;
+  }
+  if (def.yMode === "tail") {
+    yAim = center.y + size.y * 0.22;
+    bandH = Math.max(0.2, size.y * 0.18);
+    yBandFloor = center.y;
+    yPreferFloor = yAim - bandH * 0.3;
+    bandMidY = yAim;
+  }
+  yAim += bandH * (def.yBias || 0);
+
+  const panelLen = Math.max(0.55, fusLen * def.panelFrac);
+  const titlePanelH =
+    def.yMode === "belly" || def.yMode === "tail"
+      ? Math.max(0.38, Math.min(size.y * 0.35, panelLen * 0.45)) * def.hMul
+      : Math.max(bandH * 0.85, Math.min(bandH * 1.35, bandH * 1.15)) * def.hMul;
+
+  return {
+    zone,
+    place: def.place,
+    xMain,
+    yAim,
+    bandH,
+    bandMidY,
+    yBandFloor,
+    yPreferFloor,
+    panelLen,
+    titlePanelH,
+  };
+}
+
+/**
+ * Mesh-projected text/sticker decals — v0.8.0 per-role zones (title / slogan / reg).
+ */
+function addTextDecals(craft, state) {
+  craft.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(craft);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+
+  const group = new THREE.Group();
+  group.name = "textDecals";
+  craft.add(group);
+  craft.updateMatrixWorld(true);
+
+  const flagCodes = (state.flags && state.flags.codes) || [];
+  const hasIdentityText = !!(
+    (state.airline && String(state.airline).trim()) ||
+    (state.slogan && String(state.slogan).trim()) ||
+    (state.registration && String(state.registration).trim())
+  );
+  const hasCustom = (state.customTextures || []).some((t) => t && t.dataUrl);
+  const anyVisual = flagCodes.length > 0 || hasIdentityText || hasCustom;
+  if (!anyVisual) {
+    return { tex: null, mat: null, group, regTex: null };
+  }
+
+  // Combined tex kept for flags / legacy callers; roles use separate canvases
+  const tex = makeDecalTexture(state, DECAL_W, DECAL_H);
+  const sharedMatOpts = {
+    map: tex,
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+    side: THREE.FrontSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+  };
+
+  const targets = collectDecalTargetMeshes(craft);
+  const raycaster = new THREE.Raycaster();
+  raycaster.near = 0;
+  raycaster.far = 100;
+
+  const fusLen = size.x;
   let wingLeX = null;
   if (targets.wings && targets.wings.length) {
     const fusNearZ = Math.max(0.45, Math.min(size.y * 0.4, size.z * 0.14));
@@ -2466,335 +2861,11 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
     wingLeX = Math.max(wingLeX, center.x + size.x * 0.02);
   }
 
-  const wbScored = scored.filter((s) => s.paintZone === "windowband");
-  let yAimTitle;
-  let bandH;
-  if (wbScored.length) {
-    const union = new THREE.Box3();
-    for (const s of wbScored) union.union(s.box);
-    bandH = Math.max(0.06, union.max.y - union.min.y);
-    yAimTitle = union.min.y + bandH * 0.50;
-  } else {
-    const est = estimateWindowBandWorld(craft, size, center);
-    yAimTitle = est.yAim;
-    bandH = est.bandH;
-  }
-
-  const gap = Math.max(0.055 * fusLen, 0.22);
-  const xAftMin = (wingLeX != null) ? wingLeX + gap : center.x + size.x * 0.12;
-  const xFwdMax = center.x + size.x * 0.22;
-  let xTitle = xAftMin + Math.max(0, xFwdMax - xAftMin) * 0.65;
-  if (!(xFwdMax > xAftMin)) xTitle = center.x + size.x * 0.16;
-
-  slots.forEach((slot, idx) => {
-    if (!slot || !slot.dataUrl) return;
-    const img = ensureCustomSlotImage(slot);
-    if (!img || !img.complete || !img.naturalWidth) return;
-    const placement = slot.placement || "fuselage";
-    const opacity = Math.max(0.05, Math.min(1, (Number(slot.opacity) || 100) / 100));
-    const scale = Math.max(0.3, Math.min(2.5, (Number(slot.scale) || 100) / 100));
-    const posX = Number(slot.posX || 0) / 100;
-    const posY = Number(slot.posY || 0) / 100;
-
-    const canvas = document.createElement("canvas");
-    const cw = 1024, ch = 1024;
-    canvas.width = cw;
-    canvas.height = ch;
-    const ctx2d = canvas.getContext("2d");
-    prepareCanvas2d(ctx2d, cw, ch);
-    ctx2d.globalAlpha = opacity;
-    const ir = img.naturalWidth / img.naturalHeight;
-    let dw = cw, dh = ch;
-    if (ir > 1) dh = cw / ir;
-    else dw = ch * ir;
-    ctx2d.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
-    ctx2d.globalAlpha = 1;
-    const tex = new THREE.CanvasTexture(canvas);
-    configurePaintTexture(tex);
-
-    const matOpts = {
-      map: tex,
-      transparent: true,
-      depthTest: true,
-      depthWrite: false,
-      side: THREE.FrontSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -4,
-      polygonOffsetUnits: -4,
-      opacity: 1,
-    };
-
-    let meshList;
-    if (placement === "wings") {
-      meshList = (targets.wings || []).map((t) => t.mesh);
-      if (!meshList.length) {
-        meshList = scored
-          .filter((s) => s.paintZone === "wings" || s.paintZone === "winglet" || s.role === "wings")
-          .map((s) => s.mesh);
-      }
-    } else if (placement === "tail") {
-      meshList = (targets.tail || []).map((t) => t.mesh)
-        .concat((targets.fuselage || []).map((t) => t.mesh));
-    } else if (placement === "belly") {
-      meshList = (targets.belly || []).map((t) => t.mesh)
-        .concat((targets.fuselage || []).map((t) => t.mesh));
-    } else {
-      // fuselage: prefer windowband + fuselage (intact body meshes in v0.7.3)
-      const sideParts = scored.filter(
-        (s) =>
-          s.paintZone === "windowband" ||
-          s.paintZone === "fuselage" ||
-          s.role === "fuselage" ||
-          (s.mesh && s.mesh.userData && s.mesh.userData.bodyZoneShaded)
-      );
-      meshList = sideParts.length
-        ? sideParts.map((s) => s.mesh)
-        : (targets.fuselage || []).map((t) => t.mesh);
-      if (!meshList.length) meshList = (targets.all || []).slice(0, 8);
-    }
-
-    // Clearly visible default size (~0.32 of fuselage length at 100%)
-    const baseW = Math.max(0.75, Math.min(size.x * 0.32, 2.6)) * scale;
-    const baseH = baseW * (dh / dw);
-    const depth = Math.max(0.3, Math.min(size.y * 0.3, 0.55));
-    const decalSize = new THREE.Vector3(baseW, Math.max(0.4, baseH), depth);
-
-    let x0;
-    let y0;
-    if (placement === "fuselage") {
-      // Same forward-of-LE / windowband mid aim as titles
-      x0 = xTitle - size.x * posX * 0.35;
-      x0 = Math.min(xFwdMax, Math.max(xAftMin - 0.02 * fusLen, x0));
-      y0 = yAimTitle + bandH * (posY * 0.12);
-    } else {
-      x0 = center.x - size.x * posX * 0.35;
-      y0 = center.y + size.y * (0.02 + posY * 0.25);
-    }
-    if (placement === "belly") y0 = center.y - size.y * 0.15;
-    if (placement === "wings") y0 = center.y + size.y * 0.05;
-    if (placement === "tail") x0 = center.x - size.x * (0.28 + posX * 0.1);
-
-    // Multi-X samples (title-like) for fuselage / tail sides
-    const xSamples = [x0];
-    if (placement === "fuselage" || placement === "tail") {
-      const extras = [
-        x0,
-        x0 + fusLen * 0.03,
-        x0 - fusLen * 0.03,
-        center.x + size.x * 0.18,
-        center.x + size.x * 0.14,
-        center.x + size.x * 0.12,
-        center.x + size.x * 0.20,
-        xAftMin + (xFwdMax - xAftMin) * 0.5,
-      ];
-      for (const x of extras) {
-        if (Number.isFinite(x) && !xSamples.includes(x)) xSamples.push(x);
-      }
-    }
-
-    const yCands = [
-      y0,
-      y0 - bandH * 0.08,
-      y0 + bandH * 0.08,
-      y0 - bandH * 0.18,
-      yAimTitle,
-    ];
-
-    const sides = placement === "fuselage" || placement === "tail" ? [-1, 1] : [1];
-    sides.forEach((side) => {
-      let hit = null;
-      if (placement === "belly") {
-        const origin = new THREE.Vector3(x0, center.y - reach, center.z + side * 0.05);
-        hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, 1, 0), raycaster);
-      } else if (placement === "wings") {
-        const origin = new THREE.Vector3(
-          x0,
-          center.y + reach * 0.55,
-          center.z + side * size.z * 0.28
-        );
-        hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, -1, 0), raycaster);
-      } else {
-        // Title-path lateral casts with preferSideZones on windowband+fuselage
-        let best = null;
-        let bestErr = Infinity;
-        for (const tx of xSamples) {
-          for (const y of yCands) {
-            const zDist = fusR * 2.4;
-            const origin = new THREE.Vector3(tx, y, center.z + side * zDist);
-            const dir = new THREE.Vector3(0, 0, -side);
-            let h = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, {
-              maxNy: 0.55,
-              preferSideZones: placement === "fuselage",
-            });
-            if (!h) {
-              origin.z = center.z + side * (fusR * 3.6);
-              h = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, {
-                maxNy: 0.55,
-                preferSideZones: false,
-              });
-            }
-            if (!h) {
-              origin.z = center.z + side * (fusR * 3.2);
-              h = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ * 1.35, y, {
-                maxNy: 0.88,
-                preferSideZones: false,
-              });
-            }
-            if (!h) h = raycastBestHit(meshList, origin, dir, raycaster);
-            if (!h || !h.point) continue;
-            const err = Math.abs(h.point.y - yAimTitle) + Math.abs(h.point.x - x0) * 0.15;
-            if (err < bestErr) {
-              bestErr = err;
-              best = h;
-            }
-          }
-          if (best && bestErr < bandH * 0.35) break;
-        }
-        hit = best;
-      }
-      if (!hit) {
-        console.warn(
-          "addCustomTextureDecals: no hit for",
-          placement,
-          "side",
-          side,
-          slot.name || idx,
-          "— using plane fallback"
-        );
-        const flipU = placement === "fuselage" ? side < 0 : false;
-        const mat = sideMaterialFromTex(tex, flipU, matOpts);
-        placeFallbackPlaneDecal(
-          group,
-          craft,
-          side,
-          x0,
-          y0,
-          fusR * 1.02,
-          center,
-          decalSize,
-          mat,
-          4 + idx
-        );
-        return;
-      }
-      const flipU = placement === "fuselage" ? resolveFlipU(hit, side, false, false) : false;
-      const mat = sideMaterialFromTex(tex, flipU, matOpts);
-      projectDecal(group, hit, decalSize, mat, 4 + idx);
-    });
-  });
-}
-
-/**
- * Mesh-projected text/sticker decals on BOTH sides of the fuselage (or belly/tail/wing).
- * Never places free-floating PlaneGeometry in empty space.
- */
-function addTextDecals(craft, state) {
-  craft.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(craft);
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-
-  const group = new THREE.Group();
-  group.name = "textDecals";
-  // Identity under craft so attach() math stays simple
-  craft.add(group);
-  craft.updateMatrixWorld(true);
-
-  const flagCodes = (state.flags && state.flags.codes) || [];
-  const hasIdentityText = !!(
-    (state.airline && String(state.airline).trim()) ||
-    (state.slogan && String(state.slogan).trim()) ||
-    (state.registration && String(state.registration).trim())
-  );
-  const hasCustom = (state.customTextures || []).some((t) => t && t.dataUrl);
-  const anyVisual = flagCodes.length > 0 || hasIdentityText || hasCustom;
-  if (!anyVisual) {
-    return { tex: null, mat: null, group, regTex: null };
-  }
-
-  const place = state.textPlacement || "fuselage";
-  const tex = makeDecalTexture(state, DECAL_W, DECAL_H);
-  const sharedMatOpts = {
-    map: tex,
-    transparent: true,
-    depthTest: true,
-    depthWrite: false,
-    side: THREE.FrontSide,
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits: -4,
-  };
-
-  const targets = collectDecalTargetMeshes(craft);
-  const raycaster = new THREE.Raycaster();
-  // Avoid tiny self-hits; start a bit out
-  raycaster.near = 0;
-  raycaster.far = 100;
-
-  const fusLen = size.x;
-
-  // Wing LE X from wing mesh AABBs near fuselage root (not tip cloud).
-  // Hangar fit: nose = +X; root LE ≈ max.x of wing meshes close to center.z.
-  let wingLeX = null;
-  if (targets.wings && targets.wings.length) {
-    const fusNearZ = Math.max(0.45, Math.min(size.y * 0.4, size.z * 0.14));
-    const nearRoot = [];
-    for (const w of targets.wings) {
-      if (!w.box) continue;
-      const cz = (w.box.min.z + w.box.max.z) * 0.5;
-      const straddles = w.box.min.z <= center.z && w.box.max.z >= center.z;
-      const absCz = Math.abs(cz - center.z);
-      const minAbsExtent = Math.min(
-        Math.abs(w.box.min.z - center.z),
-        Math.abs(w.box.max.z - center.z),
-        absCz
-      );
-      if (straddles || absCz <= fusNearZ * 2.5 || minAbsExtent <= fusNearZ * 1.8) {
-        nearRoot.push(w);
-      }
-    }
-    const useWings = nearRoot.length ? nearRoot : targets.wings;
-    let maxX = -Infinity;
-    let minX = Infinity;
-    for (const w of useWings) {
-      if (w.box) {
-        maxX = Math.max(maxX, w.box.max.x);
-        minX = Math.min(minX, w.box.min.x);
-      }
-    }
-    if (Number.isFinite(maxX)) {
-      wingLeX = maxX;
-      const noseX = center.x + size.x * 0.5;
-      if (maxX < center.x && Number.isFinite(minX) &&
-          Math.abs(noseX - minX) < Math.abs(noseX - maxX)) {
-        wingLeX = minX; // invert: min.x closer to nose
-      }
-    }
-  }
-  // v0.6.15: AABB often sits aft of visual LE at fuselage; bias nose-ward + floor
-  if (wingLeX != null) {
-    wingLeX += Math.max(0.04 * fusLen, 0.15);
-  }
-  const wingLeFloor = center.x + size.x * 0.02; // LE shouldn't be aft of near-center
-  if (wingLeX != null) wingLeX = Math.max(wingLeX, wingLeFloor);
-
-  // --- v0.6.15 window-band belt (per-side title X on solid band; clear wing LE + nose taper) ---
-  // sideBeltMeshes: windowband + accent + fuselage sides (title may hit fuselage at band Y).
-  // Fallback fuselage ONLY if no windowband. Never belly / crown / cockpit / fairings / wings.
-  // Nose is +X on hangar-fit craft (longest axis forward); wing LE = forward-most root wing AABB X.
   const scored = targets.scored || [];
   const wbScored = scored.filter((s) => s.paintZone === "windowband");
   const fuselageScored = scored.filter((s) => s.paintZone === "fuselage");
-  let sideBeltScored;
-  if (wbScored.length) {
-    sideBeltScored = wbScored.concat(fuselageScored);
-  } else {
-    sideBeltScored = fuselageScored.length
-      ? fuselageScored
-      : scored.filter((s) => s.paintZone === "fuselage");
-  }
-  let sideBeltMeshes = sideBeltScored.map((s) => s.mesh);
-  // v0.7.3: without zone-split children, use intact body-shaded / fuselage-role meshes
+  let sideBeltMeshes = (wbScored.length ? wbScored.concat(fuselageScored) : fuselageScored)
+    .map((s) => s.mesh);
   if (!sideBeltMeshes.length) {
     sideBeltMeshes = scored
       .filter(
@@ -2814,200 +2885,87 @@ function addTextDecals(craft, state) {
     )
     .map((s) => s.mesh);
 
-  // User offsets (need posX/posY before yAim / xMain)
-  const posX = Number(state.textPosX || 0) / 100;
-  const posY = Number(state.textPosY != null ? state.textPosY : 8) / 100;
-  const scalePct = Math.max(0.5, Math.min(1.8, (Number(state.textScale) || 155) / 100));
-  // Title panel length first — needed for xMain and local-band X filter
-  let panelLen =
-    place === "tail" ? fusLen * 0.32 :
-    place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
-    fusLen * 0.24; // v0.7.2 larger readable title panel
-
-  // Solid-interval clamps (nose = +X). Used for fuselage title X and per-side candidates.
-  let xAftMin = center.x + size.x * 0.08;
-  let xFwdMax = center.x + size.x * 0.14;
-
-  // Title X: fit panel in solid interval [xAftMin, xFwdMax] — aft of wing LE gap, clear of nose taper
-  let xMain;
-  if (place === "tail") {
-    xMain = center.x - size.x * (0.28 + posX * 0.1);
-  } else if (place === "wing") {
-    xMain = center.x - size.x * 0.02;
-  } else {
-    // v0.7.2: larger panel (readable); keep forward of LE with gap; bias size over notch clearance
-    const gap = Math.max(0.055 * fusLen, 0.22);
-    xAftMin = (wingLeX != null) ? wingLeX + gap : center.x + size.x * 0.10;
-    // Room to slide nose-ward; per-side wb hit avoids taper clip
-    xFwdMax = center.x + size.x * 0.26;
-    panelLen = fusLen * 0.24;
-    const airlineLen = String(state.airline || "").trim().length;
-    if (airlineLen > 12) panelLen *= 0.94;
-    const span = xFwdMax - xAftMin;
-    // if span inverted / too tight: fall back to proven forward cabin (still large)
-    if (span < panelLen * 0.55) {
-      xMain = center.x + size.x * 0.18;
-      panelLen = fusLen * 0.22;
-      if (airlineLen > 12) panelLen *= 0.94;
-      xAftMin = xMain - panelLen * 0.5;
-      xFwdMax = xMain + panelLen * 0.5;
-    } else {
-      // prefer even more FORWARD in interval (closer to nose, clear of wing-root notch)
-      xMain = xAftMin + span * 0.75;
-      xMain = Math.min(xFwdMax - panelLen * 0.5, Math.max(xAftMin + panelLen * 0.5, xMain));
-    }
-    // Guarantees: aft edge >= xAftMin (forward of LE), fwd edge <= xFwdMax (clear of taper)
-    // User posX nudge within clamps (posX>0 shifts aft / −X)
-    xMain -= size.x * posX * 0.35;
-    {
-      const span2 = xFwdMax - xAftMin;
-      if (span2 > 0) {
-        xMain = Math.min(xFwdMax - panelLen * 0.5, Math.max(xAftMin + panelLen * 0.5, xMain));
-      }
-    }
-  }
-
-  // Aim Y: LOCAL windowband near title X — CENTER of band (0.50) so glyphs sit on cyan
-  let yAim;
-  let bandH;
-  let yBandFloor;
-  let yPreferFloor;
-  let bandMidY;
-  if (wbScored.length && place !== "belly" && place !== "wing" && place !== "tail") {
-    const xPad = Math.max(panelLen * 0.6, fusLen * 0.15);
-    const xLo = xMain - xPad;
-    const xHi = xMain + xPad;
-    const localWb = wbScored.filter((s) => {
-      if (!s.box) return false;
-      // AABB overlaps title X region, or within 0.15*fusLen of xMain
-      return s.box.max.x >= xLo && s.box.min.x <= xHi;
-    });
-    const useWb = localWb.length ? localWb : wbScored;
-    const union = new THREE.Box3();
-    for (const s of useWb) union.union(s.box);
-    bandH = Math.max(0.06, union.max.y - union.min.y);
-    bandMidY = (union.min.y + union.max.y) * 0.5;
-    // v0.6.12: center title in band mid (0.50) so glyphs sit on cyan
-    yAim = union.min.y + bandH * 0.50;
-    yAim += bandH * (posY * 0.12);
-    // Reject true belly; allow mid band
-    yBandFloor = union.min.y + bandH * 0.15;
-    // Prefer hits near band mid (used with |y-yAim| ranking)
-    yPreferFloor = union.min.y + bandH * 0.25;
-  } else if (wbScored.length && place !== "belly" && place !== "wing") {
-    const union = new THREE.Box3();
-    for (const s of wbScored) union.union(s.box);
-    bandH = Math.max(0.06, union.max.y - union.min.y);
-    bandMidY = (union.min.y + union.max.y) * 0.5;
-    yAim = bandMidY;
-    yAim += bandH * (posY * 0.12);
-    yBandFloor = union.min.y + bandH * 0.15;
-    yPreferFloor = union.min.y + bandH * 0.25;
-  } else {
-    // v0.7.3: no face-split windowband boxes — estimate from zoneCtx parametric bands
-    const est = estimateWindowBandWorld(craft, size, center);
-    bandH = est.bandH;
-    bandMidY = est.bandMidY;
-    yAim = est.yAim + bandH * (posY * 0.12);
-    yBandFloor = est.yBandFloor;
-    yPreferFloor = est.yPreferFloor;
-  }
-  // Softer Y ladder: aim, then ±8%, −18%/+15%, then band mid
-  const yAlts = [
-    yAim,
-    yAim - bandH * 0.08,
-    yAim + bandH * 0.08,
-    yAim - bandH * 0.18,
-    yAim + bandH * 0.15,
-    bandMidY,
-  ];
-  const yWindow = yAim;
-
-  // v0.7.2: title fills most of windowband height (~0.90*bandH)
-  const titlePanelH =
-    place === "wing" ? Math.max(0.4, panelLen * 0.38) :
-    place === "belly" || place === "tail" ? Math.max(0.38, Math.min(size.y * 0.32, 0.85)) :
-    Math.max(bandH * 0.78, Math.min(bandH * 0.98, bandH * 0.90));
-  const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
-
-  const stickerBoost = 1; // stickers removed; title size from textScale / titlePanelH
+  const posXNudge = Number(state.textPosX || 0) / 100;
+  const posYNudge = Number(state.textPosY || 0) / 100;
+  const scalePct = Math.max(0.8, Math.min(3.5, (Number(state.textScale) || 200) / 100));
+  const sizeMul = textSizeMul(state.textSize);
   const flipLeft = !!state.textFlipLeft;
   const flipRight = !!state.textFlipRight;
-  const decalSize = new THREE.Vector3(
-    panelLen * scalePct * Math.min(stickerBoost, 1.55),
-    titlePanelH * scalePct * Math.min(stickerBoost, 1.55),
-    panelDepth
-  );
-
+  const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
   const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
   const maxFusAbsZ = fusR * 2.35;
   const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
 
-  function meshesForPlace(forReg) {
-    if (place === "wing" && targets.wings.length)
-      return targets.wings.map((t) => t.mesh);
-    if (place === "belly") {
-      const list = (targets.belly || []).map((t) => t.mesh);
-      const fus = targets.fuselage.map((t) => t.mesh);
-      if (list.length || fus.length) return list.concat(fus);
-    }
-    if (place === "tail") {
-      const list = targets.tail.map((t) => t.mesh);
-      const fus = targets.fuselage.map((t) => t.mesh);
-      if (list.length || fus.length) return list.concat(fus);
-    }
-    if (!forReg && sideBeltMeshes.length) return sideBeltMeshes;
-    if (forReg) {
-      const seen = new Set();
-      const out = [];
-      for (const m of sideBeltMeshes.concat(fuselageSideMeshes)) {
-        if (!m || seen.has(m.uuid)) continue;
-        seen.add(m.uuid);
-        out.push(m);
-      }
-      if (out.length) return out;
-    }
-    if (sideBeltMeshes.length) return sideBeltMeshes;
-    if (targets.fuselage.length) return targets.fuselage.map((t) => t.mesh);
-    return targets.all.slice(0, 4);
+  // Flags still use the combined decal when present (centered forward)
+  if (flagCodes.length) {
+    const flagAim = resolveTextZoneAim("forward", craft, size, center, wingLeX, wbScored, targets);
+    const flagSize = new THREE.Vector3(
+      Math.max(0.6, fusLen * 0.18),
+      Math.max(0.35, flagAim.bandH * 1.1),
+      panelDepth
+    );
+    const meshes = sideBeltMeshes.length ? sideBeltMeshes : fuselageSideMeshes;
+    [-1, 1].forEach((side) => {
+      const origin = new THREE.Vector3(flagAim.xMain, flagAim.yAim, center.z + side * fusR * 2.5);
+      const hit = raycastFuselageHit(meshes, origin, new THREE.Vector3(0, 0, -side), raycaster, center, maxFusAbsZ, flagAim.yAim, {
+        maxNy: 0.55,
+        preferSideZones: true,
+      }) || raycastBestHit(meshes, origin, new THREE.Vector3(0, 0, -side), raycaster);
+      if (!hit) return;
+      const flipU = resolveFlipU(hit, side, flipLeft, flipRight);
+      const mat = sideMaterialFromTex(tex, flipU, sharedMatOpts);
+      projectDecal(group, hit, flagSize, mat, 1);
+    });
   }
 
-  const meshListTitle = meshesForPlace(false);
-  const meshListReg = meshesForPlace(true);
+  function meshesForPlace(place) {
+    if (place === "tail") {
+      const list = (targets.tail || []).map((t) => t.mesh);
+      return list.concat(fuselageSideMeshes);
+    }
+    if (place === "belly") {
+      const list = (targets.belly || []).map((t) => t.mesh);
+      return list.concat(fuselageSideMeshes);
+    }
+    if (sideBeltMeshes.length) return sideBeltMeshes;
+    if (fuselageSideMeshes.length) return fuselageSideMeshes;
+    if (targets.fuselage.length) return targets.fuselage.map((t) => t.mesh);
+    return targets.all.slice(0, 6);
+  }
 
-  function trySideHit(sideSign, x, yCandidates, meshList, castOpts) {
+  function trySideHit(sideSign, x, yCandidates, meshList, place, yAim, yBandFloor, yPreferFloor, castOpts) {
     const probeYs = Array.isArray(yCandidates) ? yCandidates.slice() : [yCandidates];
-    const meshes = meshList || meshListTitle;
-    const opts = Object.assign({ maxNy: 0.4, preferSideZones: true }, castOpts || {});
+    const opts = Object.assign({ maxNy: 0.55, preferSideZones: place === "fuselage" }, castOpts || {});
     function castAtY(y) {
       let origin, dir, hit;
       if (place === "belly") {
         origin = new THREE.Vector3(x, center.y - reach, center.z + sideSign * 0.05);
         dir = new THREE.Vector3(0, 1, -sideSign * 0.02).normalize();
-        return raycastBestHit(meshes, origin, dir, raycaster);
+        return raycastBestHit(meshList, origin, dir, raycaster);
       }
-      if (place === "wing") {
-        origin = new THREE.Vector3(
-          x,
-          center.y + reach * 0.55,
-          center.z + sideSign * size.z * 0.28
-        );
-        dir = new THREE.Vector3(0, -1, 0);
-        return raycastBestHit(meshes, origin, dir, raycaster);
+      if (place === "tail") {
+        // Lateral toward vertical stabilizer / aft fuselage
+        const zDist = fusR * 2.6;
+        origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
+        dir = new THREE.Vector3(0, 0, -sideSign);
+        hit = raycastBestHit(meshList, origin, dir, raycaster);
+        if (!hit) {
+          origin = new THREE.Vector3(x - fusLen * 0.02, center.y + reach * 0.35, center.z + sideSign * size.z * 0.08);
+          hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, -0.2, -sideSign).normalize(), raycaster);
+        }
+        return hit;
       }
-      // Lateral cast — title may relax maxNy; reg keeps 0.4
       const zDist = fusR * 2.4;
       origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
       dir = new THREE.Vector3(0, 0, -sideSign);
-      hit = raycastFuselageHit(meshes, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
+      hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
       if (!hit) {
         origin = new THREE.Vector3(x, y, center.z + sideSign * (fusR * 3.6));
-        hit = raycastFuselageHit(meshes, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
+        hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, opts);
       }
-      if (hit && hit.point && hit.point.y < yBandFloor) hit = null;
+      if (hit && hit.point && place === "fuselage" && hit.point.y < yBandFloor) hit = null;
       return hit;
     }
-    // v0.6.12: prefer hit closest to band mid (yAim), NOT max point.y
     let best = null;
     let bestErr = Infinity;
     let bestPrefer = null;
@@ -3028,207 +2986,85 @@ function addTextDecals(craft, state) {
     return bestPrefer || best;
   }
 
-  function hitPaintZone(hit) {
-    if (!hit || !hit.object || !hit.object.userData) return null;
-    return hit.object.userData.paintZone || hit.object.userData.zoneName || null;
-  }
+  function mountRole(role, zoneId, renderOrder, panelScale) {
+    let raw = "";
+    if (role === "title") raw = String(state.airline || "").trim();
+    else if (role === "slogan") raw = String(state.slogan || "").trim();
+    else if (role === "reg") raw = String(state.registration || "").trim();
+    if (!raw) return null;
 
-  // v0.6.16: build per-side title X candidates — left adds extra nose-ward first
-  function buildSideTitleXs(side) {
-    const preferred = [];
-    const lastResort = [];
-    const fwdLimit = xFwdMax + 0.01 * fusLen;
-    const aftSoft = xAftMin - 0.02 * fusLen;
-    // Cap last-resort aft so title centroid stays forward of wing LE
-    const aftHard = (wingLeX != null)
-      ? wingLeX + 0.02 * fusLen
-      : aftSoft;
-    function pushCand(x, into) {
-      if (!Number.isFinite(x)) return;
-      if (x > fwdLimit) return;
-      if (!into.includes(x)) into.push(x);
-    }
-    // Prefer forward candidates first (nose-ward), then slightly aft.
-    // Left (−Z): extra forward candidates first so TE clears wing-root fairing notch.
-    const rawRight = [
-      xMain,
-      xMain + 0.02 * fusLen,
-      center.x + size.x * 0.20,
-      center.x + size.x * 0.18,
-      center.x + size.x * 0.16,
-      center.x + size.x * 0.14,
-      xMain - 0.02 * fusLen,
-      center.x + size.x * 0.12,
-      xMain - 0.04 * fusLen,
+    const aim = resolveTextZoneAim(zoneId, craft, size, center, wingLeX, wbScored, targets);
+    // User fine nudge (secondary)
+    let xMain = aim.xMain - size.x * posXNudge * 0.28;
+    let yAim = aim.yAim + aim.bandH * (posYNudge * 0.22);
+    const place = aim.place;
+    const meshList = meshesForPlace(place);
+    const roleTex = makeRoleTexture(state, role);
+    const len = aim.panelLen * scalePct * sizeMul * (panelScale || 1);
+    const ht = aim.titlePanelH * scalePct * sizeMul * (panelScale || 1);
+    const decalSize = new THREE.Vector3(len, Math.max(0.28, ht), panelDepth);
+    const yAlts = [
+      yAim,
+      yAim - aim.bandH * 0.1,
+      yAim + aim.bandH * 0.1,
+      yAim - aim.bandH * 0.22,
+      yAim + aim.bandH * 0.18,
+      aim.bandMidY,
     ];
-    const rawLeft = [
-      xMain + 0.03 * fusLen,
-      center.x + size.x * 0.21,
+    const xCands = [
       xMain,
-      xMain + 0.02 * fusLen,
-      center.x + size.x * 0.20,
-      center.x + size.x * 0.18,
-      center.x + size.x * 0.16,
-      center.x + size.x * 0.14,
-      xMain - 0.02 * fusLen,
-      center.x + size.x * 0.12,
-      xMain - 0.04 * fusLen,
+      xMain + fusLen * 0.025,
+      xMain - fusLen * 0.025,
+      xMain + fusLen * 0.05,
+      xMain - fusLen * 0.05,
     ];
-    const raw = side === -1 ? rawLeft : rawRight;
-    for (const x of raw) {
-      if (x < aftSoft) pushCand(x, lastResort);
-      else pushCand(x, preferred);
-    }
-    // Last resort: allow slightly aft of soft floor if preferred empty,
-    // but never aft of wingLeX + 0.02*fusLen when wing LE known
-    if (!preferred.length) {
-      for (const x of raw) {
-        if (x >= aftHard) pushCand(x, lastResort);
-      }
-    } else {
-      // one step closer to LE as last resort (still above aftHard)
-      const closer = Math.max(aftHard, Math.min(xMain, xAftMin) - 0.02 * fusLen);
-      pushCand(closer, lastResort);
-    }
-    return { preferred, lastResort };
-  }
 
-  // LEFT (−Z) and RIGHT (+Z) — airline / sticker title (per-side X; prefer windowband)
-  const titleCastOpts = { maxNy: 0.52, preferSideZones: true };
-  [-1, 1].forEach((side) => {
-    let hit = null;
-    let usedX = null;
-    const yCands = place === "belly" || place === "wing" ? [yWindow] : yAlts;
-    const { preferred, lastResort } = buildSideTitleXs(side);
-    const allXs = preferred.concat(lastResort);
-
-    // Pass 1: windowband hits — right: first good; left: prefer larger hit.point.x (nose-ward)
-    if (side === -1) {
-      let bestWb = null;
-      let bestTx = null;
-      for (const tx of preferred) {
-        const h = trySideHit(side, tx, yCands, meshListTitle, titleCastOpts);
-        if (h && hitPaintZone(h) === "windowband" && h.point) {
-          if (!bestWb || h.point.x > bestWb.point.x) {
-            bestWb = h;
-            bestTx = tx;
-          }
-        }
-      }
-      if (bestWb) {
-        hit = bestWb;
-        usedX = bestTx;
-      }
-    } else {
-      for (const tx of preferred) {
-        const h = trySideHit(side, tx, yCands, meshListTitle, titleCastOpts);
-        if (h && hitPaintZone(h) === "windowband") {
-          hit = h;
-          usedX = tx;
-          break;
-        }
-      }
-    }
-    // Pass 2: any side hit on accent/fuselage/windowband at band Y (preferred then last resort)
-    if (!hit) {
-      for (const tx of allXs) {
-        const h = trySideHit(side, tx, yCands, meshListTitle, titleCastOpts);
-        if (!h) continue;
-        const zone = hitPaintZone(h);
-        if (zone === "windowband" || zone === "fuselage" || zone == null) {
-          hit = h;
-          usedX = tx;
-          break;
-        }
-      }
-    }
-    if (!hit) {
-      console.warn("addTextDecals: no hit on side", side, place, "meshes", meshListTitle.length, "triedXs", allXs);
-      return;
-    }
-    console.info(
-      "addTextDecals: title hit side",
-      side,
-      "x",
-      usedX,
-      "y",
-      hit.point && hit.point.y,
-      "zone",
-      hitPaintZone(hit),
-      "xMain",
-      xMain,
-      "xAftMin",
-      xAftMin,
-      "xFwdMax",
-      xFwdMax,
-      "wingLeX",
-      wingLeX
-    );
-    const flipU = resolveFlipU(hit, side, flipLeft, flipRight);
-    const mat = sideMaterialFromTex(tex, flipU, sharedMatOpts);
-    const sizeVec =
-      place === "belly"
-        ? new THREE.Vector3(panelLen, titlePanelH * 0.85, panelDepth)
-        : decalSize.clone();
-    projectDecal(group, hit, sizeVec, mat, 2);
-  });
-
-  if (place === "belly" && group.children.length === 0) {
-    const origin = new THREE.Vector3(xMain, center.y - reach, center.z);
-    const hit = raycastBestHit(meshListTitle, origin, new THREE.Vector3(0, 1, 0), raycaster);
-    if (hit) {
-      const mat = sideMaterialFromTex(tex, false, sharedMatOpts);
-      projectDecal(
-        group,
-        hit,
-        new THREE.Vector3(panelLen, titlePanelH * 0.85, panelDepth),
-        mat,
-        2
-      );
-    }
-  }
-
-  // One aft registration per side — SAME yAim ladder as title (windowband); maxNy 0.4
-  let regTex = null;
-  if (state.registration && place !== "tail" && place !== "wing") {
-    regTex = makeRegTexture(state);
-    // v0.7.2: larger aft registration
-    const regW = Math.min(1.55, Math.max(1.05, size.x * 0.15));
-    const regH = Math.max(bandH * 0.55, Math.min(bandH * 0.85, regW * 0.36));
-    const regDepth = panelDepth * 0.9;
-    const regSize = new THREE.Vector3(regW, regH, regDepth);
-    const regXAft = [0.18, 0.22, 0.28, 0.32].map((f) => center.x - size.x * f);
-    const regXFwd = [0.14, 0.10, 0.06]
-      .map((f) => center.x - size.x * f)
-      .filter((x) => x < xMain - size.x * 0.05);
-    const regXCandidates = regXAft.concat(regXFwd);
-    const regYAlts = yAlts.slice();
-    const regCastOpts = { maxNy: 0.4, preferSideZones: true };
-
-    [-1, 1].forEach((side) => {
+    const sides = place === "belly" ? [1] : [-1, 1];
+    let mounted = 0;
+    sides.forEach((side) => {
       let hit = null;
-      for (const rx of regXCandidates) {
-        hit = trySideHit(side, rx, regYAlts, meshListReg, regCastOpts);
+      for (const tx of xCands) {
+        hit = trySideHit(side, tx, yAlts, meshList, place, yAim, aim.yBandFloor, aim.yPreferFloor, {
+          maxNy: place === "fuselage" ? 0.55 : 0.92,
+          preferSideZones: place === "fuselage",
+        });
         if (hit) break;
       }
+      if (!hit && place === "belly") {
+        const origin = new THREE.Vector3(xMain, center.y - reach, center.z);
+        hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, 1, 0), raycaster);
+      }
       if (!hit) {
-        console.warn("addTextDecals: no registration hit on side", side);
+        console.warn("addTextDecals: no hit", role, "zone", aim.zone, "side", side);
         return;
       }
       const flipU = resolveFlipU(hit, side, flipLeft, flipRight);
-      const mat = sideMaterialFromTex(regTex, flipU, sharedMatOpts);
-      projectDecal(group, hit, regSize, mat, 3);
+      const mat = sideMaterialFromTex(roleTex, flipU, sharedMatOpts);
+      const sizeVec = place === "belly"
+        ? new THREE.Vector3(len, Math.max(0.28, ht * 0.9), panelDepth)
+        : decalSize.clone();
+      if (projectDecal(group, hit, sizeVec, mat, renderOrder)) mounted++;
     });
+    console.info("addTextDecals:", role, "zone", aim.zone, "x", xMain.toFixed(2), "y", yAim.toFixed(2), "mounted", mounted);
+    return roleTex;
   }
 
-  // Custom texture uploads (after title/reg so they layer above paint, below/near text)
+  // Defaults: title windowband, slogan mid (under title), reg aft
+  const titleZone = normalizeTextZone(state.titleZone || state.textPlacement, "windowband");
+  const sloganZone = normalizeTextZone(state.sloganZone, "mid");
+  const regZone = normalizeTextZone(state.regZone, "aft");
+
+  const titleTex = mountRole("title", titleZone, 2, 1.0);
+  const sloganTex = mountRole("slogan", sloganZone, 2, 0.72);
+  const regTex = mountRole("reg", regZone, 3, 0.55);
+
   try {
     addCustomTextureDecals(craft, state, group, targets, box, size, center, raycaster);
   } catch (err) {
     console.warn("custom texture decals failed", err);
   }
 
-  return { tex, mat: null, group, regTex };
+  return { tex: titleTex || tex, mat: null, group, regTex, sloganTex };
 }
 
 function removeNamedGroup(craft, name) {
@@ -3342,9 +3178,9 @@ function paintFuselageCanvas(canvas, state, family) {
   const hasAirline = !!(state.airline && String(state.airline).trim());
   const hasSlogan = !!(state.slogan && String(state.slogan).trim());
   if (hasAirline || hasSlogan || (state.registration && (place === "tail" || place === "wing"))) {
-    const sizeKey = state.textSize || "M";
-    const basePx = sizeKey === "S" ? 54 : sizeKey === "L" ? 110 : 84;
-    const maxW = W * 0.38;
+    const sizeKey = state.textSize || "XL";
+    const basePx = Math.round(canvasBasePx(sizeKey, "title") * 0.22);
+    const maxW = W * 0.42;
     ctx.fillStyle = textColor;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -4237,6 +4073,9 @@ export class Preview3D {
       ty: state.textStyle,
       tf: state.textFont,
       tp: state.textPlacement,
+      tz: state.titleZone,
+      sz: state.sloganZone,
+      rz: state.regZone,
       tx: state.textPosX,
       ty2: state.textPosY,
       tsc: state.textScale,
@@ -4246,7 +4085,8 @@ export class Preview3D {
       ct: (state.customTextures || []).map((t) => ({
         dLen: t.dataUrl ? t.dataUrl.length : 0,
         ready: !!(t._img && t._img.complete && t._img.naturalWidth),
-        o: t.opacity, s: t.scale, x: t.posX, y: t.posY, p: t.placement, n: t.name,
+        o: t.opacity, s: t.scale, x: t.posX, y: t.posY,
+        p: t.placement, side: t.side, rot: t.rotate, n: t.name,
       })),
       photo: state.soacraName || null,
       fam: family,
@@ -4254,6 +4094,16 @@ export class Preview3D {
     });
     if (key === this._lastStateKey) return;
     this._lastStateKey = key;
+
+    // Ensure airline webfonts are loaded before canvas draw (then remount once)
+    if (!this._fontsKickStarted) {
+      this._fontsKickStarted = true;
+      const self = this;
+      ensureAirlineFonts().then(() => {
+        self._lastStateKey = "";
+        if (self._lastPaintState) self.applyPaint(self._lastPaintState);
+      });
+    }
 
     if (this.modelMode === "glb") {
       const colors = {

@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.7.5 — fuselage tube shield + tighter wings/pylon (no flank dark slab), constant windowband, custom textures.
+ * SkinMyBird web editor v0.8.0 — text positioning zones, airline fonts, free stickers; paint zones unchanged from v0.7.5.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.7.5";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.0";
 
 const $ = (id) => document.getElementById(id);
 
@@ -51,13 +51,16 @@ const $ = (id) => document.getElementById(id);
     slogan: "",
     stickerText: "",
     textColor: "#1b2430",
-    textSize: "L",
+    textSize: "XL",
     textStyle: "bold",
-    textFont: "segoe",
+    textFont: "montserrat",
     textPlacement: "fuselage",
+    titleZone: "windowband",
+    sloganZone: "mid",
+    regZone: "aft",
     textPosX: 0,
-    textPosY: 8,
-    textScale: 155,
+    textPosY: 0,
+    textScale: 200,
     textFlipLeft: false,
     textFlipRight: false,
     stickers: { text: true }, // export compat — no decorative stickers in UI
@@ -69,9 +72,9 @@ const $ = (id) => document.getElementById(id);
       posY: 10,
     },
     customTextures: [
-      { id: 1, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, placement: "fuselage", _img: null },
-      { id: 2, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, placement: "fuselage", _img: null },
-      { id: 3, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, placement: "fuselage", _img: null },
+      { id: 1, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, rotate: 0, side: "both", placement: "free", _img: null },
+      { id: 2, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, rotate: 0, side: "both", placement: "free", _img: null },
+      { id: 3, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, rotate: 0, side: "both", placement: "free", _img: null },
     ],
     soacra: null,
     soacraName: null,
@@ -112,20 +115,25 @@ const $ = (id) => document.getElementById(id);
     $("text-color").value = state.textColor;
     $("text-size").value = state.textSize;
     $("text-style").value = state.textStyle;
-    if ($("text-font")) $("text-font").value = state.textFont || "segoe";
-    $("text-placement").value = state.textPlacement;
+    if ($("text-font")) $("text-font").value = state.textFont || "montserrat";
+    if ($("text-placement")) $("text-placement").value = state.textPlacement || "fuselage";
+    if ($("title-zone")) $("title-zone").value = state.titleZone || "windowband";
+    if ($("slogan-zone")) $("slogan-zone").value = state.sloganZone || "mid";
+    if ($("reg-zone")) $("reg-zone").value = state.regZone || "aft";
     if ($("text-pos-x")) $("text-pos-x").value = state.textPosX ?? 0;
-    if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? 8;
-    if ($("text-scale")) $("text-scale").value = state.textScale ?? 155;
+    if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? 0;
+    if ($("text-scale")) $("text-scale").value = state.textScale ?? 200;
     if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
     if ($("text-flip-right")) $("text-flip-right").checked = !!state.textFlipRight;
     if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
-    if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? 8);
-    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 155) + "%";
+    if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? 0);
+    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 200) + "%";
     updateHexLabels();
     syncSegmented("data-size", state.textSize);
     syncSegmented("data-style", state.textStyle);
-    syncSegmented("data-place", state.textPlacement);
+    syncSegmented("data-title-zone", state.titleZone || "windowband");
+    syncSegmented("data-slogan-zone", state.sloganZone || "mid");
+    syncSegmented("data-reg-zone", state.regZone || "aft");
     document.querySelectorAll(".flag-check").forEach((el) => {
       el.checked = !!(state.flags && state.flags.codes && state.flags.codes.includes(el.value));
     });
@@ -193,11 +201,14 @@ const $ = (id) => document.getElementById(id);
     state.textColor = $("text-color").value || "#1b2430";
     state.textSize = $("text-size").value || "L";
     state.textStyle = $("text-style").value || "bold";
-    state.textFont = ($("text-font") && $("text-font").value) || "segoe";
-    state.textPlacement = $("text-placement").value || "fuselage";
+    state.textFont = ($("text-font") && $("text-font").value) || "montserrat";
+    state.textPlacement = ($("text-placement") && $("text-placement").value) || "fuselage";
+    state.titleZone = ($("title-zone") && $("title-zone").value) || state.titleZone || "windowband";
+    state.sloganZone = ($("slogan-zone") && $("slogan-zone").value) || state.sloganZone || "mid";
+    state.regZone = ($("reg-zone") && $("reg-zone").value) || state.regZone || "aft";
     state.textPosX = $("text-pos-x") ? Number($("text-pos-x").value) : 0;
-    state.textPosY = $("text-pos-y") ? Number($("text-pos-y").value) : 8;
-    state.textScale = $("text-scale") ? Number($("text-scale").value) : 155;
+    state.textPosY = $("text-pos-y") ? Number($("text-pos-y").value) : 0;
+    state.textScale = $("text-scale") ? Number($("text-scale").value) : 200;
     state.textFlipLeft = $("text-flip-left") ? $("text-flip-left").checked : false;
     state.textFlipRight = $("text-flip-right") ? $("text-flip-right").checked : false;
     state.stickerText = state.slogan || "";
@@ -264,6 +275,9 @@ const $ = (id) => document.getElementById(id);
         style: state.textStyle,
         font: state.textFont,
         placement: state.textPlacement,
+        titleZone: state.titleZone,
+        sloganZone: state.sloganZone,
+        regZone: state.regZone,
       },
       stickers: buildStickersPayload(),
       soacraPhoto: state.soacraName,
@@ -326,7 +340,7 @@ const $ = (id) => document.getElementById(id);
       {
         on: true,
         label: "Title",
-        meta: (state.airline || "") + " · " + (state.textFont || "segoe"),
+        meta: (state.airline || "") + " · " + (state.titleZone || "windowband") + " · " + (state.textFont || "montserrat"),
       },
       {
         on: !!state.slogan,
@@ -711,7 +725,7 @@ const $ = (id) => document.getElementById(id);
       const id = state.customTextures.length + 1;
       state.customTextures.push({
         id, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0,
-        placement: "fuselage", _img: null,
+        rotate: 0, side: "both", placement: "free", _img: null,
       });
     }
     return state.customTextures[i];
@@ -725,17 +739,22 @@ const $ = (id) => document.getElementById(id);
       const clearBtn = document.querySelector('.ct-clear[data-slot="' + n + '"]');
       if (clearBtn) clearBtn.hidden = !slot.dataUrl;
       const place = document.querySelector('.ct-place[data-slot="' + n + '"]');
-      if (place) place.value = slot.placement || "fuselage";
+      if (place) place.value = slot.placement || "free";
+      const side = document.querySelector('.ct-side[data-slot="' + n + '"]');
+      if (side) side.value = slot.side || "both";
       const op = document.querySelector('.ct-opacity[data-slot="' + n + '"]');
       if (op) op.value = slot.opacity ?? 100;
       const sc = document.querySelector('.ct-scale[data-slot="' + n + '"]');
       if (sc) sc.value = slot.scale ?? 100;
+      const rot = document.querySelector('.ct-rotate[data-slot="' + n + '"]');
+      if (rot) rot.value = slot.rotate ?? 0;
       const px = document.querySelector('.ct-pos-x[data-slot="' + n + '"]');
       if (px) px.value = slot.posX ?? 0;
       const py = document.querySelector('.ct-pos-y[data-slot="' + n + '"]');
       if (py) py.value = slot.posY ?? 0;
       const lop = $("ct-lab-op-" + n); if (lop) lop.textContent = (slot.opacity ?? 100) + "%";
       const lsc = $("ct-lab-sc-" + n); if (lsc) lsc.textContent = (slot.scale ?? 100) + "%";
+      const lrot = $("ct-lab-rot-" + n); if (lrot) lrot.textContent = (slot.rotate ?? 0) + "°";
       const lx = $("ct-lab-x-" + n); if (lx) lx.textContent = String(slot.posX ?? 0);
       const ly = $("ct-lab-y-" + n); if (ly) ly.textContent = String(slot.posY ?? 0);
     }
@@ -745,11 +764,16 @@ const $ = (id) => document.getElementById(id);
     for (let n = 1; n <= 3; n++) {
       const slot = ensureCustomTextureSlot(n - 1);
       const place = document.querySelector('.ct-place[data-slot="' + n + '"]');
-      if (place) slot.placement = place.value || "fuselage";
+      if (place) slot.placement = place.value || "free";
+      else slot.placement = "free";
+      const side = document.querySelector('.ct-side[data-slot="' + n + '"]');
+      if (side) slot.side = side.value || "both";
       const op = document.querySelector('.ct-opacity[data-slot="' + n + '"]');
       if (op) slot.opacity = Number(op.value) || 100;
       const sc = document.querySelector('.ct-scale[data-slot="' + n + '"]');
       if (sc) slot.scale = Number(sc.value) || 100;
+      const rot = document.querySelector('.ct-rotate[data-slot="' + n + '"]');
+      if (rot) slot.rotate = Number(rot.value) || 0;
       const px = document.querySelector('.ct-pos-x[data-slot="' + n + '"]');
       if (px) slot.posX = Number(px.value) || 0;
       const py = document.querySelector('.ct-pos-y[data-slot="' + n + '"]');
@@ -857,13 +881,15 @@ const $ = (id) => document.getElementById(id);
       clearCustomTexture(Number(el.getAttribute("data-slot")) - 1);
     });
   });
-  document.querySelectorAll(".ct-place, .ct-opacity, .ct-scale, .ct-pos-x, .ct-pos-y").forEach((el) => {
+  document.querySelectorAll(".ct-place, .ct-side, .ct-opacity, .ct-scale, .ct-rotate, .ct-pos-x, .ct-pos-y").forEach((el) => {
     el.addEventListener("input", () => {
       const n = el.getAttribute("data-slot");
       if (el.classList.contains("ct-opacity") && $("ct-lab-op-" + n))
         $("ct-lab-op-" + n).textContent = el.value + "%";
       if (el.classList.contains("ct-scale") && $("ct-lab-sc-" + n))
         $("ct-lab-sc-" + n).textContent = el.value + "%";
+      if (el.classList.contains("ct-rotate") && $("ct-lab-rot-" + n))
+        $("ct-lab-rot-" + n).textContent = el.value + "°";
       if (el.classList.contains("ct-pos-x") && $("ct-lab-x-" + n))
         $("ct-lab-x-" + n).textContent = el.value;
       if (el.classList.contains("ct-pos-y") && $("ct-lab-y-" + n))
@@ -883,22 +909,25 @@ const $ = (id) => document.getElementById(id);
       drawPreview();
     });
   });
-  document.querySelectorAll("[data-place]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.textPlacement = btn.getAttribute("data-place");
-      $("text-placement").value = state.textPlacement;
-    if ($("text-pos-x")) $("text-pos-x").value = state.textPosX ?? 0;
-    if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? 8;
-    if ($("text-scale")) $("text-scale").value = state.textScale ?? 155;
-    if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
-    if ($("text-flip-right")) $("text-flip-right").checked = !!state.textFlipRight;
-    if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
-    if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? 8);
-    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 155) + "%";
-      syncSegmented("data-place", state.textPlacement);
-      drawPreview();
+  function bindZoneChips(attr, stateKey, hiddenId, fallback) {
+    document.querySelectorAll("[" + attr + "]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const v = btn.getAttribute(attr) || fallback;
+        state[stateKey] = v;
+        if ($(hiddenId)) $(hiddenId).value = v;
+        // Keep legacy textPlacement loosely in sync with title zone
+        if (stateKey === "titleZone") {
+          state.textPlacement = (v === "tail" || v === "belly") ? v : "fuselage";
+          if ($("text-placement")) $("text-placement").value = state.textPlacement;
+        }
+        syncSegmented(attr, v);
+        drawPreview();
+      });
     });
-  });
+  }
+  bindZoneChips("data-title-zone", "titleZone", "title-zone", "windowband");
+  bindZoneChips("data-slogan-zone", "sloganZone", "slogan-zone", "mid");
+  bindZoneChips("data-reg-zone", "regZone", "reg-zone", "aft");
   document.querySelectorAll("[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.viewMode = btn.getAttribute("data-view");
