@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.7.4 — single-mesh nacelle pods + constant-height windowband, reliable custom textures.
+ * SkinMyBird 3D hangar preview v0.7.5 — fuselage tube shield + tighter wings/pylon (no flank dark slab), constant windowband, custom textures.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -430,7 +430,7 @@ function classifyMeshRole(name, box, craftBox) {
   return "fuselage";
 }
 
-/** Paint-zone ids — v0.7.4 fragment-shader body bands + solid role mats for wings/engines. */
+/** Paint-zone ids — v0.7.5 fragment-shader body bands + solid role mats for wings/engines. */
 const ZONE_ID = {
   fuselage: 0,
   nose: 1,
@@ -567,19 +567,27 @@ function classifyPoint(x, y, z, ctx) {
   const vTube = (y - min.y) / fuseSy;
   const fuseTop = ctx.fuseTop || ctx.max.y;
   const span = Math.max(fuseTop - wingY, 1e-6);
+  const bandLo = wingY + span * 0.30;
+  const bandHi = wingY + span * 0.52;
+  // Fuselage tube shield: tube points must NEVER become wings/engines via geometric rules
+  const onFuseTube = absZ <= fuseHalf * 1.25;
 
   // --- engines (single-mesh critical): under-wing pod → seeds → pylons ---
+  // Under-wing pod: outboard of tube, strictly below wing plane
   if (
-    absZ > fuseHalf * 1.2 &&
-    y < wingY - sy * 0.02 &&
+    !onFuseTube &&
+    absZ > fuseHalf * 1.35 &&
+    y < wingY - sy * 0.03 &&
     y > min.y + sy * 0.02 &&
     u > 0.32 &&
     u < 0.78
   ) {
     return ZONE_ID.engines;
   }
+  // Seed spheres / seed pylons: require absZ > fuseHalf (no flank hits)
   for (let i = 0; i < seeds.length; i++) {
     const s = seeds[i];
+    if (absZ <= fuseHalf) continue;
     const dx = x - s[0];
     const dy = y - s[1];
     const dz = z - s[2];
@@ -587,6 +595,7 @@ function classifyPoint(x, y, z, ctx) {
   }
   for (let i = 0; i < seeds.length; i++) {
     const s = seeds[i];
+    if (absZ <= fuseHalf) continue;
     const dx = x - s[0];
     const dy = y - s[1];
     const dz = z - s[2];
@@ -600,12 +609,14 @@ function classifyPoint(x, y, z, ctx) {
       return ZONE_ID.engines; // pylons → engines
     }
   }
-  // Geometric pylon: outboard of tube, under/at wing plane, wing station
+  // Geometric pylon: outboard of tube, barely above wing plane, never into windowband
   if (
-    absZ > fuseHalf * 1.15 &&
-    absZ < halfZ * 0.52 &&
-    y < wingY + sy * 0.05 &&
-    y > wingY - sy * 0.30 &&
+    !onFuseTube &&
+    absZ > fuseHalf * 1.45 &&
+    absZ < halfZ * 0.48 &&
+    y < wingY + sy * 0.015 &&
+    y > wingY - sy * 0.28 &&
+    y < bandLo &&
     u > 0.32 &&
     u < 0.78
   ) {
@@ -614,8 +625,14 @@ function classifyPoint(x, y, z, ctx) {
 
   // --- wings / winglet ---
   if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return ZONE_ID.winglet;
-  if (w > 0.30 && absZ > halfZ * 0.20 && u > 0.28 && u < 0.82) {
-    const nearWingPlane = Math.abs(y - wingY) < sy * 0.15;
+  // Truly outboard + tight vertical band (do not paint fuselage flank / wing-root fairing)
+  if (
+    !onFuseTube &&
+    absZ > fuseHalf * 1.6 &&
+    u > 0.28 &&
+    u < 0.82
+  ) {
+    const nearWingPlane = Math.abs(y - wingY) < sy * 0.06;
     if (nearWingPlane && v > 0.08 && v < 0.58) return ZONE_ID.wings;
     if (w > 0.44 && v > 0.1 && v < 0.52) return ZONE_ID.wings;
   }
@@ -631,8 +648,6 @@ function classifyPoint(x, y, z, ctx) {
     return ZONE_ID.nose;
 
   // --- windowband: constant-height side stripe (airline cheatline) ---
-  const bandLo = wingY + span * 0.30;
-  const bandHi = wingY + span * 0.52;
   if (
     absZ <= fuseHalf * 1.15 &&
     absZ >= fuseHalf * 0.25 &&
@@ -904,11 +919,12 @@ function makeGlbZoneMaterial(hexColor) {
 }
 
 /**
- * v0.7.4 — Hybrid zone paint:
+ * v0.7.5 — Hybrid zone paint:
  * Body meshes (fuselage/nose/belly/tail/windowband roles) share ONE MeshStandardMaterial
  * with onBeforeCompile fragment classification → smooth parametric stripes (no tri stairs).
  * Wings / winglets / engines get solid MeshStandardMaterial by mesh role (no mixed faces).
  * Face-split geometry is bypassed for body appearance.
+ * Tube shield: geometric pod/pylon/wings never paint fuselage flanks (absZ <= fuseHalf*1.25).
  */
 function craftLocalPoint(craft, worldPoint, out = new THREE.Vector3()) {
   out.copy(worldPoint);
@@ -974,7 +990,7 @@ function makeBodyZoneShaderMaterial(ctx) {
   mat.userData.zoneUniforms = uniforms;
   mat.userData.isBodyZoneShader = true;
   mat.userData.baseColor = new THREE.Color(0xffffff);
-  mat.customProgramCacheKey = () => "smb_body_zone_shader_v074";
+  mat.customProgramCacheKey = () => "smb_body_zone_shader_v075";
 
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
@@ -1036,21 +1052,28 @@ int smbClassifyCraft(vec3 p) {
   float vTube = (p.y - uMin.y) / fuseSy;
   float fuseTop = uFuseTop;
   float span = max(fuseTop - wingY, 1e-6);
+  float bandLo = wingY + span * 0.30;
+  float bandHi = wingY + span * 0.52;
+  // Fuselage tube shield: tube points must NEVER become wings/engines via geometric rules
+  bool onFuseTube = absZ <= fuseHalf * 1.25;
 
   // engines: under-wing pod → seeds → pylons
-  if (absZ > fuseHalf * 1.2 && p.y < wingY - sy * 0.02 && p.y > uMin.y + sy * 0.02 && u > 0.32 && u < 0.78) {
+  // Under-wing pod: outboard of tube, strictly below wing plane
+  if (!onFuseTube && absZ > fuseHalf * 1.35 && p.y < wingY - sy * 0.03 && p.y > uMin.y + sy * 0.02 && u > 0.32 && u < 0.78) {
     return 5;
   }
   vec3 seeds[4];
   seeds[0] = uSeed0; seeds[1] = uSeed1; seeds[2] = uSeed2; seeds[3] = uSeed3;
   for (int i = 0; i < 4; i++) {
     if (i >= uSeedCount) break;
+    if (absZ <= fuseHalf) continue;
     vec3 s = seeds[i];
     vec3 d = p - s;
     if (dot(d, d) < engineR * engineR) return 5;
   }
   for (int i = 0; i < 4; i++) {
     if (i >= uSeedCount) break;
+    if (absZ <= fuseHalf) continue;
     vec3 s = seeds[i];
     float dx = p.x - s.x;
     float dy = p.y - s.y;
@@ -1060,15 +1083,17 @@ int smbClassifyCraft(vec3 p) {
       return 5;
     }
   }
-  if (absZ > fuseHalf * 1.15 && absZ < halfZ * 0.52 && p.y < wingY + sy * 0.05 && p.y > wingY - sy * 0.30 && u > 0.32 && u < 0.78) {
+  // Geometric pylon: outboard of tube, barely above wing plane, never into windowband
+  if (!onFuseTube && absZ > fuseHalf * 1.45 && absZ < halfZ * 0.48 && p.y < wingY + sy * 0.015 && p.y > wingY - sy * 0.28 && p.y < bandLo && u > 0.32 && u < 0.78) {
     return 5;
   }
 
   // wings / winglet
   if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return 4;
-  if (w > 0.30 && absZ > halfZ * 0.20 && u > 0.28 && u < 0.82) {
+  // Truly outboard + tight vertical band (do not paint fuselage flank / wing-root fairing)
+  if (!onFuseTube && absZ > fuseHalf * 1.6 && u > 0.28 && u < 0.82) {
     float nearWingPlane = abs(p.y - wingY);
-    if (nearWingPlane < sy * 0.15 && v > 0.08 && v < 0.58) return 3;
+    if (nearWingPlane < sy * 0.06 && v > 0.08 && v < 0.58) return 3;
     if (w > 0.44 && v > 0.1 && v < 0.52) return 3;
   }
 
@@ -1081,8 +1106,6 @@ int smbClassifyCraft(vec3 p) {
   if (u > 0.82 && u < 0.95 && p.y > wingY + span * 0.52 && absZ <= fuseHalf * 1.15) return 1;
 
   // windowband: constant-height side stripe
-  float bandLo = wingY + span * 0.30;
-  float bandHi = wingY + span * 0.52;
   if (absZ <= fuseHalf * 1.15 && absZ >= fuseHalf * 0.25 && p.y >= bandLo && p.y <= bandHi && p.y > uMin.y + sy * 0.18 && u > 0.12 && u < 0.92) {
     return 7;
   }

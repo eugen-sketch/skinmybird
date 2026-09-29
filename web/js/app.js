@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.7.4 — single-mesh nacelle pods + constant-height windowband, reliable custom textures.
+ * SkinMyBird web editor v0.7.5 — fuselage tube shield + tighter wings/pylon (no flank dark slab), constant windowband, custom textures.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.7.4";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.7.5";
 
 const $ = (id) => document.getElementById(id);
 

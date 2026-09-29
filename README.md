@@ -15,6 +15,13 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.7.5 notes
+- **Fuselage tube shield**: if `absZ <= fuseHalf*1.25`, skip geometric under-wing pod, geometric pylon, and wings rules (tube points never become wings/engines). Seed hits still allowed only when `absZ > fuseHalf`.
+- **Wings**: require `absZ > fuseHalf*1.6` (~`halfZ*0.35`) and tighten near-plane to `abs(y-wingY) < sy*0.06` (was `0.15`). Winglet tip rule kept.
+- **Geometric pylon**: `fuseHalf*1.45 < absZ < halfZ*0.48`, `y ∈ [wingY-sy*0.28, wingY+sy*0.015]`, and `y < bandLo` (no climb into windowband).
+- **Under-wing pod**: `absZ > fuseHalf*1.35` and `y < wingY - sy*0.03` (strictly below wing).
+- Windowband stripe unchanged. Cache key `smb_body_zone_shader_v075`. Cache-bust `?v=0.7.5`
+
 ### v0.7.4 notes
 - **Single-mesh nacelles**: under-wing pod rule (`absZ > fuseHalf*1.2`, below wing plane, wing-station `u`) + larger `engineR` so A320-style one-mesh airliners paint solid engines (not fuselage white on nacelles). Seeds/pylons kept as extras.
 - **Constant-height windowband**: `bandLo/Hi = wingY + span*{0.30,0.52}` on fuselage tube sides (exclude crown/belly); synced JS `classifyPoint` + GLSL `smbClassifyCraft`. Cache key `smb_body_zone_shader_v074`.
