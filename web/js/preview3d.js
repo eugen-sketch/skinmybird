@@ -1952,7 +1952,8 @@ function addTextDecals(craft, state) {
   // User offsets (need posX/posY before yAim / xMain)
   const posX = Number(state.textPosX || 0) / 100;
   const posY = Number(state.textPosY != null ? state.textPosY : 8) / 100;
-  const scalePct = Math.max(0.5, Math.min(1.6, (Number(state.textScale) || 100) /   // Title panel length first — needed for xMain and local-band X filter
+  const scalePct = Math.max(0.5, Math.min(1.6, (Number(state.textScale) || 100) / 100));
+  // Title panel length first — needed for xMain and local-band X filter
   let panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
