@@ -15,6 +15,10 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.8.7 notes
+- **Title/slogan letter gap via measureText**: keep v0.8.6 world placement (`ht ≤ max(ht*1.18, bandH*1.2)`, `yAim += bandH*0.08`, no downward nudge). On the includeSlogan canvas: `descent = actualBoundingBoxDescent` (fb `titlePx*0.25`), slogan `ascent = actualBoundingBoxAscent` (fb `sPx*0.8`); `clearGap = max(titlePx*0.28, sPx*0.22, ch*0.045)`; `titleY ≈ ch*0.26`; `sloganY = titleY + descent + clearGap + ascent`; clamp slogan bottom ≤ `ch*0.58` and shrink fonts if needed (never drop into bottom half / grow world H). Mild nose-ward `xMain += fusLen*0.02` (solidMaxX clamped). Goal: clear gap under y-descender + full slogan on window band (not fairing) on A320/787.
+- Paint zone shader cache key still `smb_body_zone_shader_v075`. Cache-bust `?v=0.8.7`
+
 ### v0.8.6 notes
 - **Combined title+slogan wing-clear**: v0.8.5 `ht*1.62` + `yAim -= ht*0.14` dropped the panel into the wing-root fairing (A320/787 `wing_clear` FAIL). Keep world H near title-only (`ht*1.18` / `bandH*1.2`); nudge aim **up** (`yAim += bandH*0.08`); pack both lines in the **upper ~55%** of the texture (`titleY≈ch*0.28`, `gap=max(titlePx*0.82,sPx*0.55,ch*0.08)`, slogan `~0.34·titlePx`) with transparent bottom pad. Goal: A320+787 full “Fly your story” on window band ahead of wing + clear letter gap; 737 stays PASS.
 - Paint zone shader cache key still `smb_body_zone_shader_v075`. Cache-bust `?v=0.8.6`

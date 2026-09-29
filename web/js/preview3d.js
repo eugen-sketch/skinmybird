@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.8.6 — title+slogan packed upper canvas / compact world H / aim up (wing-clear); hangar axis/fin + flank from v0.8.1; paint zones v0.7.5 tube shield kept.
+ * SkinMyBird 3D hangar preview v0.8.7 — measureText title/slogan clearGap (keep v0.8.6 world H/aim); hangar axis/fin + flank from v0.8.1; paint zones v0.7.5 tube shield kept.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -2297,8 +2297,8 @@ function makeDecalTexture(state, w = DECAL_W, h = DECAL_H) {
 }
 
 /** Single-role text canvas (title / slogan / registration) for independent zone placement.
- * v0.8.6: role "title" + opts.includeSlogan packs airline + slogan in upper ~55% of canvas
- * (moderate gap, bottom transparent pad) so a near-title-only world panel stays wing-clear.
+ * v0.8.7: role "title" + opts.includeSlogan uses measureText descent/ascent + clearGap air
+ * between lines; keeps upper-pack clamp. World panel still v0.8.6 compact H / aim-up.
  */
 function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
   const includeSlogan =
@@ -2357,12 +2357,12 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
   ctx.strokeStyle = "rgba(0,0,0,0.5)";
 
   if (includeSlogan) {
-    // v0.8.6: pack two lines in upper ~55%; leave transparent pad at bottom so
-    // world panel can stay near title-only height (no wing-root stretch).
+    // v0.8.7: measureText-based air under title descenders; pack in upper ~58%.
+    // World placement stays v0.8.6 (compact H + yAim up) — do not grow panel / dive wing.
     const titleRaw = raw || String(state.airline || "").trim() || "SkinMyBird";
     const sloganRaw = String(state.slogan || "").trim();
-    const titlePx = fitFontPx(ctx, titleRaw, maxW, basePx, state, 56);
-    let titleY = ch * 0.28;
+    let titlePx = fitFontPx(ctx, titleRaw, maxW, basePx, state, 56);
+    const titleY = ch * 0.26;
 
     const style = String(state.textStyle || "").toLowerCase();
     const sloganStyle = style.includes("italic")
@@ -2370,17 +2370,47 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
       : "regular";
     const sState = { ...state, textStyle: sloganStyle };
     // Slightly smaller slogan (~0.34·titlePx) packs under title in same world H
-    const sBase = Math.round(titlePx * 0.34);
-    const sPx = fitFontPx(ctx, sloganRaw, maxW, sBase, sState, 36);
-    // Moderate descender-safe gap (was titlePx*1.05 — spread glyphs down tall panel)
-    const gap = Math.max(titlePx * 0.82, sPx * 0.55, ch * 0.08);
-    let sloganY = titleY + titlePx * 0.35 + gap;
-    // Keep both lines well above ch*0.62 (upper ~55% band)
-    if (sloganY > ch * 0.55) {
-      titleY = ch * 0.26;
-      sloganY = Math.min(ch * 0.55, titleY + titlePx * 0.35 + gap);
+    let sPx = fitFontPx(ctx, sloganRaw, maxW, Math.round(titlePx * 0.34), sState, 36);
+
+    // textBaseline=middle: ascent/descent are distances from the mid Y to glyph bounds
+    const measureExtents = (faceState, px, text, ascentFb, descentFb) => {
+      ctx.font = resolveFontFace(faceState, px);
+      const m = ctx.measureText(text);
+      const ascent =
+        m.actualBoundingBoxAscent != null && Number.isFinite(m.actualBoundingBoxAscent)
+          ? m.actualBoundingBoxAscent
+          : px * ascentFb;
+      const descent =
+        m.actualBoundingBoxDescent != null && Number.isFinite(m.actualBoundingBoxDescent)
+          ? m.actualBoundingBoxDescent
+          : px * descentFb;
+      return { ascent, descent };
+    };
+
+    let titleM = measureExtents(state, titlePx, titleRaw, 0.8, 0.25);
+    let sloganM = measureExtents(sState, sPx, sloganRaw, 0.8, 0.25);
+    let clearGap = Math.max(titlePx * 0.28, sPx * 0.22, ch * 0.045);
+    // sloganY mid = title bottom + air + slogan ascent
+    let sloganY = titleY + titleM.descent + clearGap + sloganM.ascent;
+    const packBottom = ch * 0.58;
+
+    // If slogan bottom exceeds upper pack, shrink fonts (never drop into bottom half)
+    for (let i = 0; i < 8; i++) {
+      if (sloganY + sloganM.descent <= packBottom) break;
+      titlePx = Math.max(56, Math.round(titlePx * 0.94));
+      sPx = Math.max(36, Math.round(Math.min(sPx * 0.94, titlePx * 0.34)));
+      // Re-fit widths after shrink so long names still stay inside canvas
+      titlePx = fitFontPx(ctx, titleRaw, maxW, titlePx, state, 56);
+      sPx = fitFontPx(ctx, sloganRaw, maxW, sPx, sState, 36);
+      titleM = measureExtents(state, titlePx, titleRaw, 0.8, 0.25);
+      sloganM = measureExtents(sState, sPx, sloganRaw, 0.8, 0.25);
+      clearGap = Math.max(titlePx * 0.28, sPx * 0.22, ch * 0.045);
+      sloganY = titleY + titleM.descent + clearGap + sloganM.ascent;
     }
-    sloganY = Math.min(ch * 0.58, sloganY);
+    if (sloganY + sloganM.descent > packBottom) {
+      sloganY = packBottom - sloganM.descent;
+    }
+
     ctx.font = resolveFontFace(state, titlePx);
     ctx.lineWidth = Math.max(2, titlePx * 0.075);
     ctx.strokeText(titleRaw, cw / 2, titleY);
@@ -2396,7 +2426,18 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
     configurePaintTexture(tex);
     tex.userData.canvas = canvas;
     tex.userData.combinedTitleSlogan = true;
-    tex.userData.layout = { titleY, sloganY, gap, titlePx, sPx, ch };
+    tex.userData.layout = {
+      titleY,
+      sloganY,
+      clearGap,
+      gap: clearGap,
+      titlePx,
+      sPx,
+      ch,
+      descent: titleM.descent,
+      ascent: sloganM.ascent,
+      sloganDescent: sloganM.descent,
+    };
     return tex;
   }
 
@@ -3042,7 +3083,7 @@ function estimateFuselageHalfWidth(size) {
 }
 
 /**
- * Mesh-projected text/sticker decals — v0.8.6 compact title+slogan panel (wing-clear); separate slogan for other zones; v0.8.1 flank/Y stack.
+ * Mesh-projected text/sticker decals — v0.8.7 measureText clearGap + v0.8.6 compact panel (wing-clear); separate slogan for other zones; v0.8.1 flank/Y stack.
  */
 function addTextDecals(craft, state) {
   craft.updateMatrixWorld(true);
@@ -3305,12 +3346,15 @@ function addTextDecals(craft, state) {
     const roleTex = makeRoleTexture(state, role, DECAL_W, DECAL_H, { includeSlogan });
     let len = aim.panelLen * scalePct * sizeMul * (panelScale || 1);
     let ht = Math.max(0.28, htPreview);
-    // v0.8.6: keep combined panel near title-only world H; pack 2 lines in texture.
+    // v0.8.6/0.8.7 world: keep combined panel near title-only H; pack 2 lines in texture.
     // v0.8.5 ht*1.62 + yAim-=ht*0.14 pushed the block into the wing-root fairing.
     if (includeSlogan) {
       ht = Math.max(ht * 1.18, aim.bandH * 1.2);
-      // Nudge UP onto upper window band (clear of wing root)
+      // Nudge UP onto upper window band (clear of wing root) — no downward nudge
       yAim += aim.bandH * 0.08;
+      // Mild nose-ward bias so combined block sits forward of wing LE (nose clip still applied)
+      xMain += fusLen * 0.02;
+      if (aim.solidMaxX != null) xMain = Math.min(xMain, aim.solidMaxX);
     }
     // Extra X shrink for XL/XXL near nose so glyphs aren't clipped
     if (role === "title" && (aim.zone === "windowband" || aim.zone === "forward" || aim.zone === "nose")) {
