@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.8.9 — aft clip; Main vs ID text; tail-fin logos; L/R intensity; tube shield kept.
+ * SkinMyBird web editor v0.8.10 — tail-fin logos centered + upright both sides; aft clip; Main vs ID text.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.9";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.10";
 
 const $ = (id) => document.getElementById(id);
 
@@ -784,7 +784,7 @@ const $ = (id) => document.getElementById(id);
     for (let n = 1; n <= 3; n++) {
       const slot = ensureCustomTextureSlot(n - 1);
       const place = document.querySelector('.ct-place[data-slot="' + n + '"]');
-      // v0.8.9: logos always on tail fin (hidden field kept for export compat)
+      // v0.8.10: logos always on tail fin only (hidden placement field for export compat)
       slot.placement = "tail";
       if (place) place.value = "tail";
       const side = document.querySelector('.ct-side[data-slot="' + n + '"]');

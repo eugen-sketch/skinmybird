@@ -1,0 +1,31 @@
+{
+  "id": "buffy_air_a319",
+  "name": "BUFFY AIR",
+  "aircraft": "lvfr-airbus-a319-ceo",
+  "aircraft_label": "LatinVFR A319 CEO",
+  "registration": "YR-BUF",
+  "airline": "BUFFY AIR",
+  "slogan": "Fearless skies",
+  "icao": "BUF",
+  "colors": {
+    "fuselage": "#f4ebdd",
+    "nose": "#ede3d4",
+    "belly": "#c8b8a8",
+    "windowband": "#2d1b4e",
+    "tail": "#1a0f2e",
+    "wings": "#1b2430",
+    "winglet": "#c9a84a",
+    "engines": "#2d1b4e",
+    "accent": "#c9a84a"
+  },
+  "textColor": "#c9a84a",
+  "regColor": "#2d1b4e",
+  "textFont": "bebas",
+  "regFont": "oswald",
+  "textSize": "XL",
+  "regSize": "M",
+  "titleZone": "windowband",
+  "sloganZone": "mid",
+  "logo": "work/buffy_air_fin_logo.png",
+  "package_folder": "skinmybird-a319-buffy_air"
+}

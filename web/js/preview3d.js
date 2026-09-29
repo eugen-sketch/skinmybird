@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.8.9 — aft hard-clip (windowband/belly stop before empennage); HT/fin distinct; Main vs ID text + L/R intensity; logos on tail fin only.
+ * SkinMyBird 3D hangar preview v0.8.10 — tail-fin logos centered + no U-flip (same upright orientation both sides); aft hard-clip; Main vs ID text.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -2826,8 +2826,9 @@ function makeRegTexture(state) {
 }
 
 /**
- * v0.8.9 — Custom logo/image decals on the VERTICAL STABILIZER (tail fin) only.
- * Centered by default; posX/posY nudge within the fin; scale / opacity / rotate / side.
+ * v0.8.10 — Custom logo/image decals on the VERTICAL STABILIZER (tail fin) only.
+ * Centered on fin geometry; same upright/readable orientation on both faces (no U-flip).
+ * posX/posY nudge within the fin; scale / opacity / rotate / side.
  */
 function ensureCustomSlotImage(slot) {
   if (!slot || !slot.dataUrl) return null;
@@ -2878,11 +2879,12 @@ function placeFallbackPlaneDecal(group, craft, side, x, y, fusR, center, decalSi
 
 function estimateTailFinAim(craft, size, center, targets) {
   const fusLen = size.x;
-  // Default: aft of cabin, mid-fin height (above tube crown)
-  let xAim = center.x - fusLen * 0.42;
-  let yAim = center.y + size.y * 0.28;
-  let finH = Math.max(0.55, size.y * 0.32);
-  let finW = Math.max(0.45, fusLen * 0.14);
+  // Default: visual mid-panel of vertical fin (A320 hangar-tuned). Not tip.
+  let xAim = center.x - fusLen * 0.39;
+  let yAim = center.y + size.y * 0.15;
+  let finH = Math.max(0.55, size.y * 0.28);
+  let finW = Math.max(0.45, fusLen * 0.12);
+
   const tails = (targets && targets.tail) || [];
   if (tails.length) {
     const union = new THREE.Box3();
@@ -2891,8 +2893,6 @@ function estimateTailFinAim(craft, size, center, targets) {
       if (!t.box) continue;
       // Prefer upright fins (tall + near centerline) over wide HT
       const h = t.box.max.y - t.box.min.y;
-      const w = t.box.max.z - t.box.min.z;
-      const cx = (t.box.min.x + t.box.max.x) * 0.5;
       const cz = Math.abs((t.box.min.z + t.box.max.z) * 0.5 - center.z);
       if (h > size.y * 0.12 && cz < size.z * 0.22) {
         union.union(t.box);
@@ -2908,17 +2908,21 @@ function estimateTailFinAim(craft, size, center, targets) {
       }
     }
     if (any && Number.isFinite(union.min.x)) {
-      xAim = (union.min.x + union.max.x) * 0.5;
-      yAim = union.min.y + (union.max.y - union.min.y) * 0.55;
-      finH = Math.max(0.4, union.max.y - union.min.y);
-      finW = Math.max(0.35, union.max.x - union.min.x);
+      const fh = union.max.y - union.min.y;
+      const fw = union.max.x - union.min.x;
+      // LE = max.x (noseward), TE = min.x (aft)
+      xAim = union.max.x - fw * 0.50;
+      yAim = union.min.y + fh * 0.45;
+      finH = Math.max(0.4, fh);
+      finW = Math.max(0.35, fw);
     }
   }
-  // Clamp to aft/high region so we never aim mid-cabin
-  xAim = Math.min(xAim, center.x - fusLen * 0.28);
-  xAim = Math.max(xAim, center.x - fusLen * 0.48);
-  yAim = Math.max(yAim, center.y + size.y * 0.12);
-  yAim = Math.min(yAim, center.y + size.y * 0.48);
+
+  // Soft clamp: empennage / mid-fin (never tip or mid-cabin)
+  xAim = Math.min(xAim, center.x - fusLen * 0.22);
+  xAim = Math.max(xAim, center.x - fusLen * 0.50);
+  yAim = Math.max(yAim, center.y + size.y * 0.06);
+  yAim = Math.min(yAim, center.y + size.y * 0.32);
   return { xAim, yAim, finH, finW };
 }
 
@@ -3000,8 +3004,8 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
       toneMapped: false,
     };
 
-    // Size relative to fin, not full fuselage
-    const baseW = Math.max(0.35, Math.min(fin.finW * 0.85, fusLen * 0.22)) * scale;
+    // Size relative to fin panel (cap so mid-fin logos are not tip-clipped)
+    const baseW = Math.max(0.32, Math.min(fin.finW * 0.72, fusLen * 0.18)) * scale;
     const baseH = baseW * (dh / Math.max(dw, 1e-6));
     const depth = Math.max(0.25, Math.min(size.y * 0.28, 0.55));
     const decalSize = new THREE.Vector3(baseW, Math.max(0.28, baseH), depth);
@@ -3010,26 +3014,34 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
     const x0 = fin.xAim - fin.finW * nudgeX * 0.35;
     const y0 = fin.yAim + fin.finH * nudgeY * 0.35;
 
+    // Tight samples around the fin center — avoid tip/LE wander that looks off-center
     const xSamples = [
       x0,
-      x0 + fin.finW * 0.06,
-      x0 - fin.finW * 0.06,
-      x0 + fin.finW * 0.12,
-      x0 - fin.finW * 0.12,
+      x0 + fin.finW * 0.04,
+      x0 - fin.finW * 0.04,
+      x0 + fin.finW * 0.08,
+      x0 - fin.finW * 0.08,
     ];
     const yCands = [
       y0,
-      y0 - fin.finH * 0.08,
-      y0 + fin.finH * 0.08,
-      y0 - fin.finH * 0.16,
-      y0 + fin.finH * 0.16,
-      fin.yAim,
+      y0 - fin.finH * 0.05,
+      y0 + fin.finH * 0.05,
+      y0 - fin.finH * 0.10,
+      y0 + fin.finH * 0.10,
     ];
 
     let sides;
     if (sideMode === "left") sides = [-1];
     else if (sideMode === "right") sides = [1];
     else sides = [-1, 1];
+
+    // v0.8.10: ALWAYS U-flip fin logos on BOTH faces.
+    // DecalGeometry UV on vertical fins reads mirrored from outside; flipping the
+    // canvas once per side keeps HB/owl upright + readable the same way on L and R
+    // (do NOT flip only one side — that left the other face backwards).
+    const flipU = true;
+    const nMat = new THREE.Matrix3();
+    const wN = new THREE.Vector3();
 
     sides.forEach((side) => {
       let best = null;
@@ -3044,23 +3056,30 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
             origin.z = center.z + side * Math.max(fusR * 3.5, size.z * 0.28);
             h = raycastBestHit(meshList, origin, dir, raycaster);
           }
-          // Slight aft/down cast if miss (fin LE / tip)
+          // Slight aft cast if miss (fin LE / tip) — keep Y near aim (no tip climb)
           if (!h) {
             const o2 = new THREE.Vector3(
               tx - fusLen * 0.02,
-              y + fin.finH * 0.05,
+              y,
               center.z + side * size.z * 0.12
             );
-            h = raycastBestHit(meshList, o2, new THREE.Vector3(0, -0.15, -side).normalize(), raycaster);
+            h = raycastBestHit(meshList, o2, new THREE.Vector3(0, 0, -side).normalize(), raycaster);
           }
-          if (!h || !h.point) continue;
-          // Prefer hits on aft/high fin, reject mid-cabin / wing
+          if (!h || !h.point || !h.face) continue;
+          // Prefer hits on aft/high fin, reject mid-cabin / wing / belly
           if (h.point.x > center.x - fusLen * 0.18) continue;
           if (h.point.y < center.y + size.y * 0.05) continue;
+          nMat.getNormalMatrix(h.object.matrixWorld);
+          wN.copy(h.face.normal).applyNormalMatrix(nMat).normalize();
+          // Prefer side-facing fin skin (|Nz| high); reject crown/HT-ish hits
+          const sideFacing = Math.abs(wN.z);
+          if (sideFacing < 0.35) continue;
+          if (Math.abs(wN.y) > 0.72) continue;
           const err =
-            Math.abs(h.point.y - y0) * 1.2 +
-            Math.abs(h.point.x - x0) * 0.35 +
-            Math.abs(h.point.z - center.z) * 0.05;
+            Math.abs(h.point.y - y0) * 2.4 +
+            Math.abs(h.point.x - x0) * 1.1 +
+            Math.abs(h.point.z - center.z) * 0.08 +
+            (1 - sideFacing) * 0.35;
           if (err < bestErr) {
             bestErr = err;
             best = h;
@@ -3069,7 +3088,6 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
       }
       if (!best) {
         console.warn("addCustomTextureDecals: no fin hit side", side, slot.name || idx, "— plane fallback on fin");
-        const flipU = side < 0;
         const mat = sideMaterialFromTex(tex, flipU, matOpts);
         placeFallbackPlaneDecal(
           group,
@@ -3085,8 +3103,6 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
         );
         return;
       }
-      // Fin logos: mirror left face so glyphs read L→R from outside (same on both sides)
-      const flipU = side < 0;
       const mat = sideMaterialFromTex(tex, flipU, matOpts);
       projectDecal(group, best, decalSize, mat, 4 + idx);
     });

@@ -15,12 +15,18 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.8.10 notes
+- **Tail logo orientation**: both fin faces share the same upright/readable image (U-flip applied on **both** sides so HB/owl is not backwards on either face).
+- **Tail logo centering**: aim at visual mid-panel of the vertical stabilizer (slightly aft of mid-chord on swept fins); tighter ray samples so the mark stays symmetric.
+- Logos remain **tail-fin only** (no fuselage/wing sticker placement).
+- Cache-bust `?v=0.8.10`.
+
 ### v0.8.9 notes
 - **Aft hard-clip**: windowband / belly stop at `aftClipU=0.24` (mirror of nose cockpit clip). Tail fin + HT claim strengthened so fuselage/windowband colors no longer smear into empennage. Majority vote prefers tail on mixed triangles. Shader cache `smb_body_zone_shader_v089`.
 - **Main text vs ID**: separate UI panels — Title/Slogan keep font/size/color/style; Registration has its own font, size, color (`regColor`), and style. Changing one never changes the other.
 - **L/R text intensity**: MeshBasicMaterial `toneMapped:false` + explicit white; removed directional canvas drop-shadow that looked dimmer on the shaded fuselage side.
 - **Textures → tail logos**: stickers UX rewritten — logo/image goes on the **vertical stabilizer only**, centered by default, with scale / opacity / rotate / fin nudge / side L|R|Both / optional tint. Free-body sticker placement removed.
-- Cache-bust `?v=0.8.9`.
+- Cache-bust `?v=0.8.9` (superseded by 0.8.10).
 
 ### v0.8.8 notes
 - **Nose hard-clip** at cockpit line (`noseClipU = 0.78` + crown early): window band + fuselage stop behind windscreen; solid yellow nose forward.
