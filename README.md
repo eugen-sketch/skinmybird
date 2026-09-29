@@ -15,6 +15,11 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.7.4 notes
+- **Single-mesh nacelles**: under-wing pod rule (`absZ > fuseHalf*1.2`, below wing plane, wing-station `u`) + larger `engineR` so A320-style one-mesh airliners paint solid engines (not fuselage white on nacelles). Seeds/pylons kept as extras.
+- **Constant-height windowband**: `bandLo/Hi = wingY + span*{0.30,0.52}` on fuselage tube sides (exclude crown/belly); synced JS `classifyPoint` + GLSL `smbClassifyCraft`. Cache key `smb_body_zone_shader_v074`.
+- Custom textures / text layout unchanged. Cache-bust `?v=0.7.4`
+
 ### v0.7.3 notes
 - **Smooth parametric zones**: body meshes use `MeshStandardMaterial` + `onBeforeCompile` fragment classification (craft-local `classifyPoint`) — continuous windowband / belly edges; no face-split stair-steps. Wings / winglets / engines stay solid role materials (no white nacelle teeth).
 - **Custom textures visible**: fuselage aim matches title path (forward of wing LE + windowband mid); multi-X side raycasts; PlaneGeometry hard fallback if raycast misses.

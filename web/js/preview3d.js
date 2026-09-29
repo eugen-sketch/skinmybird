@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.7.3 — smooth parametric zone shader, reliable custom textures, larger fuselage text.
+ * SkinMyBird 3D hangar preview v0.7.4 — single-mesh nacelle pods + constant-height windowband, reliable custom textures.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -430,7 +430,7 @@ function classifyMeshRole(name, box, craftBox) {
   return "fuselage";
 }
 
-/** Paint-zone ids — v0.7.3 fragment-shader body bands + solid role mats for wings/engines. */
+/** Paint-zone ids — v0.7.4 fragment-shader body bands + solid role mats for wings/engines. */
 const ZONE_ID = {
   fuselage: 0,
   nose: 1,
@@ -485,8 +485,11 @@ function buildGlbZoneContext(samples, craftBox, noseSign) {
     ? wingish[Math.floor(wingish.length * 0.5)]
     : min.y + sy * 0.35;
 
-  // Nacelle seeds: cluster lowest outboard verts (twins = 1/side; quads = 2/side)
-  const yCut = min.y + sy * 0.22;
+  // Fuselage tube half-width (airliner body ≈ 20–24% of half-span)
+  const fuseHalf = halfZ * 0.22;
+
+  // Nacelle seeds: under-wing outboard verts (raise cut so pods aren't only bottom 22%)
+  const yCut = Math.min(wingY - sy * 0.015, min.y + sy * 0.40);
   const seeds = [];
   const avg3 = (arr) => [
     arr.reduce((a, s) => a + s[0], 0) / arr.length,
@@ -497,10 +500,21 @@ function buildGlbZoneContext(samples, craftBox, noseSign) {
     let cand = samples.filter(
       (s) =>
         s[1] <= yCut &&
+        s[1] > min.y + sy * 0.01 &&
         s[2] * side > 0 &&
-        Math.abs(s[2]) >= halfZ * 0.18 &&
-        Math.abs(s[2]) <= halfZ * 0.55
+        Math.abs(s[2]) >= fuseHalf * 1.15 &&
+        Math.abs(s[2]) <= halfZ * 0.58
     );
+    if (cand.length < 6) {
+      // Fallback: slightly looser lateral band
+      cand = samples.filter(
+        (s) =>
+          s[1] <= yCut &&
+          s[2] * side > 0 &&
+          Math.abs(s[2]) >= halfZ * 0.16 &&
+          Math.abs(s[2]) <= halfZ * 0.55
+      );
+    }
     if (cand.length < 6) continue;
     cand = cand.slice().sort((a, b) => a[1] - b[1]);
     cand = cand.slice(0, Math.max(6, Math.ceil(cand.length * 0.6)));
@@ -520,7 +534,8 @@ function buildGlbZoneContext(samples, craftBox, noseSign) {
     }
   }
 
-  const engineR = Math.max(sy * 0.14, halfZ * 0.06, 0.4);
+  // Large enough to cover single-mesh nacelle shells (not just seed cores)
+  const engineR = Math.max(sy * 0.22, halfZ * 0.12, fuseHalf * 1.1);
 
   // Fuselage tube top (exclude vertical fin): high-|Z| and extreme aft-high verts skew sy
   // so crown v-thresholds never fire. Use ~95th %ile Y of near-centerline samples.
@@ -536,7 +551,7 @@ function buildGlbZoneContext(samples, craftBox, noseSign) {
   fuseTop = Math.min(Math.max(fuseTop, min.y + sy * 0.35), max.y);
   const fuseSy = Math.max(fuseTop - min.y, sy * 0.35, 1e-6);
 
-  return { min, max, sx, sy, sz, halfZ, wingY, noseSign, seeds, engineR, fuseTop, fuseSy };
+  return { min, max, sx, sy, sz, halfZ, fuseHalf, wingY, noseSign, seeds, engineR, fuseTop, fuseSy };
 }
 
 function classifyPoint(x, y, z, ctx) {
@@ -546,9 +561,23 @@ function classifyPoint(x, y, z, ctx) {
   const v = (y - ctx.min.y) / ctx.sy;
   const w = Math.abs(z) / Math.max(ctx.halfZ, 1e-6);
   const absZ = Math.abs(z);
-  const { sy, halfZ, wingY, seeds, engineR } = ctx;
+  const { sy, halfZ, wingY, seeds, engineR, min } = ctx;
+  const fuseHalf = ctx.fuseHalf != null ? ctx.fuseHalf : halfZ * 0.22;
+  const fuseSy = ctx.fuseSy || sy;
+  const vTube = (y - min.y) / fuseSy;
+  const fuseTop = ctx.fuseTop || ctx.max.y;
+  const span = Math.max(fuseTop - wingY, 1e-6);
 
-  // Engines (nacelle seeds) + pylons
+  // --- engines (single-mesh critical): under-wing pod → seeds → pylons ---
+  if (
+    absZ > fuseHalf * 1.2 &&
+    y < wingY - sy * 0.02 &&
+    y > min.y + sy * 0.02 &&
+    u > 0.32 &&
+    u < 0.78
+  ) {
+    return ZONE_ID.engines;
+  }
   for (let i = 0; i < seeds.length; i++) {
     const s = seeds[i];
     const dx = x - s[0];
@@ -563,57 +592,65 @@ function classifyPoint(x, y, z, ctx) {
     const dz = z - s[2];
     const horiz = Math.sqrt(dx * dx + dz * dz);
     if (
-      horiz < engineR * 0.9 &&
-      dy > engineR * 0.15 &&
-      dy < engineR * 1.55 &&
-      y < wingY + sy * 0.1
+      horiz < engineR * 0.95 &&
+      dy > 0 &&
+      dy < engineR * 1.7 &&
+      y < wingY + sy * 0.08
     ) {
       return ZONE_ID.engines; // pylons → engines
     }
   }
+  // Geometric pylon: outboard of tube, under/at wing plane, wing station
+  if (
+    absZ > fuseHalf * 1.15 &&
+    absZ < halfZ * 0.52 &&
+    y < wingY + sy * 0.05 &&
+    y > wingY - sy * 0.30 &&
+    u > 0.32 &&
+    u < 0.78
+  ) {
+    return ZONE_ID.engines;
+  }
 
+  // --- wings / winglet ---
   if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return ZONE_ID.winglet;
-  // Tail + former stabilizer (merged)
-  if (u < 0.22 && v > 0.45 && w < 0.40) return ZONE_ID.tail;
-  if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75)
-    return ZONE_ID.tail;
-  if (u > 0.92 && w < 0.32) return ZONE_ID.nose;
-
-  // Wings — tightened so fuselage sides are not stolen
   if (w > 0.30 && absZ > halfZ * 0.20 && u > 0.28 && u < 0.82) {
     const nearWingPlane = Math.abs(y - wingY) < sy * 0.15;
     if (nearWingPlane && v > 0.08 && v < 0.58) return ZONE_ID.wings;
     if (w > 0.44 && v > 0.1 && v < 0.52) return ZONE_ID.wings;
   }
 
-  // Clean parametric bands on the fuselage tube (shared with fragment shader)
-  const fuseSy = ctx.fuseSy || sy;
-  const vTube = (y - ctx.min.y) / fuseSy;
-  const fuseTop = ctx.fuseTop || ctx.max.y;
-  const span = Math.max(fuseTop - wingY, 1e-6);
-  const tWing = (y - wingY) / span;
+  // --- tail ---
+  if (u < 0.22 && v > 0.45 && w < 0.40) return ZONE_ID.tail;
+  if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75)
+    return ZONE_ID.tail;
 
-  // Cockpit / nose taper
-  if (u > 0.78 && u < 0.95 && vTube > 0.55 && w < 0.28) return ZONE_ID.nose;
+  // --- nose tip / cockpit (do not bite mid-side windowband Y) ---
+  if (u > 0.92 && w < 0.32) return ZONE_ID.nose;
+  if (u > 0.82 && u < 0.95 && y > wingY + span * 0.52 && absZ <= fuseHalf * 1.15)
+    return ZONE_ID.nose;
 
-  // Body tube only (narrow |Z|) — continuous airline-like stripes
-  if (w < 0.28 && u > 0.12 && u < 0.92) {
-    // Belly: low on tube / below wing plane
-    if (vTube < 0.20 || tWing < -0.06) return ZONE_ID.belly;
-    // Window band: continuous side stripe (clear tWing + side range)
-    if (
-      u > 0.16 &&
-      u < 0.90 &&
-      tWing >= 0.28 &&
-      tWing <= 0.55 &&
-      w >= 0.045 &&
-      w <= 0.275
-    ) {
-      return ZONE_ID.windowband;
-    }
-    // Crown + rest of sides → fuselage (do not steal with nose mid-body)
+  // --- windowband: constant-height side stripe (airline cheatline) ---
+  const bandLo = wingY + span * 0.30;
+  const bandHi = wingY + span * 0.52;
+  if (
+    absZ <= fuseHalf * 1.15 &&
+    absZ >= fuseHalf * 0.25 &&
+    y >= bandLo &&
+    y <= bandHi &&
+    y > min.y + sy * 0.18 &&
+    u > 0.12 &&
+    u < 0.92
+  ) {
+    return ZONE_ID.windowband;
   }
-  if (u > 0.88 && w < 0.28) return ZONE_ID.nose;
+
+  // --- belly ---
+  if (absZ <= fuseHalf * 1.2 && (vTube < 0.20 || y < wingY - sy * 0.04)) {
+    return ZONE_ID.belly;
+  }
+
+  if (u > 0.88 && absZ <= fuseHalf * 1.15) return ZONE_ID.nose;
 
   // Always paintable — never leave raw GLB gray
   return ZONE_ID.fuselage;
@@ -867,7 +904,7 @@ function makeGlbZoneMaterial(hexColor) {
 }
 
 /**
- * v0.7.3 — Hybrid zone paint:
+ * v0.7.4 — Hybrid zone paint:
  * Body meshes (fuselage/nose/belly/tail/windowband roles) share ONE MeshStandardMaterial
  * with onBeforeCompile fragment classification → smooth parametric stripes (no tri stairs).
  * Wings / winglets / engines get solid MeshStandardMaterial by mesh role (no mixed faces).
@@ -937,7 +974,7 @@ function makeBodyZoneShaderMaterial(ctx) {
   mat.userData.zoneUniforms = uniforms;
   mat.userData.isBodyZoneShader = true;
   mat.userData.baseColor = new THREE.Color(0xffffff);
-  mat.customProgramCacheKey = () => "smb_body_zone_shader_v073";
+  mat.customProgramCacheKey = () => "smb_body_zone_shader_v074";
 
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
@@ -994,14 +1031,23 @@ int smbClassifyCraft(vec3 p) {
   float halfZ = uHalfZ;
   float wingY = uWingY;
   float engineR = uEngineR;
+  float fuseHalf = halfZ * 0.22;
+  float fuseSy = max(uFuseSy, 1e-6);
+  float vTube = (p.y - uMin.y) / fuseSy;
+  float fuseTop = uFuseTop;
+  float span = max(fuseTop - wingY, 1e-6);
 
+  // engines: under-wing pod → seeds → pylons
+  if (absZ > fuseHalf * 1.2 && p.y < wingY - sy * 0.02 && p.y > uMin.y + sy * 0.02 && u > 0.32 && u < 0.78) {
+    return 5;
+  }
   vec3 seeds[4];
   seeds[0] = uSeed0; seeds[1] = uSeed1; seeds[2] = uSeed2; seeds[3] = uSeed3;
   for (int i = 0; i < 4; i++) {
     if (i >= uSeedCount) break;
     vec3 s = seeds[i];
     vec3 d = p - s;
-    if (dot(d, d) < engineR * engineR) return 5; // engines
+    if (dot(d, d) < engineR * engineR) return 5;
   }
   for (int i = 0; i < 4; i++) {
     if (i >= uSeedCount) break;
@@ -1010,37 +1056,42 @@ int smbClassifyCraft(vec3 p) {
     float dy = p.y - s.y;
     float dz = p.z - s.z;
     float horiz = sqrt(dx * dx + dz * dz);
-    if (horiz < engineR * 0.9 && dy > engineR * 0.15 && dy < engineR * 1.55 && p.y < wingY + sy * 0.1) {
+    if (horiz < engineR * 0.95 && dy > 0.0 && dy < engineR * 1.7 && p.y < wingY + sy * 0.08) {
       return 5;
     }
   }
+  if (absZ > fuseHalf * 1.15 && absZ < halfZ * 0.52 && p.y < wingY + sy * 0.05 && p.y > wingY - sy * 0.30 && u > 0.32 && u < 0.78) {
+    return 5;
+  }
 
-  if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return 4; // winglet
-  if (u < 0.22 && v > 0.45 && w < 0.40) return 6; // tail
-  if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75) return 6;
-  if (u > 0.92 && w < 0.32) return 1; // nose
-
+  // wings / winglet
+  if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return 4;
   if (w > 0.30 && absZ > halfZ * 0.20 && u > 0.28 && u < 0.82) {
     float nearWingPlane = abs(p.y - wingY);
-    if (nearWingPlane < sy * 0.15 && v > 0.08 && v < 0.58) return 3; // wings
+    if (nearWingPlane < sy * 0.15 && v > 0.08 && v < 0.58) return 3;
     if (w > 0.44 && v > 0.1 && v < 0.52) return 3;
   }
 
-  float fuseSy = max(uFuseSy, 1e-6);
-  float vTube = (p.y - uMin.y) / fuseSy;
-  float fuseTop = uFuseTop;
-  float span = max(fuseTop - wingY, 1e-6);
-  float tWing = (p.y - wingY) / span;
+  // tail
+  if (u < 0.22 && v > 0.45 && w < 0.40) return 6;
+  if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75) return 6;
 
-  if (u > 0.78 && u < 0.95 && vTube > 0.55 && w < 0.28) return 1;
-  if (w < 0.28 && u > 0.12 && u < 0.92) {
-    if (vTube < 0.20 || tWing < -0.06) return 2; // belly
-    if (u > 0.16 && u < 0.90 && tWing >= 0.28 && tWing <= 0.55 && w >= 0.045 && w <= 0.275) {
-      return 7; // windowband
-    }
+  // nose tip / cockpit above band
+  if (u > 0.92 && w < 0.32) return 1;
+  if (u > 0.82 && u < 0.95 && p.y > wingY + span * 0.52 && absZ <= fuseHalf * 1.15) return 1;
+
+  // windowband: constant-height side stripe
+  float bandLo = wingY + span * 0.30;
+  float bandHi = wingY + span * 0.52;
+  if (absZ <= fuseHalf * 1.15 && absZ >= fuseHalf * 0.25 && p.y >= bandLo && p.y <= bandHi && p.y > uMin.y + sy * 0.18 && u > 0.12 && u < 0.92) {
+    return 7;
   }
-  if (u > 0.88 && w < 0.28) return 1;
-  return 0; // fuselage
+
+  // belly
+  if (absZ <= fuseHalf * 1.2 && (vTube < 0.20 || p.y < wingY - sy * 0.04)) return 2;
+
+  if (u > 0.88 && absZ <= fuseHalf * 1.15) return 1;
+  return 0;
 }
 
 vec3 smbZoneColor(int z) {
@@ -1099,9 +1150,9 @@ function estimateWindowBandWorld(craft, size, center) {
     };
   }
   const span = Math.max(ctx.fuseTop - ctx.wingY, 1e-6);
-  const bandH = Math.max(0.06, (0.55 - 0.28) * span);
-  const tMid = (0.28 + 0.55) * 0.5;
-  const localY = ctx.wingY + tMid * span;
+  // Match classifyPoint constant-height stripe (span*0.30 … span*0.52)
+  const bandH = Math.max(0.06, (0.52 - 0.30) * span);
+  const localY = ctx.wingY + ((0.30 + 0.52) * 0.5) * span;
   const world = new THREE.Vector3(0, localY, 0);
   craft.localToWorld(world);
   const yAim = world.y;
