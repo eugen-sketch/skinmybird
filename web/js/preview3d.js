@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.8 — wing-LE-aware title X + shorter panel; windowband yAim.
+ * SkinMyBird 3D hangar preview v0.6.9 — raised windowband paint + upper-band title yAim; keep wing-LE xMain.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -626,11 +626,12 @@ function classifyPoint(x, y, z, ctx) {
   // Must fire before fuselage default so the roof ridge is never left white.
   if (w < 0.30 && u > 0.16 && u < 0.85 && vTube > 0.62) return ZONE_ID.crown;
 
-  // Body side — thin windowband/accent so fuselage + crown own most of the tube
+  // Body side — windowband on true cabin window line (mid/upper tube), accent just under
+  // v0.6.9: raised from ~0.36–0.52 (low belly stripe / wing-root) to ~0.44–0.60
   if (w < 0.30 && u > 0.14 && u < 0.9) {
     if (vTube < 0.22) return ZONE_ID.belly;
-    if (vTube > 0.42 && vTube < 0.52 && w > 0.06) return ZONE_ID.windowband;
-    if (vTube > 0.36 && vTube < 0.42 && w > 0.06) return ZONE_ID.accent;
+    if (vTube > 0.50 && vTube < 0.60 && w > 0.06) return ZONE_ID.windowband;
+    if (vTube > 0.44 && vTube < 0.50 && w > 0.06) return ZONE_ID.accent;
   }
   if (w > 0.1 && w < 0.26 && vTube > 0.28 && vTube < 0.55 && u > 0.28 && u < 0.78)
     return ZONE_ID.doors;
@@ -1896,18 +1897,22 @@ function addTextDecals(craft, state) {
     }
   }
 
-  // --- v0.6.8 window-band belt (wing-LE-aware xMain + shorter panelLen; yAim unchanged) ---
-  // sideBeltMeshes: ONLY windowband + accent. Fallback fuselage ONLY if no windowband.
-  // Never belly / crown / cockpit / fairings / wings for title/reg side casts.
+  // --- v0.6.9 window-band belt (raised zone paint + local upper yAim; keep wing-LE xMain) ---
+  // sideBeltMeshes: windowband + accent + fuselage sides (title may hit fuselage at raised Y).
+  // Fallback fuselage ONLY if no windowband. Never belly / crown / cockpit / fairings / wings.
   // Nose is +X on hangar-fit craft (longest axis forward); wing LE = forward-most wing AABB X.
   const scored = targets.scored || [];
   const wbScored = scored.filter((s) => s.paintZone === "windowband");
   const accentScored = scored.filter((s) => s.paintZone === "accent");
+  const fuselageScored = scored.filter((s) => s.paintZone === "fuselage");
   let sideBeltScored;
   if (wbScored.length) {
-    sideBeltScored = wbScored.concat(accentScored);
+    // Prefer windowband/accent; allow fuselage side hits at raised cabin height
+    sideBeltScored = wbScored.concat(accentScored).concat(fuselageScored);
   } else {
-    sideBeltScored = scored.filter((s) => s.paintZone === "fuselage");
+    sideBeltScored = fuselageScored.length
+      ? fuselageScored
+      : scored.filter((s) => s.paintZone === "fuselage");
   }
   const sideBeltMeshes = sideBeltScored.map((s) => s.mesh);
   // Fuselage side skins for aft reg when windowband ends (still no belly/crown/fairings)
@@ -1925,55 +1930,13 @@ function addTextDecals(craft, state) {
   const posY = Number(state.textPosY != null ? state.textPosY : 8) / 100;
   const scalePct = Math.max(0.5, Math.min(1.6, (Number(state.textScale) || 100) / 100));
 
-  // Aim Y from UNION of windowband world AABBs (mid of band), not craft-size.y fractions.
-  let yAim;
-  let bandH;
-  if (wbScored.length && place !== "belly" && place !== "wing") {
-    const union = new THREE.Box3();
-    for (const s of wbScored) union.union(s.box);
-    yAim = (union.min.y + union.max.y) * 0.5;
-    bandH = Math.max(0.06, union.max.y - union.min.y);
-    // Tiny user textPosY nudge within the band (±12% of band height)
-    yAim += bandH * (posY * 0.12);
-  } else {
-    bandH = Math.max(0.12, size.y * 0.10);
-    yAim = center.y + size.y * (0.04 + posY * 0.25);
-  }
-  // Probes ONLY ±~15% of windowband height — never craft.size.y dives to wing root
-  const yAlts = [
-    yAim,
-    yAim - bandH * 0.08,
-    yAim + bandH * 0.08,
-    yAim - bandH * 0.15,
-    yAim + bandH * 0.15,
-  ];
-  const yWindow = yAim;
-  // Hard floor: anything below band bottom is wing-root / belly — reject
-  const yBandFloor = yAim - bandH;
-
-  // Title panel: fit INSIDE the window band; shorter so aft edge stays clear of wing LE
+  // Title panel length first — needed for xMain and local-band X filter (wing-LE unchanged)
   let panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
     fusLen * 0.22; // v0.6.8 shorter than 0.28 so panel does not reach wing
-  const titlePanelH =
-    place === "wing" ? Math.max(0.35, panelLen * 0.35) :
-    place === "belly" || place === "tail" ? Math.max(0.32, Math.min(size.y * 0.28, 0.72)) :
-    Math.max(bandH * 0.55, Math.min(bandH * 0.75, bandH * 0.65));
-  const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
 
-  const stickerBoost = flagCodes.length || (st.stripe || st.heart || st.star || st.lightning || st.bird || st.roundel || st.chevron || st.checkered || st.smile || st.crown || st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge)
-    ? (0.85 + 0.2 * stickerSizeMul(state))
-    : 1;
-  const flipLeft = !!state.textFlipLeft;
-  const flipRight = !!state.textFlipRight;
-  const decalSize = new THREE.Vector3(
-    panelLen * scalePct * Math.min(stickerBoost, 1.55),
-    titlePanelH * scalePct * Math.min(stickerBoost, 1.55),
-    panelDepth
-  );
-
-  // Title X: forward of wing LE AABB with visible gap (nose = +X)
+  // Title X: forward of wing LE AABB with visible gap (nose = +X) — KEEP from 0.6.8
   let xMain;
   if (place === "tail") {
     xMain = center.x - size.x * (0.28 + posX * 0.1);
@@ -1992,6 +1955,69 @@ function addTextDecals(craft, state) {
   } else {
     xMain = center.x + size.x * (0.28 - posX * 0.35); // more forward than 0.24
   }
+
+  // Aim Y: LOCAL windowband near title X, UPPER third of that union (not global mid)
+  let yAim;
+  let bandH;
+  let yBandFloor;
+  if (wbScored.length && place !== "belly" && place !== "wing" && place !== "tail") {
+    const xPad = Math.max(panelLen * 0.6, fusLen * 0.15);
+    const xLo = xMain - xPad;
+    const xHi = xMain + xPad;
+    const localWb = wbScored.filter((s) => {
+      if (!s.box) return false;
+      // AABB overlaps title X region, or within 0.15*fusLen of xMain
+      return s.box.max.x >= xLo && s.box.min.x <= xHi;
+    });
+    const useWb = localWb.length ? localWb : wbScored;
+    const union = new THREE.Box3();
+    for (const s of useWb) union.union(s.box);
+    bandH = Math.max(0.06, union.max.y - union.min.y);
+    // Upper third of local/raised band (default high on cabin window line)
+    yAim = union.min.y + bandH * 0.72;
+    // Small user textPosY nudge within the band (Low↔High); default still sits high
+    yAim += bandH * (posY * 0.15);
+    // True band bottom — reject wing-root / belly, keep valid upper-band hits
+    yBandFloor = union.min.y;
+  } else if (wbScored.length && place !== "belly" && place !== "wing") {
+    const union = new THREE.Box3();
+    for (const s of wbScored) union.union(s.box);
+    yAim = (union.min.y + union.max.y) * 0.5;
+    bandH = Math.max(0.06, union.max.y - union.min.y);
+    yAim += bandH * (posY * 0.12);
+    yBandFloor = union.min.y;
+  } else {
+    bandH = Math.max(0.12, size.y * 0.10);
+    yAim = center.y + size.y * (0.04 + posY * 0.25);
+    yBandFloor = yAim - bandH * 0.55;
+  }
+  // Probes: optional higher first, then ±8%/±15% of band height around yAim
+  const yAlts = [
+    yAim + bandH * 0.1,
+    yAim,
+    yAim - bandH * 0.08,
+    yAim + bandH * 0.08,
+    yAim - bandH * 0.15,
+    yAim + bandH * 0.15,
+  ];
+  const yWindow = yAim;
+
+  const titlePanelH =
+    place === "wing" ? Math.max(0.35, panelLen * 0.35) :
+    place === "belly" || place === "tail" ? Math.max(0.32, Math.min(size.y * 0.28, 0.72)) :
+    Math.max(bandH * 0.55, Math.min(bandH * 0.75, bandH * 0.65));
+  const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
+
+  const stickerBoost = flagCodes.length || (st.stripe || st.heart || st.star || st.lightning || st.bird || st.roundel || st.chevron || st.checkered || st.smile || st.crown || st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge)
+    ? (0.85 + 0.2 * stickerSizeMul(state))
+    : 1;
+  const flipLeft = !!state.textFlipLeft;
+  const flipRight = !!state.textFlipRight;
+  const decalSize = new THREE.Vector3(
+    panelLen * scalePct * Math.min(stickerBoost, 1.55),
+    titlePanelH * scalePct * Math.min(stickerBoost, 1.55),
+    panelDepth
+  );
 
   const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
   const maxFusAbsZ = fusR * 2.35;
@@ -2061,11 +2087,16 @@ function addTextDecals(craft, state) {
       if (hit && hit.point && hit.point.y < yBandFloor) hit = null;
       return hit;
     }
+    // Among successful probes, prefer the highest hit (stay on upper windowband)
+    let best = null;
     for (const y of probeYs) {
       const hit = castAtY(y);
-      if (hit) return hit;
+      if (!hit) continue;
+      if (!best || (hit.point && (!best.point || hit.point.y > best.point.y))) {
+        best = hit;
+      }
     }
-    return null;
+    return best;
   }
 
   // LEFT (−Z) and RIGHT (+Z) — airline / sticker title

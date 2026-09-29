@@ -15,6 +15,13 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.6.9 notes
+- **QA fix FAIL_TOO_LOW**: cyan windowband paint + title sat on the lowest forward tube / wing-root line.
+- Raise `classifyPoint` windowband to `vTube` **0.50–0.60** (true cabin window line); accent **0.44–0.50**; belly `<0.22`, crown `>0.62` unchanged.
+- Title `yAim`: union of windowband meshes near title X (`±max(panelLen*0.6, 0.15*fusLen)`), aim **upper third** `min.y + bandH*0.72` + `bandH*(posY*0.15)`; prefer higher cast hits; allow fuselage side meshes at that height.
+- Keep v0.6.8 wing-LE `xMain`, `panelLen ≈ fusLen*0.22`, clamps, aft registration filter.
+- Cache-bust `?v=0.6.9`
+
 ### v0.6.8 notes
 - **QA fix FAIL_CROPPED_BY_WING**: compute wing leading-edge X from wing mesh AABBs (`max.x`, nose=+X) and place title forward of that with a visible gap, instead of a fixed `center.x + size.x * 0.24`.
 - Shorter panel: `panelLen ≈ fusLen * 0.22` (was 0.28) so the panel aft edge stays clear of the wing LE.
@@ -118,7 +125,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.6.8 (selector)
+## Models v0.6.9 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -172,8 +179,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.6.8`
-   - Personal → `http://127.0.0.1:5174/?v=0.6.8`
+   - Commercial → `http://127.0.0.1:5173/?v=0.6.9`
+   - Personal → `http://127.0.0.1:5174/?v=0.6.9`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -257,4 +264,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.6.8 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.6.9 — commercial + personal editions · GLB hangar · Two-Tone
