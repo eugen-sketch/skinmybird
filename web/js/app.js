@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.8.8 — nose hard-clip + wing/HT bleed; reg font/size independent; clearGap from v0.8.7; tube shield kept.
+ * SkinMyBird web editor v0.8.9 — aft clip; Main vs ID text; tail-fin logos; L/R intensity; tube shield kept.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.8";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.9";
 
 const $ = (id) => document.getElementById(id);
 
@@ -51,11 +51,13 @@ const $ = (id) => document.getElementById(id);
     slogan: "",
     stickerText: "",
     textColor: "#1b2430",
+    regColor: "#1b2430",
     textSize: "XL",
     textStyle: "bold",
     textFont: "montserrat",
     regFont: "oswald",
     regSize: "M",
+    regStyle: "bold",
     textPlacement: "fuselage",
     titleZone: "windowband",
     sloganZone: "mid",
@@ -74,9 +76,9 @@ const $ = (id) => document.getElementById(id);
       posY: 10,
     },
     customTextures: [
-      { id: 1, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, rotate: 0, side: "both", placement: "free", _img: null },
-      { id: 2, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, rotate: 0, side: "both", placement: "free", _img: null },
-      { id: 3, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, rotate: 0, side: "both", placement: "free", _img: null },
+      { id: 1, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, rotate: 0, side: "both", placement: "tail", tint: "#ffffff", _img: null },
+      { id: 2, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, rotate: 0, side: "both", placement: "tail", tint: "#ffffff", _img: null },
+      { id: 3, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, rotate: 0, side: "both", placement: "tail", tint: "#ffffff", _img: null },
     ],
     soacra: null,
     soacraName: null,
@@ -115,11 +117,13 @@ const $ = (id) => document.getElementById(id);
     $("airline").value = state.airline;
     $("slogan").value = state.slogan || "";
     $("text-color").value = state.textColor;
+    if ($("reg-color")) $("reg-color").value = state.regColor || state.textColor || "#1b2430";
     $("text-size").value = state.textSize;
     $("text-style").value = state.textStyle;
     if ($("text-font")) $("text-font").value = state.textFont || "montserrat";
     if ($("reg-font")) $("reg-font").value = state.regFont || "oswald";
     if ($("reg-size")) $("reg-size").value = state.regSize || "M";
+    if ($("reg-style")) $("reg-style").value = state.regStyle || "bold";
     if ($("text-placement")) $("text-placement").value = state.textPlacement || "fuselage";
     if ($("title-zone")) $("title-zone").value = state.titleZone || "windowband";
     if ($("slogan-zone")) $("slogan-zone").value = state.sloganZone || "mid";
@@ -135,6 +139,7 @@ const $ = (id) => document.getElementById(id);
     updateHexLabels();
     syncSegmented("data-size", state.textSize);
     syncSegmented("data-reg-size", state.regSize || "M");
+    syncSegmented("data-reg-style", state.regStyle || "bold");
     syncSegmented("data-style", state.textStyle);
     syncSegmented("data-title-zone", state.titleZone || "windowband");
     syncSegmented("data-slogan-zone", state.sloganZone || "mid");
@@ -204,11 +209,13 @@ const $ = (id) => document.getElementById(id);
     state.airline = $("airline").value.trim() || "SkinMyBird";
     state.slogan = ($("slogan").value || "").trim();
     state.textColor = $("text-color").value || "#1b2430";
+    state.regColor = ($("reg-color") && $("reg-color").value) || state.regColor || state.textColor || "#1b2430";
     state.textSize = $("text-size").value || "L";
     state.textStyle = $("text-style").value || "bold";
     state.textFont = ($("text-font") && $("text-font").value) || "montserrat";
     state.regFont = ($("reg-font") && $("reg-font").value) || state.regFont || "oswald";
     state.regSize = ($("reg-size") && $("reg-size").value) || state.regSize || "M";
+    state.regStyle = ($("reg-style") && $("reg-style").value) || state.regStyle || "bold";
     state.textPlacement = ($("text-placement") && $("text-placement").value) || "fuselage";
     state.titleZone = ($("title-zone") && $("title-zone").value) || state.titleZone || "windowband";
     state.sloganZone = ($("slogan-zone") && $("slogan-zone").value) || state.sloganZone || "mid";
@@ -278,11 +285,13 @@ const $ = (id) => document.getElementById(id);
       colors: { ...state.colors },
       text: {
         color: state.textColor,
+        regColor: state.regColor,
         size: state.textSize,
         style: state.textStyle,
         font: state.textFont,
         regFont: state.regFont,
         regSize: state.regSize,
+        regStyle: state.regStyle,
         placement: state.textPlacement,
         titleZone: state.titleZone,
         sloganZone: state.sloganZone,
@@ -734,7 +743,7 @@ const $ = (id) => document.getElementById(id);
       const id = state.customTextures.length + 1;
       state.customTextures.push({
         id, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0,
-        rotate: 0, side: "both", placement: "free", _img: null,
+        rotate: 0, side: "both", placement: "tail", tint: "#ffffff", _img: null,
       });
     }
     return state.customTextures[i];
@@ -744,11 +753,11 @@ const $ = (id) => document.getElementById(id);
     for (let n = 1; n <= 3; n++) {
       const slot = ensureCustomTextureSlot(n - 1);
       const lab = $("ct-label-" + n);
-      if (lab) lab.textContent = slot.name || "Drop or click — PNG / JPG";
+      if (lab) lab.textContent = slot.name || "Drop or click — PNG / JPG for tail";
       const clearBtn = document.querySelector('.ct-clear[data-slot="' + n + '"]');
       if (clearBtn) clearBtn.hidden = !slot.dataUrl;
       const place = document.querySelector('.ct-place[data-slot="' + n + '"]');
-      if (place) place.value = slot.placement || "free";
+      if (place) place.value = "tail";
       const side = document.querySelector('.ct-side[data-slot="' + n + '"]');
       if (side) side.value = slot.side || "both";
       const op = document.querySelector('.ct-opacity[data-slot="' + n + '"]');
@@ -766,6 +775,8 @@ const $ = (id) => document.getElementById(id);
       const lrot = $("ct-lab-rot-" + n); if (lrot) lrot.textContent = (slot.rotate ?? 0) + "°";
       const lx = $("ct-lab-x-" + n); if (lx) lx.textContent = String(slot.posX ?? 0);
       const ly = $("ct-lab-y-" + n); if (ly) ly.textContent = String(slot.posY ?? 0);
+      const tint = document.querySelector('.ct-tint[data-slot="' + n + '"]');
+      if (tint) tint.value = slot.tint || "#ffffff";
     }
   }
 
@@ -773,8 +784,9 @@ const $ = (id) => document.getElementById(id);
     for (let n = 1; n <= 3; n++) {
       const slot = ensureCustomTextureSlot(n - 1);
       const place = document.querySelector('.ct-place[data-slot="' + n + '"]');
-      if (place) slot.placement = place.value || "free";
-      else slot.placement = "free";
+      // v0.8.9: logos always on tail fin (hidden field kept for export compat)
+      slot.placement = "tail";
+      if (place) place.value = "tail";
       const side = document.querySelector('.ct-side[data-slot="' + n + '"]');
       if (side) slot.side = side.value || "both";
       const op = document.querySelector('.ct-opacity[data-slot="' + n + '"]');
@@ -787,6 +799,12 @@ const $ = (id) => document.getElementById(id);
       if (px) slot.posX = Number(px.value) || 0;
       const py = document.querySelector('.ct-pos-y[data-slot="' + n + '"]');
       if (py) slot.posY = Number(py.value) || 0;
+      const tint = document.querySelector('.ct-tint[data-slot="' + n + '"]');
+      if (tint) {
+        const v = tint.value || "#ffffff";
+        // White = no tint (leave image colors alone)
+        slot.tint = (v.toLowerCase() === "#ffffff") ? null : v;
+      }
     }
   }
 
@@ -865,6 +883,15 @@ const $ = (id) => document.getElementById(id);
     });
   });
 
+  document.querySelectorAll("[data-reg-style]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.regStyle = btn.getAttribute("data-reg-style");
+      if ($("reg-style")) $("reg-style").value = state.regStyle;
+      syncSegmented("data-reg-style", state.regStyle);
+      drawPreview();
+    });
+  });
+
   document.querySelectorAll("[data-sticker-size]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.stickerSize = btn.getAttribute("data-sticker-size");
@@ -899,7 +926,7 @@ const $ = (id) => document.getElementById(id);
       clearCustomTexture(Number(el.getAttribute("data-slot")) - 1);
     });
   });
-  document.querySelectorAll(".ct-place, .ct-side, .ct-opacity, .ct-scale, .ct-rotate, .ct-pos-x, .ct-pos-y").forEach((el) => {
+  document.querySelectorAll(".ct-place, .ct-side, .ct-opacity, .ct-scale, .ct-rotate, .ct-pos-x, .ct-pos-y, .ct-tint").forEach((el) => {
     el.addEventListener("input", () => {
       const n = el.getAttribute("data-slot");
       if (el.classList.contains("ct-opacity") && $("ct-lab-op-" + n))
@@ -967,6 +994,7 @@ const $ = (id) => document.getElementById(id);
     "airline",
     "slogan",
     "text-color",
+    "reg-color",
     "text-font",
     "reg-font",
     "text-pos-x",

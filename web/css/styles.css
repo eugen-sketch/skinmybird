@@ -1,4 +1,4 @@
-/* SkinMyBird v0.8.8 — measureText clearGap · hangar axis · role Y stack · tube shield (v0.7.5) */
+/* SkinMyBird v0.8.9 — measureText clearGap · hangar axis · role Y stack · tube shield (v0.7.5) */
 :root {
   --bg: #0b0b0d;
   --bg-elev: #121214;
@@ -1017,3 +1017,29 @@ details.fine-tune > summary.subhead {
 details.fine-tune > summary::-webkit-details-marker { display: none; }
 details.fine-tune[open] > summary { margin-bottom: 0.65rem; }
 .texture-slot .subhead { color: #e8e8f0; }
+
+
+/* v0.8.9 — Main text vs ID panels */
+.text-panel {
+  margin-top: 0.75rem;
+  padding: 0.85rem 0.75rem 0.5rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.text-panel .zone-group-title {
+  margin-top: 0;
+}
+#panel-id-text {
+  border-color: rgba(125, 200, 255, 0.18);
+}
+#panel-main-text {
+  border-color: rgba(255, 180, 120, 0.16);
+}
+.texture-slot .ct-tint {
+  width: 3rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+}

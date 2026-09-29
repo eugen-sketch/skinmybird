@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.8.8 — nose hard-clip + wing/HT bleed tighten (tube shield kept); reg font/size independent of title; measureText clearGap from v0.8.7.
+ * SkinMyBird 3D hangar preview v0.8.9 — aft hard-clip (windowband/belly stop before empennage); HT/fin distinct; Main vs ID text + L/R intensity; logos on tail fin only.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -700,31 +700,38 @@ function classifyPoint(x, y, z, ctx) {
     return ZONE_ID.engines;
   }
 
-  // --- tail / HT FIRST (v0.8.8: before wings so aft surfaces aren't stolen) ---
-  if (u < 0.24 && v > 0.42 && w < 0.42) return ZONE_ID.tail; // vertical fin
-  // Horizontal stabilizer: aft + near wing-plane height, outboard of tube
+  // v0.8.9: hard aft clip — FULL tube aft of line = TAIL (true mirror of noseClipU)
+  // Clean vertical stop for windowband/fuselage/belly; fin+HT stay tail.
+  const aftClipU = 0.22;
+
+  // --- tail / HT FIRST (before wings) ---
+  // Vertical fin (above crown)
+  if (u < 0.30 && v > 0.48 && w < 0.42) return ZONE_ID.tail;
+  // Horizontal stabilizer (outboard of tube)
   if (
-    u < 0.32 &&
-    v > 0.12 &&
-    v < 0.62 &&
-    absZ > fuseHalf * 1.15 &&
-    w < 0.92
+    u < 0.38 &&
+    v > 0.06 &&
+    v < 0.70 &&
+    absZ > fuseHalf * 1.02 &&
+    w < 0.96
   ) {
     return ZONE_ID.tail;
   }
-  // HT fairing on tube spine aft
-  if (u < 0.18 && v > 0.28 && v < 0.62 && absZ <= fuseHalf * 1.25) {
+  // HARD AFT CLIP: entire fuselage tube behind aftClipU is empennage/tail color
+  // (same idea as noseClipU claiming the whole forward tube as nose)
+  if (u < aftClipU && absZ <= fuseHalf * 1.32) {
     return ZONE_ID.tail;
   }
 
-  // --- wings / winglet (v0.8.8: claim just outside tube shield; exclude aft HT region) ---
+  // --- wings / winglet (claim just outside tube shield; exclude aft HT region) ---
   if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.30 && u < 0.9) return ZONE_ID.winglet;
   // Just outside tube shield + near wing plane (keep shield — never paint fuselage flank as wing)
   // Inboard root: taller vertical claim so upper root skin stays wings (not fuselage pink)
+  // Hard exclude empennage: no wing claim aft of aftClipU
   if (
     !onFuseTube &&
     absZ > fuseHalf * 1.26 &&
-    u > 0.30 &&
+    u > Math.max(0.30, aftClipU + 0.04) &&
     u < 0.84
   ) {
     const rootBoost = absZ < fuseHalf * 2.4 ? sy * 0.20 : sy * 0.12;
@@ -739,21 +746,26 @@ function classifyPoint(x, y, z, ctx) {
   // Radome tip slightly outboard of tube radius
   if (u > 0.92 && w < 0.36) return ZONE_ID.nose;
 
-  // --- windowband: constant-height side stripe — STOP at cockpit line ---
+  // --- windowband: constant-height side stripe — STOP at cockpit AND at aft clip ---
   if (
     absZ <= fuseHalf * 1.15 &&
     absZ >= fuseHalf * 0.25 &&
     y >= bandLo &&
     y <= bandHi &&
     y > min.y + sy * 0.18 &&
-    u > 0.12 &&
+    u > aftClipU &&
     u < noseClipU
   ) {
     return ZONE_ID.windowband;
   }
 
-  // --- belly (never forward of cockpit line on tube — nose already claimed) ---
-  if (absZ <= fuseHalf * 1.2 && u < noseClipU && (vTube < 0.20 || y < wingY - sy * 0.04)) {
+  // --- belly (never forward of cockpit; stop before empennage so HT root stays tail) ---
+  if (
+    absZ <= fuseHalf * 1.2 &&
+    u > aftClipU &&
+    u < noseClipU &&
+    (vTube < 0.20 || y < wingY - sy * 0.04)
+  ) {
     return ZONE_ID.belly;
   }
 
@@ -763,14 +775,15 @@ function classifyPoint(x, y, z, ctx) {
 
 /** Majority-vote zone priority (tie-break when triangle verts disagree). */
 const ZONE_MAJORITY_PRI = {
-  [ZONE_ID.windowband]: 0,
-  [ZONE_ID.fuselage]: 1,
-  [ZONE_ID.belly]: 2,
-  [ZONE_ID.nose]: 3,
-  [ZONE_ID.wings]: 4,
-  [ZONE_ID.winglet]: 5,
-  [ZONE_ID.engines]: 6,
-  [ZONE_ID.tail]: 7,
+  // v0.8.9: tail beats body bands in 3-way ties so empennage edges stay clean
+  [ZONE_ID.tail]: 0,
+  [ZONE_ID.nose]: 1,
+  [ZONE_ID.windowband]: 2,
+  [ZONE_ID.fuselage]: 3,
+  [ZONE_ID.belly]: 4,
+  [ZONE_ID.wings]: 5,
+  [ZONE_ID.winglet]: 6,
+  [ZONE_ID.engines]: 7,
 };
 
 function majorityZoneId(z0, z1, z2) {
@@ -1080,7 +1093,7 @@ function makeBodyZoneShaderMaterial(ctx) {
   mat.userData.zoneUniforms = uniforms;
   mat.userData.isBodyZoneShader = true;
   mat.userData.baseColor = new THREE.Color(0xffffff);
-  mat.customProgramCacheKey = () => "smb_body_zone_shader_v088c";
+  mat.customProgramCacheKey = () => "smb_body_zone_shader_v089b";
 
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
@@ -1180,14 +1193,18 @@ int smbClassifyCraft(vec3 p) {
     return 5;
   }
 
-  // tail / HT FIRST (before wings so aft surfaces aren't stolen)
-  if (u < 0.24 && v > 0.42 && w < 0.42) return 6;
-  if (u < 0.32 && v > 0.12 && v < 0.62 && absZ > fuseHalf * 1.15 && w < 0.92) return 6;
-  if (u < 0.18 && v > 0.28 && v < 0.62 && absZ <= fuseHalf * 1.25) return 6;
+  // v0.8.9: hard aft clip — FULL tube aft of line = TAIL (mirror of nose)
+  float aftClipU = 0.22;
+
+  // tail / HT FIRST
+  if (u < 0.30 && v > 0.48 && w < 0.42) return 6;
+  if (u < 0.38 && v > 0.06 && v < 0.70 && absZ > fuseHalf * 1.02 && w < 0.96) return 6;
+  // HARD AFT CLIP: entire fuselage tube behind aftClipU is empennage/tail
+  if (u < aftClipU && absZ <= fuseHalf * 1.32) return 6;
 
   // wings / winglet (claim just outside tube shield; exclude aft HT region)
   if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.30 && u < 0.9) return 4;
-  if (!onFuseTube && absZ > fuseHalf * 1.26 && u > 0.30 && u < 0.84) {
+  if (!onFuseTube && absZ > fuseHalf * 1.26 && u > max(0.30, aftClipU + 0.04) && u < 0.84) {
     float rootBoost = absZ < fuseHalf * 2.4 ? sy * 0.20 : sy * 0.12;
     if (abs(p.y - wingY) < rootBoost && v > 0.03 && v < 0.72) return 3;
     if (w > 0.34 && v > 0.06 && v < 0.58) return 3;
@@ -1198,13 +1215,13 @@ int smbClassifyCraft(vec3 p) {
   if (u >= noseClipU - 0.03 && absZ <= fuseHalf * 0.50) return 1;
   if (u > 0.92 && w < 0.36) return 1;
 
-  // windowband: constant-height side stripe — STOP at cockpit line
-  if (absZ <= fuseHalf * 1.15 && absZ >= fuseHalf * 0.25 && p.y >= bandLo && p.y <= bandHi && p.y > uMin.y + sy * 0.18 && u > 0.12 && u < noseClipU) {
+  // windowband: STOP at cockpit AND at aft clip
+  if (absZ <= fuseHalf * 1.15 && absZ >= fuseHalf * 0.25 && p.y >= bandLo && p.y <= bandHi && p.y > uMin.y + sy * 0.18 && u > aftClipU && u < noseClipU) {
     return 7;
   }
 
-  // belly (not forward of cockpit line on tube)
-  if (absZ <= fuseHalf * 1.2 && u < noseClipU && (vTube < 0.20 || p.y < wingY - sy * 0.04)) return 2;
+  // belly (not forward of cockpit; stop before empennage)
+  if (absZ <= fuseHalf * 1.2 && u > aftClipU && u < noseClipU && (vTube < 0.20 || p.y < wingY - sy * 0.04)) return 2;
 
   return 0;
 }
@@ -1542,7 +1559,7 @@ const TEXT_ZONE_DEFS = {
   windowband: { xFrac: 0.12, yMode: "window", yBias: 0.00, panelFrac: 0.40, hMul: 1.15, place: "fuselage" },
   forward:    { xFrac: 0.22, yMode: "window", yBias: 0.00, panelFrac: 0.34, hMul: 1.00, place: "fuselage" },
   mid:        { xFrac: 0.02, yMode: "window", yBias: -0.18, panelFrac: 0.36, hMul: 0.92, place: "fuselage" },
-  aft:        { xFrac: -0.26, yMode: "window", yBias: -0.15, panelFrac: 0.26, hMul: 0.80, place: "fuselage" },
+  aft:        { xFrac: -0.18, yMode: "window", yBias: -0.10, panelFrac: 0.22, hMul: 0.80, place: "fuselage" },
   nose:       { xFrac: 0.34, yMode: "window", yBias: -0.10, panelFrac: 0.18, hMul: 0.90, place: "fuselage" },
   tail:       { xFrac: -0.40, yMode: "tail", yBias: 0.35, panelFrac: 0.28, hMul: 1.20, place: "tail" },
   belly:      { xFrac: 0.06, yMode: "belly", yBias: 0.00, panelFrac: 0.34, hMul: 0.95, place: "belly" },
@@ -2337,7 +2354,8 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
   canvas.height = ch;
   const ctx = canvas.getContext("2d");
   prepareCanvas2d(ctx, cw, ch);
-  const textColor = state.textColor || "#FFFFFF";
+  // Title/slogan use textColor; registration uses independent regColor (v0.8.9)
+  let textColor = state.textColor || "#FFFFFF";
   let sizeKey = state.textSize || "XL";
   let raw = "";
   let styleState = state;
@@ -2354,11 +2372,12 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
     minPx = 40;
   } else if (role === "reg") {
     raw = String(state.registration || "").trim();
-    // v0.8.8: registration has its own font + size (independent of Title)
+    // v0.8.9: registration has its own font + size + color (independent of Title)
     sizeKey = state.regSize || "M";
+    textColor = state.regColor || state.textColor || "#FFFFFF";
     styleState = {
       ...state,
-      textStyle: "bold",
+      textStyle: state.regStyle || "bold",
       textFont: state.regFont || state.textFont || "montserrat",
     };
     minPx = 48;
@@ -2374,11 +2393,12 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
   ctx.fillStyle = textColor;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(0,0,0,0.55)";
-  ctx.shadowBlur = role === "title" ? 10 : 7;
+  // v0.8.9: no directional canvas shadow — hangar key light made one side look dimmer
+  ctx.shadowColor = "rgba(0,0,0,0)";
+  ctx.shadowBlur = 0;
   ctx.lineJoin = "round";
   ctx.miterLimit = 2;
-  ctx.strokeStyle = "rgba(0,0,0,0.5)";
+  ctx.strokeStyle = "rgba(0,0,0,0.45)";
 
   if (includeSlogan) {
     // v0.8.7: measureText-based air under title descenders; pack in upper ~58%.
@@ -2690,6 +2710,9 @@ function sideMaterialFromTex(baseTex, flipU, sharedMatOpts) {
   return new THREE.MeshBasicMaterial({
     ...sharedMatOpts,
     map: matMap,
+    color: 0xffffff,
+    toneMapped: false,
+    opacity: sharedMatOpts.opacity != null ? sharedMatOpts.opacity : 1,
   });
 }
 
@@ -2775,11 +2798,12 @@ function makeRegTexture(state) {
     textStyle: "bold",
     textFont: state.regFont || state.textFont || "montserrat",
   };
-  ctx.fillStyle = state.textColor || "#FFFFFF";
+  ctx.fillStyle = state.regColor || state.textColor || "#FFFFFF";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(0,0,0,0.45)";
-  ctx.shadowBlur = 8;
+  // Soft outline only (no drop shadow) — shadow looked dimmer on one fuselage side under hangar light
+  ctx.shadowColor = "rgba(0,0,0,0)";
+  ctx.shadowBlur = 0;
   const regBase = canvasBasePx(state.regSize || "M", "reg");
   const px =
     typeof fitFontPx === "function"
@@ -2802,9 +2826,8 @@ function makeRegTexture(state) {
 }
 
 /**
- * v0.8.0 — Custom sticker/logo decals with free craft-local placement.
- * Nose↔Tail + Low↔High aim via raycast on any craft mesh (not locked to zone lists).
- * Side: left / right / both. Scale / opacity / rotate supported.
+ * v0.8.9 — Custom logo/image decals on the VERTICAL STABILIZER (tail fin) only.
+ * Centered by default; posX/posY nudge within the fin; scale / opacity / rotate / side.
  */
 function ensureCustomSlotImage(slot) {
   if (!slot || !slot.dataUrl) return null;
@@ -2853,42 +2876,71 @@ function placeFallbackPlaneDecal(group, craft, side, x, y, fusR, center, decalSi
   return mesh;
 }
 
+function estimateTailFinAim(craft, size, center, targets) {
+  const fusLen = size.x;
+  // Default: aft of cabin, mid-fin height (above tube crown)
+  let xAim = center.x - fusLen * 0.42;
+  let yAim = center.y + size.y * 0.28;
+  let finH = Math.max(0.55, size.y * 0.32);
+  let finW = Math.max(0.45, fusLen * 0.14);
+  const tails = (targets && targets.tail) || [];
+  if (tails.length) {
+    const union = new THREE.Box3();
+    let any = false;
+    for (const t of tails) {
+      if (!t.box) continue;
+      // Prefer upright fins (tall + near centerline) over wide HT
+      const h = t.box.max.y - t.box.min.y;
+      const w = t.box.max.z - t.box.min.z;
+      const cx = (t.box.min.x + t.box.max.x) * 0.5;
+      const cz = Math.abs((t.box.min.z + t.box.max.z) * 0.5 - center.z);
+      if (h > size.y * 0.12 && cz < size.z * 0.22) {
+        union.union(t.box);
+        any = true;
+      }
+    }
+    if (!any) {
+      for (const t of tails) {
+        if (t.box) {
+          union.union(t.box);
+          any = true;
+        }
+      }
+    }
+    if (any && Number.isFinite(union.min.x)) {
+      xAim = (union.min.x + union.max.x) * 0.5;
+      yAim = union.min.y + (union.max.y - union.min.y) * 0.55;
+      finH = Math.max(0.4, union.max.y - union.min.y);
+      finW = Math.max(0.35, union.max.x - union.min.x);
+    }
+  }
+  // Clamp to aft/high region so we never aim mid-cabin
+  xAim = Math.min(xAim, center.x - fusLen * 0.28);
+  xAim = Math.max(xAim, center.x - fusLen * 0.48);
+  yAim = Math.max(yAim, center.y + size.y * 0.12);
+  yAim = Math.min(yAim, center.y + size.y * 0.48);
+  return { xAim, yAim, finH, finW };
+}
+
 function addCustomTextureDecals(craft, state, group, targets, box, size, center, raycaster) {
   const slots = state.customTextures || [];
   if (!slots.length || !group) return;
   const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
   const fusR = estimateFuselageHalfWidth(size);
-  const maxFusAbsZ = Math.max(fusR * 2.8, size.z * 0.22);
-  const scored = targets.scored || [];
   const fusLen = size.x;
+  const scored = targets.scored || [];
 
-  // v0.8.1: always include every opaque craft mesh (single-role GLBs have no zone tags)
-  const bodyMeshes = scored
-    .filter(
-      (s) =>
-        s.paintZone === "windowband" ||
-        s.paintZone === "fuselage" ||
-        s.paintZone === "nose" ||
-        s.paintZone === "belly" ||
-        s.paintZone === "tail" ||
-        s.role === "fuselage" ||
-        s.role === "nose" ||
-        s.role === "belly" ||
-        s.role === "tail" ||
-        s.isBodyShaded ||
-        (s.mesh && s.mesh.userData && s.mesh.userData.bodyZoneShaded)
-    )
-    .map((s) => s.mesh);
+  // Prefer tail-tagged meshes, then all craft meshes as fallback
+  const tailMeshes = (targets.tail || []).map((t) => t.mesh).filter(Boolean);
   const allMeshes = (targets.all && targets.all.length)
-    ? targets.all
+    ? targets.all.slice()
     : scored.map((s) => s.mesh);
-  let meshList = bodyMeshes.length
-    ? bodyMeshes.concat(allMeshes.filter((m) => !bodyMeshes.includes(m)))
+  let meshList = tailMeshes.length
+    ? tailMeshes.concat(allMeshes.filter((m) => !tailMeshes.includes(m)))
     : allMeshes.slice();
   if (!meshList.length) meshList = allMeshes.slice();
 
-  const est = estimateWindowBandWorld(craft, size, center);
-  const bandH = est.bandH || Math.max(0.12, size.y * 0.1);
+  const fin = estimateTailFinAim(craft, size, center, targets);
 
   slots.forEach((slot, idx) => {
     if (!slot || !slot.dataUrl) return;
@@ -2897,11 +2949,12 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
 
     const opacity = Math.max(0.05, Math.min(1, (Number(slot.opacity) || 100) / 100));
     const scale = Math.max(0.2, Math.min(3.0, (Number(slot.scale) || 100) / 100));
-    // Wide free range: slider −100…100 → nearly full craft nose↔tail / low↔high
-    const posX = Number(slot.posX || 0) / 100; // + aft (−X), − nose (+X) to match prior UX
-    const posY = Number(slot.posY || 0) / 100;
+    // Nudge ON THE FIN: −100…100 → ±~0.35·finW / ±~0.35·finH (0 = centered)
+    const nudgeX = Number(slot.posX || 0) / 100;
+    const nudgeY = Number(slot.posY || 0) / 100;
     const rotateDeg = Number(slot.rotate || 0) || 0;
     const sideMode = String(slot.side || "both").toLowerCase();
+    const tint = (slot.tint && String(slot.tint).trim()) || null;
 
     const canvas = document.createElement("canvas");
     const cw = 1024, ch = 1024;
@@ -2914,10 +2967,20 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
     if (rotateDeg) ctx2d.rotate((rotateDeg * Math.PI) / 180);
     ctx2d.globalAlpha = opacity;
     const ir = img.naturalWidth / img.naturalHeight;
-    let dw = cw * 0.92, dh = ch * 0.92;
+    let dw = cw * 0.88, dh = ch * 0.88;
     if (ir > 1) dh = dw / ir;
     else dw = dh * ir;
     ctx2d.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+    if (tint) {
+      const hex = tint.startsWith("#") ? tint : "#" + tint;
+      if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+        // Optional color tint via source-atop multiply
+        ctx2d.globalCompositeOperation = "source-atop";
+        ctx2d.globalAlpha = 0.55;
+        ctx2d.fillStyle = hex;
+        ctx2d.fillRect(-dw / 2, -dh / 2, dw, dh);
+      }
+    }
     ctx2d.restore();
     const tex = new THREE.CanvasTexture(canvas);
     configurePaintTexture(tex);
@@ -2933,34 +2996,34 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
       polygonOffsetFactor: -4,
       polygonOffsetUnits: -4,
       opacity: 1,
+      color: 0xffffff,
+      toneMapped: false,
     };
 
-    const baseW = Math.max(0.55, Math.min(size.x * 0.38, 3.2)) * scale;
-    const baseH = baseW * (dh / dw);
-    const depth = Math.max(0.3, Math.min(size.y * 0.35, 0.65));
-    const decalSize = new THREE.Vector3(baseW, Math.max(0.35, baseH), depth);
+    // Size relative to fin, not full fuselage
+    const baseW = Math.max(0.35, Math.min(fin.finW * 0.85, fusLen * 0.22)) * scale;
+    const baseH = baseW * (dh / Math.max(dw, 1e-6));
+    const depth = Math.max(0.25, Math.min(size.y * 0.28, 0.55));
+    const decalSize = new THREE.Vector3(baseW, Math.max(0.28, baseH), depth);
 
-    // Free craft-local aim: center ± ~0.42*fusLen in X, ± ~0.38*size.y in Y
-    const x0 = center.x - fusLen * posX * 0.42;
-    const y0 = center.y + size.y * (0.02 + posY * 0.38);
+    // Centered on fin + nudge (posX: − noseward / + aft on fin chord; posY: − low / + high)
+    const x0 = fin.xAim - fin.finW * nudgeX * 0.35;
+    const y0 = fin.yAim + fin.finH * nudgeY * 0.35;
 
     const xSamples = [
       x0,
-      x0 + fusLen * 0.04,
-      x0 - fusLen * 0.04,
-      x0 + fusLen * 0.08,
-      x0 - fusLen * 0.08,
+      x0 + fin.finW * 0.06,
+      x0 - fin.finW * 0.06,
+      x0 + fin.finW * 0.12,
+      x0 - fin.finW * 0.12,
     ];
     const yCands = [
       y0,
-      y0 - bandH * 0.15,
-      y0 + bandH * 0.15,
-      y0 - size.y * 0.06,
-      y0 + size.y * 0.06,
-      size.y * 0.36,
-      size.y * 0.42,
-      size.y * 0.48,
-      est.yAim,
+      y0 - fin.finH * 0.08,
+      y0 + fin.finH * 0.08,
+      y0 - fin.finH * 0.16,
+      y0 + fin.finH * 0.16,
+      fin.yAim,
     ];
 
     let sides;
@@ -2973,48 +3036,57 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
       let bestErr = Infinity;
       for (const tx of xSamples) {
         for (const y of yCands) {
-          const origin = new THREE.Vector3(tx, y, center.z + side * fusR * 2.6);
+          // Cast toward fin face from outboard
+          const origin = new THREE.Vector3(tx, y, center.z + side * Math.max(fusR * 2.2, size.z * 0.18));
           const dir = new THREE.Vector3(0, 0, -side);
-          let h = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, {
-            maxNy: 0.88,
-            preferSideZones: false,
-          });
+          let h = raycastBestHit(meshList, origin, dir, raycaster);
           if (!h) {
-            origin.z = center.z + side * fusR * 3.8;
+            origin.z = center.z + side * Math.max(fusR * 3.5, size.z * 0.28);
             h = raycastBestHit(meshList, origin, dir, raycaster);
           }
+          // Slight aft/down cast if miss (fin LE / tip)
           if (!h) {
-            origin.z = center.z + side * fusR * 5.2;
-            h = raycastBestHit(meshList, origin, dir, raycaster);
-          }
-          // Belly-ish: also try upward cast when aiming low
-          if (!h && posY < -0.35) {
-            const o2 = new THREE.Vector3(tx, center.y - reach, center.z + side * 0.05);
-            h = raycastBestHit(meshList, o2, new THREE.Vector3(0, 1, 0), raycaster);
-          }
-          // High / crown: downward
-          if (!h && posY > 0.55) {
-            const o3 = new THREE.Vector3(tx, center.y + reach * 0.6, center.z + side * size.z * 0.15);
-            h = raycastBestHit(meshList, o3, new THREE.Vector3(0, -1, 0), raycaster);
+            const o2 = new THREE.Vector3(
+              tx - fusLen * 0.02,
+              y + fin.finH * 0.05,
+              center.z + side * size.z * 0.12
+            );
+            h = raycastBestHit(meshList, o2, new THREE.Vector3(0, -0.15, -side).normalize(), raycaster);
           }
           if (!h || !h.point) continue;
-          const err = Math.abs(h.point.y - y0) + Math.abs(h.point.x - x0) * 0.2;
+          // Prefer hits on aft/high fin, reject mid-cabin / wing
+          if (h.point.x > center.x - fusLen * 0.18) continue;
+          if (h.point.y < center.y + size.y * 0.05) continue;
+          const err =
+            Math.abs(h.point.y - y0) * 1.2 +
+            Math.abs(h.point.x - x0) * 0.35 +
+            Math.abs(h.point.z - center.z) * 0.05;
           if (err < bestErr) {
             bestErr = err;
             best = h;
           }
         }
-        if (best && bestErr < bandH * 0.5) break;
       }
       if (!best) {
-        console.warn("addCustomTextureDecals: no hit side", side, slot.name || idx, "— plane fallback");
+        console.warn("addCustomTextureDecals: no fin hit side", side, slot.name || idx, "— plane fallback on fin");
         const flipU = side < 0;
         const mat = sideMaterialFromTex(tex, flipU, matOpts);
-        const yPlane = Math.max(size.y * 0.28, Math.min(y0, size.y * 0.55));
-        placeFallbackPlaneDecal(group, craft, side, x0, yPlane, fusR * 1.02, center, decalSize, mat, 4 + idx);
+        placeFallbackPlaneDecal(
+          group,
+          craft,
+          side,
+          x0,
+          y0,
+          Math.max(fusR * 0.35, size.z * 0.04),
+          center,
+          decalSize,
+          mat,
+          4 + idx
+        );
         return;
       }
-      const flipU = resolveFlipU(best, side, false, false);
+      // Fin logos: mirror left face so glyphs read L→R from outside (same on both sides)
+      const flipU = side < 0;
       const mat = sideMaterialFromTex(tex, flipU, matOpts);
       projectDecal(group, best, decalSize, mat, 4 + idx);
     });
@@ -3148,6 +3220,9 @@ function addTextDecals(craft, state) {
     polygonOffset: true,
     polygonOffsetFactor: -4,
     polygonOffsetUnits: -4,
+    color: 0xffffff,
+    toneMapped: false,
+    opacity: 1,
   };
 
   const targets = collectDecalTargetMeshes(craft);
@@ -3524,7 +3599,7 @@ function addTextDecals(craft, state) {
   try {
     addCustomTextureDecals(craft, state, group, targets, box, size, center, raycaster);
   } catch (err) {
-    console.warn("custom texture decals failed", err);
+    console.warn("custom texture decals failed", err && err.message ? err.message : err);
   }
 
   return { tex: titleTex || tex, mat: null, group, regTex, sloganTex };
@@ -4532,11 +4607,13 @@ export class Preview3D {
       r: state.registration,
       s: state.slogan,
       tc: state.textColor,
+      rc: state.regColor,
       ts: state.textSize,
       ty: state.textStyle,
       tf: state.textFont,
       rs: state.regSize,
       rf: state.regFont,
+      rsty: state.regStyle,
       tp: state.textPlacement,
       tz: state.titleZone,
       sz: state.sloganZone,

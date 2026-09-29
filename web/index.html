@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600;700&family=PT+Sans+Narrow:wght@400;700&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=0.8.8" />
+  <link rel="stylesheet" href="css/styles.css?v=0.8.9" />
   <script type="importmap">
   {
     "imports": {
@@ -18,7 +18,7 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=0.8.8"></script>
+  <script type="module" src="js/app.js?v=0.8.9"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -160,114 +160,70 @@
             <p class="hint">Changes appear instantly in the hangar. Title sits on the window band.</p>
           </div>
 
-                    <div class="tab-panel" id="tab-text" role="tabpanel" hidden>
+                              <div class="tab-panel" id="tab-text" role="tabpanel" hidden>
             <h2>Text on aircraft</h2>
-            <p class="hint">Pick a <strong>positioning zone</strong> for Title, Slogan, and Registration. Zones move the letters on the hangar for real.</p>
+            <p class="hint">Main text (title / slogan) and ID / registration are fully separate — each has its own font, size, and color.</p>
 
-            <label class="field">
-              <span>Title <em>(airline name)</em></span>
-              <input type="text" id="airline" value="SkinMyBird" maxlength="56" placeholder="e.g. Huculeaks Air" />
-            </label>
-            <label class="field">
-              <span>Title zone</span>
-              <div class="segmented wrap zone-chips" role="group" aria-label="Title zone">
-                <button type="button" class="seg active" data-title-zone="windowband">Window band</button>
-                <button type="button" class="seg" data-title-zone="forward">Forward cabin</button>
-                <button type="button" class="seg" data-title-zone="mid">Mid fuselage</button>
-                <button type="button" class="seg" data-title-zone="aft">Aft fuselage</button>
-                <button type="button" class="seg" data-title-zone="nose">Nose</button>
-                <button type="button" class="seg" data-title-zone="tail">Tail fin</button>
-                <button type="button" class="seg" data-title-zone="belly">Belly</button>
-              </div>
-              <input type="hidden" id="title-zone" value="windowband" />
-            </label>
+            <div class="zone-group text-panel" id="panel-main-text">
+              <h3 class="zone-group-title">Main text — Title &amp; Slogan</h3>
 
-            <label class="field">
-              <span>Slogan <em>(optional)</em></span>
-              <input type="text" id="slogan" value="" maxlength="72" placeholder="e.g. Fly your story" />
-            </label>
-            <label class="field">
-              <span>Slogan zone</span>
-              <div class="segmented wrap zone-chips" role="group" aria-label="Slogan zone">
-                <button type="button" class="seg active" data-slogan-zone="mid">Under title / Mid</button>
-                <button type="button" class="seg" data-slogan-zone="windowband">Window band</button>
-                <button type="button" class="seg" data-slogan-zone="forward">Forward cabin</button>
-                <button type="button" class="seg" data-slogan-zone="aft">Aft fuselage</button>
-                <button type="button" class="seg" data-slogan-zone="belly">Belly</button>
-              </div>
-              <input type="hidden" id="slogan-zone" value="mid" />
-            </label>
-
-            <label class="field">
-              <span>Registration</span>
-              <input type="text" id="registration" value="YR-EUG" maxlength="10" placeholder="YR-…" />
-            </label>
-            <label class="field">
-              <span>Registration zone</span>
-              <div class="segmented wrap zone-chips" role="group" aria-label="Registration zone">
-                <button type="button" class="seg active" data-reg-zone="aft">Aft fuselage</button>
-                <button type="button" class="seg" data-reg-zone="mid">Mid fuselage</button>
-                <button type="button" class="seg" data-reg-zone="tail">Tail fin</button>
-                <button type="button" class="seg" data-reg-zone="belly">Belly</button>
-              </div>
-              <input type="hidden" id="reg-zone" value="aft" />
-            </label>
-
-            <div class="field-row">
-              <label class="field grow">
-                <span>Registration size</span>
-                <div class="segmented wrap" role="group" aria-label="Registration size">
-                  <button type="button" class="seg" data-reg-size="S">S</button>
-                  <button type="button" class="seg active" data-reg-size="M">M</button>
-                  <button type="button" class="seg" data-reg-size="L">L</button>
-                  <button type="button" class="seg" data-reg-size="XL">XL</button>
-                  <button type="button" class="seg" data-reg-size="XXL">XXL</button>
-                </div>
-                <input type="hidden" id="reg-size" value="M" />
+              <label class="field">
+                <span>Title <em>(airline name)</em></span>
+                <input type="text" id="airline" value="SkinMyBird" maxlength="56" placeholder="e.g. Huculeaks Air" />
               </label>
-            </div>
-            <label class="field">
-              <span>Registration font</span>
-              <select id="reg-font" class="select">
+              <label class="field">
+                <span>Title zone</span>
+                <div class="segmented wrap zone-chips" role="group" aria-label="Title zone">
+                  <button type="button" class="seg active" data-title-zone="windowband">Window band</button>
+                  <button type="button" class="seg" data-title-zone="forward">Forward cabin</button>
+                  <button type="button" class="seg" data-title-zone="mid">Mid fuselage</button>
+                  <button type="button" class="seg" data-title-zone="aft">Aft fuselage</button>
+                  <button type="button" class="seg" data-title-zone="nose">Nose</button>
+                  <button type="button" class="seg" data-title-zone="tail">Tail fin</button>
+                  <button type="button" class="seg" data-title-zone="belly">Belly</button>
+                </div>
+                <input type="hidden" id="title-zone" value="windowband" />
+              </label>
+
+              <label class="field">
+                <span>Slogan <em>(optional)</em></span>
+                <input type="text" id="slogan" value="" maxlength="72" placeholder="e.g. Fly your story" />
+              </label>
+              <label class="field">
+                <span>Slogan zone</span>
+                <div class="segmented wrap zone-chips" role="group" aria-label="Slogan zone">
+                  <button type="button" class="seg active" data-slogan-zone="mid">Under title / Mid</button>
+                  <button type="button" class="seg" data-slogan-zone="windowband">Window band</button>
+                  <button type="button" class="seg" data-slogan-zone="forward">Forward cabin</button>
+                  <button type="button" class="seg" data-slogan-zone="aft">Aft fuselage</button>
+                  <button type="button" class="seg" data-slogan-zone="belly">Belly</button>
+                </div>
+                <input type="hidden" id="slogan-zone" value="mid" />
+              </label>
+
+              <div class="field-row">
+                <label class="field shrink">
+                  <span>Title color</span>
+                  <input type="color" id="text-color" value="#1b2430" />
+                </label>
+                <label class="field grow">
+                  <span>Title size</span>
+                  <div class="segmented wrap" role="group" aria-label="Title size">
+                    <button type="button" class="seg" data-size="S">S</button>
+                    <button type="button" class="seg" data-size="M">M</button>
+                    <button type="button" class="seg" data-size="L">L</button>
+                    <button type="button" class="seg active" data-size="XL">XL</button>
+                    <button type="button" class="seg" data-size="XXL">XXL</button>
+                  </div>
+                  <input type="hidden" id="text-size" value="XL" />
+                </label>
+              </div>
+
+              <label class="field">
+                <span>Title font</span>
+                <select id="text-font" class="select">
+                  <option value="montserrat" selected>Montserrat</option>
                 <option value="montserrat">Montserrat</option>
-                <option value="oswald" selected>Oswald</option>
-                <option value="bebas">Bebas Neue</option>
-                <option value="anton">Anton</option>
-                <option value="roboto-condensed">Roboto Condensed</option>
-                <option value="pt-sans-narrow">PT Sans Narrow</option>
-                <option value="helvetica">Helvetica-like (Arial)</option>
-                <option value="segoe">Segoe UI</option>
-                <option value="impact">Impact</option>
-                <option value="georgia">Georgia</option>
-                <option value="trebuchet">Trebuchet MS</option>
-              </select>
-            </label>
-
-            <!-- Legacy placement field kept hidden for export compat -->
-            <input type="hidden" id="text-placement" value="fuselage" />
-
-            <div class="field-row">
-              <label class="field shrink">
-                <span>Text color</span>
-                <input type="color" id="text-color" value="#1b2430" />
-              </label>
-              <label class="field grow">
-                <span>Title size</span>
-                <div class="segmented wrap" role="group" aria-label="Title size">
-                  <button type="button" class="seg" data-size="S">S</button>
-                  <button type="button" class="seg" data-size="M">M</button>
-                  <button type="button" class="seg" data-size="L">L</button>
-                  <button type="button" class="seg active" data-size="XL">XL</button>
-                  <button type="button" class="seg" data-size="XXL">XXL</button>
-                </div>
-                <input type="hidden" id="text-size" value="XL" />
-              </label>
-            </div>
-
-            <label class="field">
-              <span>Airline / Title font</span>
-              <select id="text-font" class="select">
-                <option value="montserrat" selected>Montserrat</option>
                 <option value="oswald">Oswald</option>
                 <option value="bebas">Bebas Neue</option>
                 <option value="anton">Anton</option>
@@ -278,75 +234,143 @@
                 <option value="impact">Impact</option>
                 <option value="georgia">Georgia</option>
                 <option value="trebuchet">Trebuchet MS</option>
-              </select>
-            </label>
+                </select>
+              </label>
 
-            <label class="field">
-              <span>Style</span>
-              <div class="segmented wrap" role="group" aria-label="Text style">
-                <button type="button" class="seg" data-style="regular">Regular</button>
-                <button type="button" class="seg active" data-style="bold">Bold</button>
-                <button type="button" class="seg" data-style="italic">Italic</button>
-                <button type="button" class="seg" data-style="bold-italic">Bold Italic</button>
+              <label class="field">
+                <span>Title style</span>
+                <div class="segmented wrap" role="group" aria-label="Text style">
+                  <button type="button" class="seg" data-style="regular">Regular</button>
+                  <button type="button" class="seg active" data-style="bold">Bold</button>
+                  <button type="button" class="seg" data-style="italic">Italic</button>
+                  <button type="button" class="seg" data-style="bold-italic">Bold Italic</button>
+                </div>
+                <input type="hidden" id="text-style" value="bold" />
+              </label>
+
+              <details class="field-group fine-tune" id="text-custom-pos">
+                <summary class="subhead">Fine nudge (optional)</summary>
+                <p class="hint">Zones do the main placement. Use these only for a small extra shift.</p>
+                <label class="field">
+                  <span>Nose ← → Tail nudge <em id="lab-text-x">0</em></span>
+                  <input type="range" id="text-pos-x" min="-40" max="40" value="0" step="1" />
+                </label>
+                <label class="field">
+                  <span>Low ← → High nudge <em id="lab-text-y">0</em></span>
+                  <input type="range" id="text-pos-y" min="-40" max="40" value="0" step="1" />
+                </label>
+                <label class="field">
+                  <span>Scale on skin <em id="lab-text-scale">200%</em></span>
+                  <input type="range" id="text-scale" min="80" max="350" value="200" step="5" />
+                </label>
+                <label class="check">
+                  <input type="checkbox" id="text-flip-left" />
+                  <span>Fix if left still mirrored</span>
+                </label>
+                <label class="check">
+                  <input type="checkbox" id="text-flip-right" />
+                  <span>Fix if right still mirrored</span>
+                </label>
+              </details>
+            </div>
+
+            <div class="zone-group text-panel" id="panel-id-text">
+              <h3 class="zone-group-title">ID / Registration</h3>
+              <p class="hint">Independent from Main text — changing these never changes Title / Slogan.</p>
+
+              <label class="field">
+                <span>Registration</span>
+                <input type="text" id="registration" value="YR-EUG" maxlength="10" placeholder="YR-…" />
+              </label>
+              <label class="field">
+                <span>Registration zone</span>
+                <div class="segmented wrap zone-chips" role="group" aria-label="Registration zone">
+                  <button type="button" class="seg active" data-reg-zone="aft">Aft fuselage</button>
+                  <button type="button" class="seg" data-reg-zone="mid">Mid fuselage</button>
+                  <button type="button" class="seg" data-reg-zone="tail">Tail fin</button>
+                  <button type="button" class="seg" data-reg-zone="belly">Belly</button>
+                </div>
+                <input type="hidden" id="reg-zone" value="aft" />
+              </label>
+
+              <div class="field-row">
+                <label class="field shrink">
+                  <span>ID color</span>
+                  <input type="color" id="reg-color" value="#1b2430" />
+                </label>
+                <label class="field grow">
+                  <span>ID size</span>
+                  <div class="segmented wrap" role="group" aria-label="Registration size">
+                    <button type="button" class="seg" data-reg-size="S">S</button>
+                    <button type="button" class="seg active" data-reg-size="M">M</button>
+                    <button type="button" class="seg" data-reg-size="L">L</button>
+                    <button type="button" class="seg" data-reg-size="XL">XL</button>
+                    <button type="button" class="seg" data-reg-size="XXL">XXL</button>
+                  </div>
+                  <input type="hidden" id="reg-size" value="M" />
+                </label>
               </div>
-              <input type="hidden" id="text-style" value="bold" />
-            </label>
 
-            <details class="field-group fine-tune" id="text-custom-pos">
-              <summary class="subhead">Fine nudge (optional)</summary>
-              <p class="hint">Zones do the main placement. Use these only for a small extra shift.</p>
               <label class="field">
-                <span>Nose ← → Tail nudge <em id="lab-text-x">0</em></span>
-                <input type="range" id="text-pos-x" min="-40" max="40" value="0" step="1" />
+                <span>ID font</span>
+                <select id="reg-font" class="select">
+                  <option value="montserrat">Montserrat</option>
+                  <option value="oswald" selected>Oswald</option>
+                  <option value="bebas">Bebas Neue</option>
+                  <option value="anton">Anton</option>
+                  <option value="roboto-condensed">Roboto Condensed</option>
+                  <option value="pt-sans-narrow">PT Sans Narrow</option>
+                  <option value="helvetica">Helvetica-like (Arial)</option>
+                  <option value="segoe">Segoe UI</option>
+                  <option value="impact">Impact</option>
+                  <option value="georgia">Georgia</option>
+                  <option value="trebuchet">Trebuchet MS</option>
+                </select>
               </label>
+
               <label class="field">
-                <span>Low ← → High nudge <em id="lab-text-y">0</em></span>
-                <input type="range" id="text-pos-y" min="-40" max="40" value="0" step="1" />
+                <span>ID style</span>
+                <div class="segmented wrap" role="group" aria-label="Registration style">
+                  <button type="button" class="seg" data-reg-style="regular">Regular</button>
+                  <button type="button" class="seg active" data-reg-style="bold">Bold</button>
+                  <button type="button" class="seg" data-reg-style="italic">Italic</button>
+                  <button type="button" class="seg" data-reg-style="bold-italic">Bold Italic</button>
+                </div>
+                <input type="hidden" id="reg-style" value="bold" />
               </label>
-              <label class="field">
-                <span>Scale on skin <em id="lab-text-scale">200%</em></span>
-                <input type="range" id="text-scale" min="80" max="350" value="200" step="5" />
-              </label>
-              <label class="check">
-                <input type="checkbox" id="text-flip-left" />
-                <span>Fix if left still mirrored</span>
-              </label>
-              <label class="check">
-                <input type="checkbox" id="text-flip-right" />
-                <span>Fix if right still mirrored</span>
-              </label>
-            </details>
+            </div>
+
+            <!-- Legacy placement field kept hidden for export compat -->
+            <input type="hidden" id="text-placement" value="fuselage" />
           </div>
-
           <div class="tab-panel" id="tab-textures" role="tabpanel" hidden>
-            <h2>Stickers / logos</h2>
-            <p class="hint">Upload up to 3 images. Slide Nose↔Tail and Low↔High to move them anywhere on the aircraft. Choose Left, Right, or Both sides.</p>
+            <h2>Tail logo / image</h2>
+            <p class="hint">Upload a logo or image — it goes on the <strong>vertical stabilizer (tail fin)</strong>, centered by default. Adjust scale, opacity, nudge, rotate, and which side of the fin.</p>
 
             <div class="texture-slots" id="texture-slots">
               <div class="texture-slot" data-slot="1">
-                <h3 class="subhead">Sticker / logo 1</h3>
+                <h3 class="subhead">Logo / image 1</h3>
                 <label class="file-drop slim">
                   <input type="file" class="ct-file" data-slot="1" accept="image/png,image/jpeg,image/jpg,image/webp" />
                   <span class="file-ico">🖼</span>
-                  <span class="ct-label" id="ct-label-1">Drop or click — PNG / JPG</span>
+                  <span class="ct-label" id="ct-label-1">Drop or click — PNG / JPG for tail</span>
                 </label>
                 <button type="button" class="btn ghost slim ct-clear" data-slot="1" hidden>Remove</button>
                 <label class="field">
-                  <span>Side</span>
+                  <span>Fin side</span>
                   <select class="select ct-side" data-slot="1">
-                    <option value="both" selected>Both sides</option>
-                    <option value="left">Left only</option>
-                    <option value="right">Right only</option>
+                    <option value="both" selected>Both sides of fin</option>
+                    <option value="left">Left fin only</option>
+                    <option value="right">Right fin only</option>
                   </select>
                 </label>
-                <!-- legacy place field kept for older saved state; ignored by hangar -->
-                <input type="hidden" class="ct-place" data-slot="1" value="free" />
+                <input type="hidden" class="ct-place" data-slot="1" value="tail" />
                 <label class="field">
                   <span>Opacity <em class="ct-lab-op" id="ct-lab-op-1">100%</em></span>
                   <input type="range" class="ct-opacity" data-slot="1" min="10" max="100" value="100" step="5" />
                 </label>
                 <label class="field">
-                  <span>Scale <em class="ct-lab-sc" id="ct-lab-sc-1">100%</em></span>
+                  <span>Scale on fin <em class="ct-lab-sc" id="ct-lab-sc-1">100%</em></span>
                   <input type="range" class="ct-scale" data-slot="1" min="20" max="300" value="100" step="5" />
                 </label>
                 <label class="field">
@@ -354,38 +378,41 @@
                   <input type="range" class="ct-rotate" data-slot="1" min="-180" max="180" value="0" step="5" />
                 </label>
                 <label class="field">
-                  <span>Nose ← → Tail <em class="ct-lab-x" id="ct-lab-x-1">0</em></span>
+                  <span>Nudge on fin — Nose ← → Aft <em class="ct-lab-x" id="ct-lab-x-1">0</em></span>
                   <input type="range" class="ct-pos-x" data-slot="1" min="-100" max="100" value="0" step="1" />
                 </label>
                 <label class="field">
-                  <span>Low ← → High <em class="ct-lab-y" id="ct-lab-y-1">0</em></span>
+                  <span>Nudge on fin — Low ← → High <em class="ct-lab-y" id="ct-lab-y-1">0</em></span>
                   <input type="range" class="ct-pos-y" data-slot="1" min="-100" max="100" value="0" step="1" />
+                </label>
+                <label class="field shrink">
+                  <span>Color tint <em>(optional)</em></span>
+                  <input type="color" class="ct-tint" data-slot="1" value="#ffffff" />
                 </label>
               </div>
               <div class="texture-slot" data-slot="2">
-                <h3 class="subhead">Sticker / logo 2</h3>
+                <h3 class="subhead">Logo / image 2 (optional)</h3>
                 <label class="file-drop slim">
                   <input type="file" class="ct-file" data-slot="2" accept="image/png,image/jpeg,image/jpg,image/webp" />
                   <span class="file-ico">🖼</span>
-                  <span class="ct-label" id="ct-label-2">Drop or click — PNG / JPG</span>
+                  <span class="ct-label" id="ct-label-2">Drop or click — PNG / JPG for tail</span>
                 </label>
                 <button type="button" class="btn ghost slim ct-clear" data-slot="2" hidden>Remove</button>
                 <label class="field">
-                  <span>Side</span>
+                  <span>Fin side</span>
                   <select class="select ct-side" data-slot="2">
-                    <option value="both" selected>Both sides</option>
-                    <option value="left">Left only</option>
-                    <option value="right">Right only</option>
+                    <option value="both" selected>Both sides of fin</option>
+                    <option value="left">Left fin only</option>
+                    <option value="right">Right fin only</option>
                   </select>
                 </label>
-                <!-- legacy place field kept for older saved state; ignored by hangar -->
-                <input type="hidden" class="ct-place" data-slot="2" value="free" />
+                <input type="hidden" class="ct-place" data-slot="2" value="tail" />
                 <label class="field">
                   <span>Opacity <em class="ct-lab-op" id="ct-lab-op-2">100%</em></span>
                   <input type="range" class="ct-opacity" data-slot="2" min="10" max="100" value="100" step="5" />
                 </label>
                 <label class="field">
-                  <span>Scale <em class="ct-lab-sc" id="ct-lab-sc-2">100%</em></span>
+                  <span>Scale on fin <em class="ct-lab-sc" id="ct-lab-sc-2">100%</em></span>
                   <input type="range" class="ct-scale" data-slot="2" min="20" max="300" value="100" step="5" />
                 </label>
                 <label class="field">
@@ -393,38 +420,41 @@
                   <input type="range" class="ct-rotate" data-slot="2" min="-180" max="180" value="0" step="5" />
                 </label>
                 <label class="field">
-                  <span>Nose ← → Tail <em class="ct-lab-x" id="ct-lab-x-2">0</em></span>
+                  <span>Nudge on fin — Nose ← → Aft <em class="ct-lab-x" id="ct-lab-x-2">0</em></span>
                   <input type="range" class="ct-pos-x" data-slot="2" min="-100" max="100" value="0" step="1" />
                 </label>
                 <label class="field">
-                  <span>Low ← → High <em class="ct-lab-y" id="ct-lab-y-2">0</em></span>
+                  <span>Nudge on fin — Low ← → High <em class="ct-lab-y" id="ct-lab-y-2">0</em></span>
                   <input type="range" class="ct-pos-y" data-slot="2" min="-100" max="100" value="0" step="1" />
+                </label>
+                <label class="field shrink">
+                  <span>Color tint <em>(optional)</em></span>
+                  <input type="color" class="ct-tint" data-slot="2" value="#ffffff" />
                 </label>
               </div>
               <div class="texture-slot" data-slot="3">
-                <h3 class="subhead">Sticker / logo 3</h3>
+                <h3 class="subhead">Logo / image 3 (optional)</h3>
                 <label class="file-drop slim">
                   <input type="file" class="ct-file" data-slot="3" accept="image/png,image/jpeg,image/jpg,image/webp" />
                   <span class="file-ico">🖼</span>
-                  <span class="ct-label" id="ct-label-3">Drop or click — PNG / JPG</span>
+                  <span class="ct-label" id="ct-label-3">Drop or click — PNG / JPG for tail</span>
                 </label>
                 <button type="button" class="btn ghost slim ct-clear" data-slot="3" hidden>Remove</button>
                 <label class="field">
-                  <span>Side</span>
+                  <span>Fin side</span>
                   <select class="select ct-side" data-slot="3">
-                    <option value="both" selected>Both sides</option>
-                    <option value="left">Left only</option>
-                    <option value="right">Right only</option>
+                    <option value="both" selected>Both sides of fin</option>
+                    <option value="left">Left fin only</option>
+                    <option value="right">Right fin only</option>
                   </select>
                 </label>
-                <!-- legacy place field kept for older saved state; ignored by hangar -->
-                <input type="hidden" class="ct-place" data-slot="3" value="free" />
+                <input type="hidden" class="ct-place" data-slot="3" value="tail" />
                 <label class="field">
                   <span>Opacity <em class="ct-lab-op" id="ct-lab-op-3">100%</em></span>
                   <input type="range" class="ct-opacity" data-slot="3" min="10" max="100" value="100" step="5" />
                 </label>
                 <label class="field">
-                  <span>Scale <em class="ct-lab-sc" id="ct-lab-sc-3">100%</em></span>
+                  <span>Scale on fin <em class="ct-lab-sc" id="ct-lab-sc-3">100%</em></span>
                   <input type="range" class="ct-scale" data-slot="3" min="20" max="300" value="100" step="5" />
                 </label>
                 <label class="field">
@@ -432,17 +462,21 @@
                   <input type="range" class="ct-rotate" data-slot="3" min="-180" max="180" value="0" step="5" />
                 </label>
                 <label class="field">
-                  <span>Nose ← → Tail <em class="ct-lab-x" id="ct-lab-x-3">0</em></span>
+                  <span>Nudge on fin — Nose ← → Aft <em class="ct-lab-x" id="ct-lab-x-3">0</em></span>
                   <input type="range" class="ct-pos-x" data-slot="3" min="-100" max="100" value="0" step="1" />
                 </label>
                 <label class="field">
-                  <span>Low ← → High <em class="ct-lab-y" id="ct-lab-y-3">0</em></span>
+                  <span>Nudge on fin — Low ← → High <em class="ct-lab-y" id="ct-lab-y-3">0</em></span>
                   <input type="range" class="ct-pos-y" data-slot="3" min="-100" max="100" value="0" step="1" />
+                </label>
+                <label class="field shrink">
+                  <span>Color tint <em>(optional)</em></span>
+                  <input type="color" class="ct-tint" data-slot="3" value="#ffffff" />
                 </label>
               </div>
             </div>
 
-            <h2>Logo / photo</h2>
+            <h2>Logo / photo <em>(export pack)</em></h2>
             <label class="file-drop" id="file-drop">
               <input type="file" id="soacra" accept="image/*" />
               <span class="file-ico">🖼</span>
@@ -618,7 +652,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.8.8 · nose clip · wing/HT zones · reg font/size · clearGap · DDS BC7</span>
+      <span>v0.8.9 · aft clip · Main vs ID text · tail logos · DDS BC7</span>
     </footer>
   </div>
 </body>
