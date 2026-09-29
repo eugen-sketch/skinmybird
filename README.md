@@ -15,6 +15,11 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.8.4 notes
+- **Under-title slogan = title canvas (no separate decal)**: when Slogan zone is Mid / under-title, do **not** mount a second slogan panel. Draw “Fly your story” as a second line on the same `makeRoleTexture` title canvas (clear 2D gap) and project only that one panel at the title window-band hit — slogan inherits title X/Y/orientation, so it cannot drift into the wing-root fairing (fixes A320/787 mirrored fairing ghost). Other slogan zones (aft, nose, belly, …) keep a separate `mountRole`. Registration stays aft.
+- Text raycasts exclude wing / fairing / engine meshes when multi-mesh targets exist (single-mesh GLBs unchanged).
+- Paint zone shader cache key still `smb_body_zone_shader_v075`. Cache-bust `?v=0.8.4`
+
 ### v0.8.3 notes
 - **Under-title slogan wing-root fix**: Mid / under-title slogan no longer uses large `titlePanelH/2 + ~0.32·panelH + sloganH/2` drop into the wing-root fairing. Prefer Y just below title bottom with a **modest gap** (~0.10·titleH / ~0.14·bandH); share title X (forward of wing LE, never slide aft); clamp Y above `wingY + margin` when craft metrics exist. A320neo + 787 must show full “Fly your story”; 737 still clear; no title overlap.
 - Mid zone `yBias` softened −0.55 → −0.18. Paint zone shader cache key still `smb_body_zone_shader_v075`. Cache-bust `?v=0.8.3`
