@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.8.4 — under-title/mid slogan drawn on title canvas (one panel); hangar axis/fin + flank from v0.8.1; paint zones v0.7.5 tube shield kept.
+ * SkinMyBird 3D hangar preview v0.8.5 — under-title/mid slogan drawn on title canvas (one panel); hangar axis/fin + flank from v0.8.1; paint zones v0.7.5 tube shield kept.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1531,7 +1531,7 @@ const TEXT_ZONE_DEFS = {
 };
 
 /** Per-role vertical stacking so slogan/reg never sit on the title glyph band.
- * v0.8.4: under-title/mid slogan is baked into the title texture (no separate Y stack);
+ * v0.8.5: under-title/mid slogan is baked into the title texture (no separate Y stack);
  * ROLE_Y_STACK.slogan kept for non-mid zones (aft/nose/belly/…).
  */
 const ROLE_Y_STACK = {
@@ -2297,7 +2297,7 @@ function makeDecalTexture(state, w = DECAL_W, h = DECAL_H) {
 }
 
 /** Single-role text canvas (title / slogan / registration) for independent zone placement.
- * v0.8.4: role "title" + opts.includeSlogan draws airline + slogan as two lines on one canvas
+ * v0.8.5: role "title" + opts.includeSlogan draws airline + slogan as two lines on one canvas
  * (clear 2D gap) so under-title slogan shares the title mesh hit — no wing-root second decal.
  */
 function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
@@ -2361,22 +2361,30 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
     const titleRaw = raw || String(state.airline || "").trim() || "SkinMyBird";
     const sloganRaw = String(state.slogan || "").trim();
     const titlePx = fitFontPx(ctx, titleRaw, maxW, basePx, state, 56);
-    const titleY = ch * 0.34;
-    ctx.font = resolveFontFace(state, titlePx);
-    ctx.lineWidth = Math.max(2, titlePx * 0.075);
-    ctx.strokeText(titleRaw, cw / 2, titleY);
-    ctx.fillText(titleRaw, cw / 2, titleY);
+    let titleY = ch * 0.34;
 
     const style = String(state.textStyle || "").toLowerCase();
     const sloganStyle = style.includes("italic")
       ? (style.includes("bold") ? "bold-italic" : "italic")
       : "regular";
     const sState = { ...state, textStyle: sloganStyle };
-    const sBase = Math.round(basePx * 0.48);
+    const sBase = Math.round(basePx * 0.42);
     const sPx = fitFontPx(ctx, sloganRaw, maxW, sBase, sState, 40);
-    // Clear 2D gap: ≥0.55·titlePx + 0.35·sPx between baselines (not cramped under glyphs)
-    const gap = Math.max(titlePx * 0.55, sPx * 0.45, ch * 0.10);
-    const sloganY = Math.min(ch * 0.88, titleY + gap + sPx * 0.15);
+    // Reserve explicit title descender clearance before the slogan baseline.
+    const gap = Math.max(titlePx * 1.05, sPx * 0.75, ch * 0.14);
+    let sloganY = titleY + titlePx * 0.38 + gap;
+    // If the larger gap runs long, lift both lines slightly while keeping the
+    // slogan in the same combined canvas. The final clamp is a last-resort guard.
+    if (sloganY > ch * 0.90) {
+      titleY = ch * 0.32;
+      sloganY = titleY + titlePx * 0.38 + gap;
+    }
+    sloganY = Math.min(ch * 0.90, sloganY);
+    ctx.font = resolveFontFace(state, titlePx);
+    ctx.lineWidth = Math.max(2, titlePx * 0.075);
+    ctx.strokeText(titleRaw, cw / 2, titleY);
+    ctx.fillText(titleRaw, cw / 2, titleY);
+
     ctx.font = resolveFontFace(sState, sPx);
     ctx.lineWidth = Math.max(2, sPx * 0.055);
     ctx.shadowBlur = 7;
@@ -3032,7 +3040,7 @@ function estimateFuselageHalfWidth(size) {
 }
 
 /**
- * Mesh-projected text/sticker decals — v0.8.4 under-title/mid slogan on title canvas; separate slogan for other zones; v0.8.1 flank/Y stack.
+ * Mesh-projected text/sticker decals — v0.8.5 under-title/mid slogan on title canvas; separate slogan for other zones; v0.8.1 flank/Y stack.
  */
 function addTextDecals(craft, state) {
   craft.updateMatrixWorld(true);
@@ -3123,7 +3131,7 @@ function addTextDecals(craft, state) {
       ? targets.all.slice()
       : scored.map((s) => s.mesh);
   }
-  // v0.8.4: drop wing / fairing / engine meshes from text raycasts when multi-mesh
+  // v0.8.5: drop wing / fairing / engine meshes from text raycasts when multi-mesh
   sideBeltMeshes = filterTextRayMeshes(sideBeltMeshes, scored);
   const fuselageSideMeshes = sideBeltMeshes.slice();
   let allCraftMeshes = (targets.all && targets.all.length)
@@ -3430,7 +3438,7 @@ function addTextDecals(craft, state) {
   const titleTex = mountRole("title", titleZone, 2, 1.0, {
     includeSlogan: combineSloganIntoTitle,
   });
-  // v0.8.4: under-title/mid → NO separate slogan decal (inherits title hit)
+  // v0.8.5: under-title/mid → NO separate slogan decal (inherits title hit)
   const sloganTex = combineSloganIntoTitle
     ? null
     : mountRole("slogan", sloganZone, 2, 0.58);
