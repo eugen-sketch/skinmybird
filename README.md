@@ -15,6 +15,13 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.6.10 notes
+- **QA fix FAIL title missing**: v0.6.9 `yAim` at band `0.72` + high probe + `maxNy` 0.4 rejected upper-tube side normals at forward `xMain` → zero title hits (reg aft still OK).
+- Title **multi-X fallback** (like reg): try `xMain`, `xMain−0.04/0.08×fusLen`, then `center.x+0.20/0.16/0.12×size.x`; prefer X forward of `wingLeX−panelLen×0.25`, last-resort closer to LE; log which X hit.
+- Softer **mid-band yAim** `min.y+bandH×0.58` (+`posY`); Y ladder aim/−8%/+8%/−18%/+15%/mid; prefer highest among hits `≥min.y+bandH×0.35`; `yBandFloor=min.y+bandH×0.15`.
+- Title casts `maxNy` **0.52** (reg stays 0.4); `panelLen≈fusLen×0.24`; wing LE from **root-near** wing AABBs (close to `center.z`).
+- Keep windowband paint **0.50–0.60**. Cache-bust `?v=0.6.10`
+
 ### v0.6.9 notes
 - **QA fix FAIL_TOO_LOW**: cyan windowband paint + title sat on the lowest forward tube / wing-root line.
 - Raise `classifyPoint` windowband to `vTube` **0.50–0.60** (true cabin window line); accent **0.44–0.50**; belly `<0.22`, crown `>0.62` unchanged.
@@ -125,7 +132,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.6.9 (selector)
+## Models v0.6.10 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -179,8 +186,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.6.9`
-   - Personal → `http://127.0.0.1:5174/?v=0.6.9`
+   - Commercial → `http://127.0.0.1:5173/?v=0.6.10`
+   - Personal → `http://127.0.0.1:5174/?v=0.6.10`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -264,4 +271,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.6.9 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.6.10 — commercial + personal editions · GLB hangar · Two-Tone

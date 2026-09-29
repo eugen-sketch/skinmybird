@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.9 — raised windowband paint + upper-band title yAim; keep wing-LE xMain.
+ * SkinMyBird 3D hangar preview v0.6.10 — title multi-X fallback + mid-band yAim (restore visibility); keep wing-LE xMain.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -627,7 +627,7 @@ function classifyPoint(x, y, z, ctx) {
   if (w < 0.30 && u > 0.16 && u < 0.85 && vTube > 0.62) return ZONE_ID.crown;
 
   // Body side — windowband on true cabin window line (mid/upper tube), accent just under
-  // v0.6.9: raised from ~0.36–0.52 (low belly stripe / wing-root) to ~0.44–0.60
+  // v0.6.9/0.6.10: raised windowband ~0.50–0.60 (cabin line); accent 0.44–0.50
   if (w < 0.30 && u > 0.14 && u < 0.9) {
     if (vTube < 0.22) return ZONE_ID.belly;
     if (vTube > 0.50 && vTube < 0.60 && w > 0.06) return ZONE_ID.windowband;
@@ -1874,14 +1874,30 @@ function addTextDecals(craft, state) {
 
   const fusLen = size.x;
 
-  // Wing LE X from wing mesh AABBs. Hangar fit: nose = +X (longest forward), so the
-  // forward-most wing extent is max.x. Prefer max.x; if that sits aft of craft center
-  // (would place title behind the wing), use min.x when it is closer to the nose (+X).
+  // Wing LE X from wing mesh AABBs near fuselage root (not tip cloud).
+  // Hangar fit: nose = +X; root LE ≈ max.x of wing meshes close to center.z.
   let wingLeX = null;
   if (targets.wings && targets.wings.length) {
+    const fusNearZ = Math.max(0.45, Math.min(size.y * 0.4, size.z * 0.14));
+    const nearRoot = [];
+    for (const w of targets.wings) {
+      if (!w.box) continue;
+      const cz = (w.box.min.z + w.box.max.z) * 0.5;
+      const straddles = w.box.min.z <= center.z && w.box.max.z >= center.z;
+      const absCz = Math.abs(cz - center.z);
+      const minAbsExtent = Math.min(
+        Math.abs(w.box.min.z - center.z),
+        Math.abs(w.box.max.z - center.z),
+        absCz
+      );
+      if (straddles || absCz <= fusNearZ * 2.5 || minAbsExtent <= fusNearZ * 1.8) {
+        nearRoot.push(w);
+      }
+    }
+    const useWings = nearRoot.length ? nearRoot : targets.wings;
     let maxX = -Infinity;
     let minX = Infinity;
-    for (const w of targets.wings) {
+    for (const w of useWings) {
       if (w.box) {
         maxX = Math.max(maxX, w.box.max.x);
         minX = Math.min(minX, w.box.min.x);
@@ -1897,17 +1913,17 @@ function addTextDecals(craft, state) {
     }
   }
 
-  // --- v0.6.9 window-band belt (raised zone paint + local upper yAim; keep wing-LE xMain) ---
-  // sideBeltMeshes: windowband + accent + fuselage sides (title may hit fuselage at raised Y).
+  // --- v0.6.10 window-band belt (multi-X title + mid-band yAim; restore visibility) ---
+  // sideBeltMeshes: windowband + accent + fuselage sides (title may hit fuselage at band Y).
   // Fallback fuselage ONLY if no windowband. Never belly / crown / cockpit / fairings / wings.
-  // Nose is +X on hangar-fit craft (longest axis forward); wing LE = forward-most wing AABB X.
+  // Nose is +X on hangar-fit craft (longest axis forward); wing LE = forward-most root wing AABB X.
   const scored = targets.scored || [];
   const wbScored = scored.filter((s) => s.paintZone === "windowband");
   const accentScored = scored.filter((s) => s.paintZone === "accent");
   const fuselageScored = scored.filter((s) => s.paintZone === "fuselage");
   let sideBeltScored;
   if (wbScored.length) {
-    // Prefer windowband/accent; allow fuselage side hits at raised cabin height
+    // Prefer windowband/accent; allow fuselage side hits at cabin height
     sideBeltScored = wbScored.concat(accentScored).concat(fuselageScored);
   } else {
     sideBeltScored = fuselageScored.length
@@ -1930,13 +1946,13 @@ function addTextDecals(craft, state) {
   const posY = Number(state.textPosY != null ? state.textPosY : 8) / 100;
   const scalePct = Math.max(0.5, Math.min(1.6, (Number(state.textScale) || 100) / 100));
 
-  // Title panel length first — needed for xMain and local-band X filter (wing-LE unchanged)
+  // Title panel length first — needed for xMain and local-band X filter
   let panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
-    fusLen * 0.22; // v0.6.8 shorter than 0.28 so panel does not reach wing
+    fusLen * 0.24; // v0.6.10 slightly longer than 0.22; clear of LE via x candidates
 
-  // Title X: forward of wing LE AABB with visible gap (nose = +X) — KEEP from 0.6.8
+  // Title X: forward of wing LE AABB with visible gap (nose = +X)
   let xMain;
   if (place === "tail") {
     xMain = center.x - size.x * (0.28 + posX * 0.1);
@@ -1956,10 +1972,12 @@ function addTextDecals(craft, state) {
     xMain = center.x + size.x * (0.28 - posX * 0.35); // more forward than 0.24
   }
 
-  // Aim Y: LOCAL windowband near title X, UPPER third of that union (not global mid)
+  // Aim Y: LOCAL windowband near title X, mid/upper band (0.58) — not crown 0.72
   let yAim;
   let bandH;
   let yBandFloor;
+  let yPreferFloor;
+  let bandMidY;
   if (wbScored.length && place !== "belly" && place !== "wing" && place !== "tail") {
     const xPad = Math.max(panelLen * 0.6, fusLen * 0.15);
     const xLo = xMain - xPad;
@@ -1973,34 +1991,69 @@ function addTextDecals(craft, state) {
     const union = new THREE.Box3();
     for (const s of useWb) union.union(s.box);
     bandH = Math.max(0.06, union.max.y - union.min.y);
-    // Upper third of local/raised band (default high on cabin window line)
-    yAim = union.min.y + bandH * 0.72;
-    // Small user textPosY nudge within the band (Low↔High); default still sits high
+    bandMidY = (union.min.y + union.max.y) * 0.5;
+    // Mid-upper of local/raised band (visibility first; clear of wing root)
+    yAim = union.min.y + bandH * 0.58;
     yAim += bandH * (posY * 0.15);
-    // True band bottom — reject wing-root / belly, keep valid upper-band hits
-    yBandFloor = union.min.y;
+    // Reject true belly; allow mid band
+    yBandFloor = union.min.y + bandH * 0.15;
+    // Prefer highest only among hits above this mid-band floor
+    yPreferFloor = union.min.y + bandH * 0.35;
   } else if (wbScored.length && place !== "belly" && place !== "wing") {
     const union = new THREE.Box3();
     for (const s of wbScored) union.union(s.box);
-    yAim = (union.min.y + union.max.y) * 0.5;
     bandH = Math.max(0.06, union.max.y - union.min.y);
+    bandMidY = (union.min.y + union.max.y) * 0.5;
+    yAim = bandMidY;
     yAim += bandH * (posY * 0.12);
-    yBandFloor = union.min.y;
+    yBandFloor = union.min.y + bandH * 0.15;
+    yPreferFloor = union.min.y + bandH * 0.35;
   } else {
     bandH = Math.max(0.12, size.y * 0.10);
     yAim = center.y + size.y * (0.04 + posY * 0.25);
+    bandMidY = yAim;
     yBandFloor = yAim - bandH * 0.55;
+    yPreferFloor = yAim - bandH * 0.25;
   }
-  // Probes: optional higher first, then ±8%/±15% of band height around yAim
+  // Softer Y ladder: aim, then ±8%, −18%/+15%, then band mid
   const yAlts = [
-    yAim + bandH * 0.1,
     yAim,
     yAim - bandH * 0.08,
     yAim + bandH * 0.08,
-    yAim - bandH * 0.15,
+    yAim - bandH * 0.18,
     yAim + bandH * 0.15,
+    bandMidY,
   ];
   const yWindow = yAim;
+
+  // Title multi-X fallback (like reg): stay forward of wing LE when possible
+  const titleXs = [];
+  function pushTitleX(x) {
+    if (Number.isFinite(x) && !titleXs.includes(x)) titleXs.push(x);
+  }
+  pushTitleX(xMain);
+  pushTitleX(xMain - fusLen * 0.04);
+  pushTitleX(xMain - fusLen * 0.08);
+  pushTitleX(center.x + size.x * 0.20);
+  pushTitleX(center.x + size.x * 0.16);
+  pushTitleX(center.x + size.x * 0.12);
+  // Prefer X forward of (wingLeX - panelLen*0.25); last resort allow closer to LE
+  const leClearX = wingLeX != null ? wingLeX - panelLen * 0.25 : null;
+  let titleXsPreferred = titleXs;
+  let titleXsLastResort = [];
+  if (leClearX != null) {
+    titleXsPreferred = titleXs.filter((x) => x >= leClearX);
+    titleXsLastResort = titleXs.filter((x) => x < leClearX);
+    if (!titleXsPreferred.length) {
+      // Ensure at least one candidate nearer LE so text can still show
+      titleXsPreferred = titleXs.slice(0, 1);
+      titleXsLastResort = titleXs.slice(1);
+    } else if (titleXsLastResort.length === 0 && titleXs.length) {
+      // last resort: one step closer to LE than preferred aft-most
+      const closer = Math.min(...titleXsPreferred) - fusLen * 0.03;
+      if (Number.isFinite(closer)) titleXsLastResort = [closer];
+    }
+  }
 
   const titlePanelH =
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
@@ -2055,9 +2108,10 @@ function addTextDecals(craft, state) {
   const meshListTitle = meshesForPlace(false);
   const meshListReg = meshesForPlace(true);
 
-  function trySideHit(sideSign, x, yCandidates, meshList) {
+  function trySideHit(sideSign, x, yCandidates, meshList, castOpts) {
     const probeYs = Array.isArray(yCandidates) ? yCandidates.slice() : [yCandidates];
     const meshes = meshList || meshListTitle;
+    const opts = Object.assign({ maxNy: 0.4, preferSideZones: true }, castOpts || {});
     function castAtY(y) {
       let origin, dir, hit;
       if (place === "belly") {
@@ -2074,8 +2128,7 @@ function addTextDecals(craft, state) {
         dir = new THREE.Vector3(0, -1, 0);
         return raycastBestHit(meshes, origin, dir, raycaster);
       }
-      // Hard lateral only — |Ny|<=0.4; no soft belly / low-fuselage path
-      const opts = { maxNy: 0.4, preferSideZones: true };
+      // Lateral cast — title may relax maxNy; reg keeps 0.4
       const zDist = fusR * 2.4;
       origin = new THREE.Vector3(x, y, center.z + sideSign * zDist);
       dir = new THREE.Vector3(0, 0, -sideSign);
@@ -2087,30 +2140,60 @@ function addTextDecals(craft, state) {
       if (hit && hit.point && hit.point.y < yBandFloor) hit = null;
       return hit;
     }
-    // Among successful probes, prefer the highest hit (stay on upper windowband)
+    // Prefer highest among mid-band+ hits (avoid crown-scraping when mid works)
     let best = null;
+    let bestMid = null;
     for (const y of probeYs) {
       const hit = castAtY(y);
       if (!hit) continue;
+      if (hit.point && hit.point.y >= yPreferFloor) {
+        if (!bestMid || hit.point.y > bestMid.point.y) bestMid = hit;
+      }
       if (!best || (hit.point && (!best.point || hit.point.y > best.point.y))) {
         best = hit;
       }
     }
-    return best;
+    return bestMid || best;
   }
 
-  // LEFT (−Z) and RIGHT (+Z) — airline / sticker title
+  // LEFT (−Z) and RIGHT (+Z) — airline / sticker title (multi-X fallback)
+  const titleCastOpts = { maxNy: 0.52, preferSideZones: true };
   [-1, 1].forEach((side) => {
-    const hit = trySideHit(
-      side,
-      xMain,
-      place === "belly" || place === "wing" ? [yWindow] : yAlts,
-      meshListTitle
-    );
+    let hit = null;
+    let usedX = null;
+    const yCands = place === "belly" || place === "wing" ? [yWindow] : yAlts;
+    for (const tx of titleXsPreferred) {
+      hit = trySideHit(side, tx, yCands, meshListTitle, titleCastOpts);
+      if (hit) {
+        usedX = tx;
+        break;
+      }
+    }
     if (!hit) {
-      console.warn("addTextDecals: no hit on side", side, place, "meshes", meshListTitle.length);
+      for (const tx of titleXsLastResort) {
+        hit = trySideHit(side, tx, yCands, meshListTitle, titleCastOpts);
+        if (hit) {
+          usedX = tx;
+          break;
+        }
+      }
+    }
+    if (!hit) {
+      console.warn("addTextDecals: no hit on side", side, place, "meshes", meshListTitle.length, "triedXs", titleXsPreferred.concat(titleXsLastResort));
       return;
     }
+    console.info(
+      "addTextDecals: title hit side",
+      side,
+      "x",
+      usedX,
+      "y",
+      hit.point && hit.point.y,
+      "xMain",
+      xMain,
+      "wingLeX",
+      wingLeX
+    );
     const flipU = resolveFlipU(hit, side, flipLeft, flipRight);
     const mat = sideMaterialFromTex(tex, flipU, sharedMatOpts);
     const sizeVec =
@@ -2135,7 +2218,7 @@ function addTextDecals(craft, state) {
     }
   }
 
-  // One aft registration per side — SAME yAim ladder as title (windowband).
+  // One aft registration per side — SAME yAim ladder as title (windowband); maxNy 0.4
   let regTex = null;
   if (state.registration && place !== "tail" && place !== "wing") {
     regTex = makeRegTexture(state);
@@ -2150,11 +2233,12 @@ function addTextDecals(craft, state) {
       .filter((x) => x < xMain - size.x * 0.05);
     const regXCandidates = regXAft.concat(regXFwd);
     const regYAlts = yAlts.slice();
+    const regCastOpts = { maxNy: 0.4, preferSideZones: true };
 
     [-1, 1].forEach((side) => {
       let hit = null;
       for (const rx of regXCandidates) {
-        hit = trySideHit(side, rx, regYAlts, meshListReg);
+        hit = trySideHit(side, rx, regYAlts, meshListReg, regCastOpts);
         if (hit) break;
       }
       if (!hit) {
