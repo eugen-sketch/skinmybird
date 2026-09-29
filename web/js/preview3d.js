@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.7 — title further forward + shorter panel (clear of wing LE); windowband yAim.
+ * SkinMyBird 3D hangar preview v0.6.8 — wing-LE-aware title X + shorter panel; windowband yAim.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1873,9 +1873,33 @@ function addTextDecals(craft, state) {
 
   const fusLen = size.x;
 
-  // --- v0.6.7 window-band belt (forward xMain + short panelLen; yAim unchanged) ---
+  // Wing LE X from wing mesh AABBs. Hangar fit: nose = +X (longest forward), so the
+  // forward-most wing extent is max.x. Prefer max.x; if that sits aft of craft center
+  // (would place title behind the wing), use min.x when it is closer to the nose (+X).
+  let wingLeX = null;
+  if (targets.wings && targets.wings.length) {
+    let maxX = -Infinity;
+    let minX = Infinity;
+    for (const w of targets.wings) {
+      if (w.box) {
+        maxX = Math.max(maxX, w.box.max.x);
+        minX = Math.min(minX, w.box.min.x);
+      }
+    }
+    if (Number.isFinite(maxX)) {
+      wingLeX = maxX;
+      const noseX = center.x + size.x * 0.5;
+      if (maxX < center.x && Number.isFinite(minX) &&
+          Math.abs(noseX - minX) < Math.abs(noseX - maxX)) {
+        wingLeX = minX; // invert: min.x closer to nose
+      }
+    }
+  }
+
+  // --- v0.6.8 window-band belt (wing-LE-aware xMain + shorter panelLen; yAim unchanged) ---
   // sideBeltMeshes: ONLY windowband + accent. Fallback fuselage ONLY if no windowband.
   // Never belly / crown / cockpit / fairings / wings for title/reg side casts.
+  // Nose is +X on hangar-fit craft (longest axis forward); wing LE = forward-most wing AABB X.
   const scored = targets.scored || [];
   const wbScored = scored.filter((s) => s.paintZone === "windowband");
   const accentScored = scored.filter((s) => s.paintZone === "accent");
@@ -1927,11 +1951,11 @@ function addTextDecals(craft, state) {
   // Hard floor: anything below band bottom is wing-root / belly — reject
   const yBandFloor = yAim - bandH;
 
-  // Title panel: fit INSIDE the window band; short so it cannot overlap wing root
-  const panelLen =
+  // Title panel: fit INSIDE the window band; shorter so aft edge stays clear of wing LE
+  let panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
-    fusLen * 0.28; // v0.6.7 ~0.26–0.30 fusLen (was 0.33)
+    fusLen * 0.22; // v0.6.8 shorter than 0.28 so panel does not reach wing
   const titlePanelH =
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
     place === "belly" || place === "tail" ? Math.max(0.32, Math.min(size.y * 0.28, 0.72)) :
@@ -1949,10 +1973,25 @@ function addTextDecals(craft, state) {
     panelDepth
   );
 
-  // Title X: further forward cabin, nose-ward of wing LE (~0.24 × fusLen ahead of center)
-  let xMain = center.x + size.x * (0.24 - posX * 0.35);
-  if (place === "tail") xMain = center.x - size.x * (0.28 + posX * 0.1);
-  else if (place === "wing") xMain = center.x - size.x * 0.02;
+  // Title X: forward of wing LE AABB with visible gap (nose = +X)
+  let xMain;
+  if (place === "tail") {
+    xMain = center.x - size.x * (0.28 + posX * 0.1);
+  } else if (place === "wing") {
+    xMain = center.x - size.x * 0.02;
+  } else if (wingLeX != null) {
+    // Center of title panel sits forward of wing LE with gap ≈ 0.08*fusLen + half panel
+    const gap = Math.max(0.06 * fusLen, 0.25);
+    xMain = wingLeX + gap + panelLen * 0.5;
+    const xMax = center.x + size.x * 0.38;
+    const xMin = center.x + size.x * 0.08; // still forward of mid
+    xMain = Math.min(xMax, Math.max(xMin, xMain));
+    // User posX nudge within clamps (posX>0 shifts aft / −X)
+    xMain -= size.x * posX * 0.35;
+    xMain = Math.min(xMax, Math.max(xMin, xMain));
+  } else {
+    xMain = center.x + size.x * (0.28 - posX * 0.35); // more forward than 0.24
+  }
 
   const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
   const maxFusAbsZ = fusR * 2.35;
@@ -2077,7 +2116,7 @@ function addTextDecals(craft, state) {
     const regXAft = [0.18, 0.22, 0.28, 0.32].map((f) => center.x - size.x * f);
     const regXFwd = [0.14, 0.10, 0.06]
       .map((f) => center.x - size.x * f)
-      .filter((x) => x < xMain - size.x * 0.02);
+      .filter((x) => x < xMain - size.x * 0.05);
     const regXCandidates = regXAft.concat(regXFwd);
     const regYAlts = yAlts.slice();
 

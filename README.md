@@ -15,6 +15,12 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.6.8 notes
+- **QA fix FAIL_CROPPED_BY_WING**: compute wing leading-edge X from wing mesh AABBs (`max.x`, nose=+X) and place title forward of that with a visible gap, instead of a fixed `center.x + size.x * 0.24`.
+- Shorter panel: `panelLen ≈ fusLen * 0.22` (was 0.28) so the panel aft edge stays clear of the wing LE.
+- Clamp `xMain` to cabin (`0.08…0.38 × size.x` ahead of center); keep v0.6.6/0.6.7 windowband `yAim`, band-height probes, `maxNy` 0.4. Registration stays aft (`x < xMain - 0.05×size.x`).
+- Cache-bust `?v=0.6.8`
+
 ### v0.6.7 notes
 - **QA fix FAIL_CROPPED_BY_WING**: title was still clipped by the wing LE on some side views (even on cyan windowband).
 - Move title further forward: `xMain ≈ center.x + size.x * 0.24` (range 0.22–0.26, was 0.18).
@@ -112,7 +118,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.6.7 (selector)
+## Models v0.6.8 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -166,8 +172,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.6.7`
-   - Personal → `http://127.0.0.1:5174/?v=0.6.7`
+   - Commercial → `http://127.0.0.1:5173/?v=0.6.8`
+   - Personal → `http://127.0.0.1:5174/?v=0.6.8`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -251,4 +257,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.6.7 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.6.8 — commercial + personal editions · GLB hangar · Two-Tone
