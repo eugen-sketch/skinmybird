@@ -15,12 +15,12 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
-### v0.7.0 notes
+### v0.7.1 notes
 - **Simpler paint zones** (8 face zones): Fuselage, Nose, Belly, Window band, Wings, Winglets, Engines, Tail. Merged accent/doors/fairings/crown/cockpit/stabilizer/pylons into nearest parent.
 - **Stickers removed** from UI and hangar drawing. **Flags kept** and expanded (~49 nations, EU focus + major world).
 - **3 custom texture slots** (upload PNG/JPG, opacity/scale/X/Y, place on Fuselage/Wings/Tail/Belly).
 - **3 text zones**: Title (large on window band), Slogan (under title), Registration (aft). Larger default title scale / panel height.
-- Keep wing-relative windowband height from v0.6.16 for title placement. Cache-bust `?v=0.7.0`
+- Keep wing-relative windowband height from v0.6.16 for title placement. Cache-bust `?v=0.7.1`
 
 ### v0.6.14 notes
 - **QA fix FAIL_TITLE_CLIPPED (left S missing on white)**: shared title X hit both sides blindly; left band steps earlier into nose taper / off-band white.

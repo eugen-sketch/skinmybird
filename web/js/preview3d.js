@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.7.0 — simpler paint zones, flags-only, custom textures, 3 text zones.
+ * SkinMyBird 3D hangar preview v0.7.1 — simpler paint zones, flags-only, custom textures, 3 text zones.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -430,7 +430,7 @@ function classifyMeshRole(name, box, craftBox) {
   return "fuselage";
 }
 
-/** Paint-zone ids — v0.7.0 simplified solid face zones (no accent/doors/crown/…). */
+/** Paint-zone ids — v0.7.1 simplified solid face zones (no accent/doors/crown/…). */
 const ZONE_ID = {
   fuselage: 0,
   nose: 1,
@@ -548,7 +548,7 @@ function classifyPoint(x, y, z, ctx) {
   const absZ = Math.abs(z);
   const { sy, halfZ, wingY, seeds, engineR } = ctx;
 
-  // Engines (nacelle seeds) + pylons (merged into engines in v0.7.0)
+  // Engines (nacelle seeds) + pylons (merged into engines in v0.7.1)
   for (let i = 0; i < seeds.length; i++) {
     const s = seeds[i];
     const dx = x - s[0];
@@ -1427,7 +1427,7 @@ function drawCountryFlagsOnCanvas(ctx, W, H, state, layout) {
 }
 
 function stickerSizeMul(state) {
-  // Kept for flag scale; stickers removed in v0.7.0
+  // Kept for flag scale; stickers removed in v0.7.1
   const k = String((state && state.flagSize) || (state && state.stickerSize) || "M").toUpperCase();
   if (k === "S") return 1.6;
   if (k === "L") return 3.0;
@@ -1475,7 +1475,7 @@ function paintDecalCanvas(canvas, state) {
   const H = canvas.height;
   prepareCanvas2d(ctx, W, H);
 
-  // v0.7.0: stickers removed — title / slogan / flags only
+  // v0.7.1: stickers removed — title / slogan / flags only
   const hasAirlineId = !!(state.airline && String(state.airline).trim());
   const hasSlogan = !!(state.slogan && String(state.slogan).trim());
   const showText = hasAirlineId || hasSlogan;
@@ -1491,7 +1491,7 @@ function paintDecalCanvas(canvas, state) {
 
   const textColor = state.textColor || "#FFFFFF";
   const sizeKey = state.textSize || "M";
-  const basePx = sizeKey === "S" ? 120 : sizeKey === "L" ? 260 : 200; // v0.7.0 larger title
+  const basePx = sizeKey === "S" ? 120 : sizeKey === "L" ? 260 : 200; // v0.7.1 larger title
   const maxW = W * 0.92;
 
   ctx.fillStyle = textColor;
@@ -1831,7 +1831,7 @@ function makeRegTexture(state) {
 }
 
 /**
- * v0.7.0 — Custom uploaded texture decals (Custom 1/2/3).
+ * v0.7.1 — Custom uploaded texture decals (Custom 1/2/3).
  * Project PNG/JPG onto Fuselage (both sides) / Wings / Tail / Belly with opacity, scale, X/Y.
  */
 function addCustomTextureDecals(craft, state, group, targets, box, size, center, raycaster) {
@@ -2166,14 +2166,14 @@ function addTextDecals(craft, state) {
   ];
   const yWindow = yAim;
 
-  // v0.7.0: larger writing area — titlePanelH ~0.78*bandH (stay inside band)
+  // v0.7.1: larger writing area — titlePanelH ~0.78*bandH (stay inside band)
   const titlePanelH =
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
     place === "belly" || place === "tail" ? Math.max(0.32, Math.min(size.y * 0.28, 0.72)) :
     Math.max(bandH * 0.62, Math.min(bandH * 0.88, bandH * 0.78));
   const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
 
-  const stickerBoost = 1; // stickers removed in v0.7.0; title size from textScale / titlePanelH
+  const stickerBoost = 1; // stickers removed in v0.7.1; title size from textScale / titlePanelH
   const flipLeft = !!state.textFlipLeft;
   const flipRight = !!state.textFlipRight;
   const decalSize = new THREE.Vector3(
@@ -2550,7 +2550,7 @@ function paintFuselageCanvas(canvas, state, family) {
     ctx.globalAlpha = 0.88;
     ctx.fillRect(0, winY - H * 0.01, W, winH + H * 0.02);
     ctx.globalAlpha = 1;
-    // Soft door outlines (same as body — no separate doors zone in v0.7.0)
+    // Soft door outlines (same as body — no separate doors zone in v0.7.1)
     ctx.strokeStyle = fus;
     ctx.globalAlpha = 0.35;
     ctx.lineWidth = 3;
@@ -2574,7 +2574,7 @@ function paintFuselageCanvas(canvas, state, family) {
     }
   }
 
-  // v0.7.0: no decorative stickers on procedural fuselage — flags + identity text only
+  // v0.7.1: no decorative stickers on procedural fuselage — flags + identity text only
   const flagCodes = (state.flags && state.flags.codes) || [];
   if (flagCodes.length) {
     drawCountryFlagsOnCanvas(ctx, W, H, state, { xMid: W * 0.25, scale: stickerSizeMul(state), dual: true });

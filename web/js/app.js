@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.7.0 — simpler paint zones, flags-only, custom textures, 3 text zones.
+ * SkinMyBird web editor v0.7.1 — simpler paint zones, flags-only, custom textures, 3 text zones.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.7.0";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.7.1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -50,7 +50,7 @@ const $ = (id) => document.getElementById(id);
     airline: "SkinMyBird",
     slogan: "",
     stickerText: "",
-    textColor: "#FFFFFF",
+    textColor: "#1b2430",
     textSize: "L",
     textStyle: "bold",
     textFont: "segoe",
@@ -190,7 +190,7 @@ const $ = (id) => document.getElementById(id);
     state.registration = $("registration").value.trim() || "SMB-001";
     state.airline = $("airline").value.trim() || "SkinMyBird";
     state.slogan = ($("slogan").value || "").trim();
-    state.textColor = $("text-color").value || "#FFFFFF";
+    state.textColor = $("text-color").value || "#1b2430";
     state.textSize = $("text-size").value || "L";
     state.textStyle = $("text-style").value || "bold";
     state.textFont = ($("text-font") && $("text-font").value) || "segoe";
@@ -232,7 +232,7 @@ const $ = (id) => document.getElementById(id);
   }
 
   function buildStickersPayload() {
-    // v0.7.0: decorative stickers removed — export only slogan as custom_text when set
+    // v0.7.1: decorative stickers removed — export only slogan as custom_text when set
     const list = [];
     list.push({
       type: "custom_text",
