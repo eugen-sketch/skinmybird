@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.11 — raise windowband paint + center title in band (readable); keep wing-LE xMain.
+ * SkinMyBird 3D hangar preview v0.6.12 — windowband relative to wingY (true cabin height) + title in band.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -618,29 +618,35 @@ function classifyPoint(x, y, z, ctx) {
   // Relative height along fuselage tube (not full craft Y — fin used to steal crown)
   const fuseSy = ctx.fuseSy || sy;
   const vTube = (y - ctx.min.y) / fuseSy;
+  // Wing-relative height: 0 = wing plane, 1 = fuseTop (true cabin window line above wing root)
+  const fuseTop = ctx.fuseTop || ctx.max.y;
+  const span = Math.max(fuseTop - wingY, 1e-6);
+  const tWing = (y - wingY) / span;
 
   // Cockpit: forward upper canopy (before crown so nose glass stays distinct)
   if (u > 0.78 && u < 0.95 && vTube > 0.55 && w < 0.30) return ZONE_ID.cockpit;
 
-  // Crown / spine: upper tube roof — high vTube, low |Z|, mid body
+  // Crown / spine: upper tube roof — high above wing, low |Z|, mid body
   // Must fire before fuselage default so the roof ridge is never left white.
-  // v0.6.11: only >0.68 so crown does not eat the raised windowband (0.54–0.66).
-  if (w < 0.30 && u > 0.16 && u < 0.85 && vTube > 0.68) return ZONE_ID.crown;
+  // v0.6.12: tWing > 0.62 so crown sits above windowband (0.28–0.55)
+  if (w < 0.30 && u > 0.16 && u < 0.85 && tWing > 0.62) return ZONE_ID.crown;
 
-  // Body side — windowband on true cabin window line (mid/upper tube), accent just under
-  // v0.6.11: raise further toward true window line — windowband 0.54–0.66; accent 0.48–0.54
+  // Body side — windowband relative to wingY (true cabin height above wing root)
+  // v0.6.12: tWing windowband 0.28–0.55; accent 0.18–0.28; u 0.18–0.88 avoids nose-taper jag
   if (w < 0.30 && u > 0.14 && u < 0.9) {
-    if (vTube < 0.22) return ZONE_ID.belly;
-    if (vTube > 0.54 && vTube < 0.66 && w > 0.06) return ZONE_ID.windowband;
-    if (vTube > 0.48 && vTube < 0.54 && w > 0.06) return ZONE_ID.accent;
+    if (vTube < 0.22 || tWing < -0.05) return ZONE_ID.belly;
+    if (u > 0.18 && u < 0.88 && tWing > 0.28 && tWing < 0.55 && w > 0.06)
+      return ZONE_ID.windowband;
+    if (u > 0.18 && u < 0.88 && tWing > 0.18 && tWing < 0.28 && w > 0.06)
+      return ZONE_ID.accent;
   }
   // Doors: mid-side patches below accent — do not steal the windowband
-  if (w > 0.1 && w < 0.26 && vTube > 0.28 && vTube < 0.48 && u > 0.28 && u < 0.78)
+  if (w > 0.1 && w < 0.26 && tWing > 0.02 && tWing < 0.18 && u > 0.28 && u < 0.78)
     return ZONE_ID.doors;
   if (u > 0.86 && w < 0.30) return ZONE_ID.nose;
 
   // Safety net: any remaining upper centerline on the tube → crown (above new band)
-  if (w < 0.34 && u > 0.14 && u < 0.88 && vTube > 0.68) return ZONE_ID.crown;
+  if (w < 0.34 && u > 0.14 && u < 0.88 && tWing > 0.62) return ZONE_ID.crown;
 
   // Always paintable — never leave raw GLB gray
   return ZONE_ID.fuselage;
@@ -1491,8 +1497,8 @@ function paintDecalCanvas(canvas, state) {
   ctx.font = resolveFontFace(state, airPx);
   ctx.lineJoin = "round";
   ctx.miterLimit = 2;
-  ctx.strokeStyle = "rgba(0,0,0,0.28)";
-  ctx.lineWidth = Math.max(1.5, airPx * 0.04);
+  ctx.strokeStyle = "rgba(0,0,0,0.55)";
+  ctx.lineWidth = Math.max(2, airPx * 0.08);
   ctx.strokeText(airline, W / 2, H * 0.48);
   ctx.fillText(airline, W / 2, H * 0.48);
 
@@ -1915,7 +1921,7 @@ function addTextDecals(craft, state) {
     }
   }
 
-  // --- v0.6.11 window-band belt (raised paint + title centered in band) ---
+  // --- v0.6.12 window-band belt (wingY-relative paint + title centered in band) ---
   // sideBeltMeshes: windowband + accent + fuselage sides (title may hit fuselage at band Y).
   // Fallback fuselage ONLY if no windowband. Never belly / crown / cockpit / fairings / wings.
   // Nose is +X on hangar-fit craft (longest axis forward); wing LE = forward-most root wing AABB X.
@@ -1964,7 +1970,7 @@ function addTextDecals(craft, state) {
     // Center of title panel sits forward of wing LE with gap ≈ 0.08*fusLen + half panel
     const gap = Math.max(0.06 * fusLen, 0.25);
     xMain = wingLeX + gap + panelLen * 0.5;
-    const xMax = center.x + size.x * 0.38;
+    const xMax = center.x + size.x * 0.30; // v0.6.12: keep title on solid band, not nose streaks
     const xMin = center.x + size.x * 0.08; // still forward of mid
     xMain = Math.min(xMax, Math.max(xMin, xMain));
     // User posX nudge within clamps (posX>0 shifts aft / −X)
@@ -1994,7 +2000,7 @@ function addTextDecals(craft, state) {
     for (const s of useWb) union.union(s.box);
     bandH = Math.max(0.06, union.max.y - union.min.y);
     bandMidY = (union.min.y + union.max.y) * 0.5;
-    // v0.6.11: center title in band (not mid-upper 0.58 which straddled band top)
+    // v0.6.12: center title in band mid (0.50) so glyphs sit on cyan
     yAim = union.min.y + bandH * 0.50;
     yAim += bandH * (posY * 0.12);
     // Reject true belly; allow mid band
@@ -2057,11 +2063,11 @@ function addTextDecals(craft, state) {
     }
   }
 
-  // v0.6.11: clamp panel height to ~0.55–0.70 of bandH so glyphs fit inside cyan
+  // v0.6.12: clamp panel height ≤0.65*bandH so glyphs stay inside cyan
   const titlePanelH =
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
     place === "belly" || place === "tail" ? Math.max(0.32, Math.min(size.y * 0.28, 0.72)) :
-    Math.max(bandH * 0.55, Math.min(bandH * 0.70, bandH * 0.62));
+    Math.max(bandH * 0.50, Math.min(bandH * 0.65, bandH * 0.60));
   const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
 
   const stickerBoost = flagCodes.length || (st.stripe || st.heart || st.star || st.lightning || st.bird || st.roundel || st.chevron || st.checkered || st.smile || st.crown || st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge)
@@ -2143,7 +2149,7 @@ function addTextDecals(craft, state) {
       if (hit && hit.point && hit.point.y < yBandFloor) hit = null;
       return hit;
     }
-    // v0.6.11: prefer hit closest to band mid (yAim), NOT max point.y
+    // v0.6.12: prefer hit closest to band mid (yAim), NOT max point.y
     let best = null;
     let bestErr = Infinity;
     let bestPrefer = null;

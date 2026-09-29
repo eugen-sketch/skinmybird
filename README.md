@@ -15,6 +15,12 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.6.12 notes
+- **QA fix FAIL_TITLE_CLIPPED + band too low**: raising `vTube` alone still put the cyan belt near the wing root because band height is relative to craft `min.y` (gear/belly), not the wing plane.
+- Root fix: `classifyPoint` windowband / accent / crown use **wing-relative** `tWing = (y − wingY) / (fuseTop − wingY)` — windowband **tWing 0.28–0.55**, accent **0.18–0.28**, crown **tWing > 0.62**; doors **tWing 0.02–0.18** (below accent); belly keeps `vTube < 0.22`; band only for **u 0.18–0.88** (avoid nose-taper jag).
+- Title: nose-ward `xMax = center.x + size.x×0.30` (was 0.38); keep `yAim` = band mid **0.50** + prefer hit nearest yAim; `titlePanelH` ≤ **0.65×bandH**; stronger decal stroke `px×0.08` / `rgba(0,0,0,0.55)`.
+- Keep multi-X / wing-LE `xMain`. Cache-bust `?v=0.6.12`
+
 ### v0.6.11 notes
 - **QA fix FAIL_BAND_TOO_LOW**: cyan windowband paint sat below the true cabin window line; title aimed mid-upper so white glyphs straddled the band top onto white fuselage (half invisible).
 - Raise `classifyPoint` windowband to `vTube` **0.54–0.66** (thicker + higher); accent **0.48–0.54**; crown only `vTube > 0.68` (low w); doors upper bound **<0.48** so they do not steal the band; belly `<0.22`; cockpit unchanged.
@@ -138,7 +144,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.6.11 (selector)
+## Models v0.6.12 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -192,8 +198,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.6.11`
-   - Personal → `http://127.0.0.1:5174/?v=0.6.11`
+   - Commercial → `http://127.0.0.1:5173/?v=0.6.12`
+   - Personal → `http://127.0.0.1:5174/?v=0.6.12`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -277,4 +283,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.6.11 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.6.12 — commercial + personal editions · GLB hangar · Two-Tone
