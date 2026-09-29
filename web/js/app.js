@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.8.7 — measureText title/slogan clearGap; hangar axis/fin + flank from v0.8.1; paint zones v0.7.5 tube shield kept.
+ * SkinMyBird web editor v0.8.8 — nose hard-clip + wing/HT bleed; reg font/size independent; clearGap from v0.8.7; tube shield kept.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.7";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.8";
 
 const $ = (id) => document.getElementById(id);
 
@@ -54,6 +54,8 @@ const $ = (id) => document.getElementById(id);
     textSize: "XL",
     textStyle: "bold",
     textFont: "montserrat",
+    regFont: "oswald",
+    regSize: "M",
     textPlacement: "fuselage",
     titleZone: "windowband",
     sloganZone: "mid",
@@ -116,6 +118,8 @@ const $ = (id) => document.getElementById(id);
     $("text-size").value = state.textSize;
     $("text-style").value = state.textStyle;
     if ($("text-font")) $("text-font").value = state.textFont || "montserrat";
+    if ($("reg-font")) $("reg-font").value = state.regFont || "oswald";
+    if ($("reg-size")) $("reg-size").value = state.regSize || "M";
     if ($("text-placement")) $("text-placement").value = state.textPlacement || "fuselage";
     if ($("title-zone")) $("title-zone").value = state.titleZone || "windowband";
     if ($("slogan-zone")) $("slogan-zone").value = state.sloganZone || "mid";
@@ -130,6 +134,7 @@ const $ = (id) => document.getElementById(id);
     if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 200) + "%";
     updateHexLabels();
     syncSegmented("data-size", state.textSize);
+    syncSegmented("data-reg-size", state.regSize || "M");
     syncSegmented("data-style", state.textStyle);
     syncSegmented("data-title-zone", state.titleZone || "windowband");
     syncSegmented("data-slogan-zone", state.sloganZone || "mid");
@@ -202,6 +207,8 @@ const $ = (id) => document.getElementById(id);
     state.textSize = $("text-size").value || "L";
     state.textStyle = $("text-style").value || "bold";
     state.textFont = ($("text-font") && $("text-font").value) || "montserrat";
+    state.regFont = ($("reg-font") && $("reg-font").value) || state.regFont || "oswald";
+    state.regSize = ($("reg-size") && $("reg-size").value) || state.regSize || "M";
     state.textPlacement = ($("text-placement") && $("text-placement").value) || "fuselage";
     state.titleZone = ($("title-zone") && $("title-zone").value) || state.titleZone || "windowband";
     state.sloganZone = ($("slogan-zone") && $("slogan-zone").value) || state.sloganZone || "mid";
@@ -274,6 +281,8 @@ const $ = (id) => document.getElementById(id);
         size: state.textSize,
         style: state.textStyle,
         font: state.textFont,
+        regFont: state.regFont,
+        regSize: state.regSize,
         placement: state.textPlacement,
         titleZone: state.titleZone,
         sloganZone: state.sloganZone,
@@ -847,6 +856,15 @@ const $ = (id) => document.getElementById(id);
     });
   });
 
+  document.querySelectorAll("[data-reg-size]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.regSize = btn.getAttribute("data-reg-size");
+      if ($("reg-size")) $("reg-size").value = state.regSize;
+      syncSegmented("data-reg-size", state.regSize);
+      drawPreview();
+    });
+  });
+
   document.querySelectorAll("[data-sticker-size]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.stickerSize = btn.getAttribute("data-sticker-size");
@@ -950,6 +968,7 @@ const $ = (id) => document.getElementById(id);
     "slogan",
     "text-color",
     "text-font",
+    "reg-font",
     "text-pos-x",
     "text-pos-y",
     "text-scale",

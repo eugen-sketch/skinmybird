@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.8.7 — measureText title/slogan clearGap (keep v0.8.6 world H/aim); hangar axis/fin + flank from v0.8.1; paint zones v0.7.5 tube shield kept.
+ * SkinMyBird 3D hangar preview v0.8.8 — nose hard-clip + wing/HT bleed tighten (tube shield kept); reg font/size independent of title; measureText clearGap from v0.8.7.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -645,6 +645,9 @@ function classifyPoint(x, y, z, ctx) {
   const bandHi = wingY + span * 0.52;
   // Fuselage tube shield: tube points must NEVER become wings/engines via geometric rules
   const onFuseTube = absZ <= fuseHalf * 1.25;
+  // v0.8.8: hard cockpit line BEHIND windscreen — forward tube = NOSE only
+  // (A320 windscreen rear ≈ u 0.80–0.83; clip aggressive so no green/magenta fingers).
+  const noseClipU = 0.78;
 
   // --- engines (single-mesh critical): under-wing pod → seeds → pylons ---
   // Under-wing pod: outboard of tube, strictly below wing plane
@@ -697,31 +700,46 @@ function classifyPoint(x, y, z, ctx) {
     return ZONE_ID.engines;
   }
 
-  // --- wings / winglet ---
-  if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return ZONE_ID.winglet;
-  // Truly outboard + tight vertical band (do not paint fuselage flank / wing-root fairing)
+  // --- tail / HT FIRST (v0.8.8: before wings so aft surfaces aren't stolen) ---
+  if (u < 0.24 && v > 0.42 && w < 0.42) return ZONE_ID.tail; // vertical fin
+  // Horizontal stabilizer: aft + near wing-plane height, outboard of tube
   if (
-    !onFuseTube &&
-    absZ > fuseHalf * 1.6 &&
-    u > 0.28 &&
-    u < 0.82
+    u < 0.32 &&
+    v > 0.12 &&
+    v < 0.62 &&
+    absZ > fuseHalf * 1.15 &&
+    w < 0.92
   ) {
-    const nearWingPlane = Math.abs(y - wingY) < sy * 0.06;
-    if (nearWingPlane && v > 0.08 && v < 0.58) return ZONE_ID.wings;
-    if (w > 0.44 && v > 0.1 && v < 0.52) return ZONE_ID.wings;
+    return ZONE_ID.tail;
+  }
+  // HT fairing on tube spine aft
+  if (u < 0.18 && v > 0.28 && v < 0.62 && absZ <= fuseHalf * 1.25) {
+    return ZONE_ID.tail;
   }
 
-  // --- tail ---
-  if (u < 0.22 && v > 0.45 && w < 0.40) return ZONE_ID.tail;
-  if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75)
-    return ZONE_ID.tail;
+  // --- wings / winglet (v0.8.8: claim just outside tube shield; exclude aft HT region) ---
+  if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.30 && u < 0.9) return ZONE_ID.winglet;
+  // Just outside tube shield + near wing plane (keep shield — never paint fuselage flank as wing)
+  // Inboard root: taller vertical claim so upper root skin stays wings (not fuselage pink)
+  if (
+    !onFuseTube &&
+    absZ > fuseHalf * 1.26 &&
+    u > 0.30 &&
+    u < 0.84
+  ) {
+    const rootBoost = absZ < fuseHalf * 2.4 ? sy * 0.20 : sy * 0.12;
+    if (Math.abs(y - wingY) < rootBoost && v > 0.03 && v < 0.72) return ZONE_ID.wings;
+    if (w > 0.34 && v > 0.06 && v < 0.58) return ZONE_ID.wings;
+  }
 
-  // --- nose tip / cockpit (do not bite mid-side windowband Y) ---
-  if (u > 0.92 && w < 0.32) return ZONE_ID.nose;
-  if (u > 0.82 && u < 0.95 && y > wingY + span * 0.52 && absZ <= fuseHalf * 1.15)
-    return ZONE_ID.nose;
+  // --- hard nose clip (v0.8.8): tube forward of cockpit line = nose ONLY ---
+  if (u >= noseClipU && absZ <= fuseHalf * 1.22) return ZONE_ID.nose;
+  // Crown/spine: start nose slightly earlier so top-down has no magenta finger
+  if (u >= noseClipU - 0.03 && absZ <= fuseHalf * 0.50) return ZONE_ID.nose;
+  // Radome tip slightly outboard of tube radius
+  if (u > 0.92 && w < 0.36) return ZONE_ID.nose;
 
-  // --- windowband: constant-height side stripe (airline cheatline) ---
+  // --- windowband: constant-height side stripe — STOP at cockpit line ---
   if (
     absZ <= fuseHalf * 1.15 &&
     absZ >= fuseHalf * 0.25 &&
@@ -729,17 +747,15 @@ function classifyPoint(x, y, z, ctx) {
     y <= bandHi &&
     y > min.y + sy * 0.18 &&
     u > 0.12 &&
-    u < 0.92
+    u < noseClipU
   ) {
     return ZONE_ID.windowband;
   }
 
-  // --- belly ---
-  if (absZ <= fuseHalf * 1.2 && (vTube < 0.20 || y < wingY - sy * 0.04)) {
+  // --- belly (never forward of cockpit line on tube — nose already claimed) ---
+  if (absZ <= fuseHalf * 1.2 && u < noseClipU && (vTube < 0.20 || y < wingY - sy * 0.04)) {
     return ZONE_ID.belly;
   }
-
-  if (u > 0.88 && absZ <= fuseHalf * 1.15) return ZONE_ID.nose;
 
   // Always paintable — never leave raw GLB gray
   return ZONE_ID.fuselage;
@@ -1064,7 +1080,7 @@ function makeBodyZoneShaderMaterial(ctx) {
   mat.userData.zoneUniforms = uniforms;
   mat.userData.isBodyZoneShader = true;
   mat.userData.baseColor = new THREE.Color(0xffffff);
-  mat.customProgramCacheKey = () => "smb_body_zone_shader_v075";
+  mat.customProgramCacheKey = () => "smb_body_zone_shader_v088c";
 
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
@@ -1130,6 +1146,8 @@ int smbClassifyCraft(vec3 p) {
   float bandHi = wingY + span * 0.52;
   // Fuselage tube shield: tube points must NEVER become wings/engines via geometric rules
   bool onFuseTube = absZ <= fuseHalf * 1.25;
+  // v0.8.8: hard cockpit line BEHIND windscreen — forward tube = nose only
+  float noseClipU = 0.78;
 
   // engines: under-wing pod → seeds → pylons
   // Under-wing pod: outboard of tube, strictly below wing plane
@@ -1162,32 +1180,32 @@ int smbClassifyCraft(vec3 p) {
     return 5;
   }
 
-  // wings / winglet
-  if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return 4;
-  // Truly outboard + tight vertical band (do not paint fuselage flank / wing-root fairing)
-  if (!onFuseTube && absZ > fuseHalf * 1.6 && u > 0.28 && u < 0.82) {
-    float nearWingPlane = abs(p.y - wingY);
-    if (nearWingPlane < sy * 0.06 && v > 0.08 && v < 0.58) return 3;
-    if (w > 0.44 && v > 0.1 && v < 0.52) return 3;
+  // tail / HT FIRST (before wings so aft surfaces aren't stolen)
+  if (u < 0.24 && v > 0.42 && w < 0.42) return 6;
+  if (u < 0.32 && v > 0.12 && v < 0.62 && absZ > fuseHalf * 1.15 && w < 0.92) return 6;
+  if (u < 0.18 && v > 0.28 && v < 0.62 && absZ <= fuseHalf * 1.25) return 6;
+
+  // wings / winglet (claim just outside tube shield; exclude aft HT region)
+  if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.30 && u < 0.9) return 4;
+  if (!onFuseTube && absZ > fuseHalf * 1.26 && u > 0.30 && u < 0.84) {
+    float rootBoost = absZ < fuseHalf * 2.4 ? sy * 0.20 : sy * 0.12;
+    if (abs(p.y - wingY) < rootBoost && v > 0.03 && v < 0.72) return 3;
+    if (w > 0.34 && v > 0.06 && v < 0.58) return 3;
   }
 
-  // tail
-  if (u < 0.22 && v > 0.45 && w < 0.40) return 6;
-  if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75) return 6;
+  // hard nose clip: tube forward of cockpit line = nose only
+  if (u >= noseClipU && absZ <= fuseHalf * 1.22) return 1;
+  if (u >= noseClipU - 0.03 && absZ <= fuseHalf * 0.50) return 1;
+  if (u > 0.92 && w < 0.36) return 1;
 
-  // nose tip / cockpit above band
-  if (u > 0.92 && w < 0.32) return 1;
-  if (u > 0.82 && u < 0.95 && p.y > wingY + span * 0.52 && absZ <= fuseHalf * 1.15) return 1;
-
-  // windowband: constant-height side stripe
-  if (absZ <= fuseHalf * 1.15 && absZ >= fuseHalf * 0.25 && p.y >= bandLo && p.y <= bandHi && p.y > uMin.y + sy * 0.18 && u > 0.12 && u < 0.92) {
+  // windowband: constant-height side stripe — STOP at cockpit line
+  if (absZ <= fuseHalf * 1.15 && absZ >= fuseHalf * 0.25 && p.y >= bandLo && p.y <= bandHi && p.y > uMin.y + sy * 0.18 && u > 0.12 && u < noseClipU) {
     return 7;
   }
 
-  // belly
-  if (absZ <= fuseHalf * 1.2 && (vTube < 0.20 || p.y < wingY - sy * 0.04)) return 2;
+  // belly (not forward of cockpit line on tube)
+  if (absZ <= fuseHalf * 1.2 && u < noseClipU && (vTube < 0.20 || p.y < wingY - sy * 0.04)) return 2;
 
-  if (u > 0.88 && absZ <= fuseHalf * 1.15) return 1;
   return 0;
 }
 
@@ -2320,10 +2338,9 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
   const ctx = canvas.getContext("2d");
   prepareCanvas2d(ctx, cw, ch);
   const textColor = state.textColor || "#FFFFFF";
-  const sizeKey = state.textSize || "XL";
+  let sizeKey = state.textSize || "XL";
   let raw = "";
   let styleState = state;
-  let basePx = canvasBasePx(sizeKey, role);
   let minPx = 56;
   if (role === "title") {
     raw = String(state.airline || "").trim();
@@ -2337,9 +2354,16 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
     minPx = 40;
   } else if (role === "reg") {
     raw = String(state.registration || "").trim();
-    styleState = { ...state, textStyle: "bold" };
+    // v0.8.8: registration has its own font + size (independent of Title)
+    sizeKey = state.regSize || "M";
+    styleState = {
+      ...state,
+      textStyle: "bold",
+      textFont: state.regFont || state.textFont || "montserrat",
+    };
     minPx = 48;
   }
+  let basePx = canvasBasePx(sizeKey, role);
   if (!raw && !includeSlogan) {
     const tex = new THREE.CanvasTexture(canvas);
     configurePaintTexture(tex);
@@ -2746,16 +2770,21 @@ function makeRegTexture(state) {
     tex.userData.canvas = canvas;
     return tex;
   }
-  const rState = { ...state, textStyle: "bold", textFont: state.textFont };
+  const rState = {
+    ...state,
+    textStyle: "bold",
+    textFont: state.regFont || state.textFont || "montserrat",
+  };
   ctx.fillStyle = state.textColor || "#FFFFFF";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.shadowColor = "rgba(0,0,0,0.45)";
   ctx.shadowBlur = 8;
+  const regBase = canvasBasePx(state.regSize || "M", "reg");
   const px =
     typeof fitFontPx === "function"
-      ? fitFontPx(ctx, state.registration, REG_W * 0.92, 200, rState, 36)
-      : 72;
+      ? fitFontPx(ctx, state.registration, REG_W * 0.92, regBase, rState, 36)
+      : Math.round(regBase);
   ctx.font =
     typeof resolveFontFace === "function"
       ? resolveFontFace(rState, px)
@@ -3344,8 +3373,10 @@ function addTextDecals(craft, state) {
     const place = aim.place;
     const meshList = filterTextRayMeshes(meshesForPlace(place), scored);
     const roleTex = makeRoleTexture(state, role, DECAL_W, DECAL_H, { includeSlogan });
-    let len = aim.panelLen * scalePct * sizeMul * (panelScale || 1);
-    let ht = Math.max(0.28, htPreview);
+    const roleSizeMul =
+      role === "reg" ? textSizeMul(state.regSize || "M") : sizeMul;
+    let len = aim.panelLen * scalePct * roleSizeMul * (panelScale || 1);
+    let ht = Math.max(0.28, htPreview * (role === "reg" ? roleSizeMul / Math.max(sizeMul, 1e-6) : 1));
     // v0.8.6/0.8.7 world: keep combined panel near title-only H; pack 2 lines in texture.
     // v0.8.5 ht*1.62 + yAim-=ht*0.14 pushed the block into the wing-root fairing.
     if (includeSlogan) {
@@ -4504,6 +4535,8 @@ export class Preview3D {
       ts: state.textSize,
       ty: state.textStyle,
       tf: state.textFont,
+      rs: state.regSize,
+      rf: state.regFont,
       tp: state.textPlacement,
       tz: state.titleZone,
       sz: state.sloganZone,

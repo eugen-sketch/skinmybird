@@ -15,6 +15,12 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.8.8 notes
+- **Nose hard-clip** at cockpit line (`noseClipU = 0.78` + crown early): window band + fuselage stop behind windscreen; solid yellow nose forward.
+- **Wing / HT bleed**: wings claim just outside tube shield with taller inboard root; tail/HT classified before wings so stabilizers stay Tail purple.
+- **Registration** has its own Font + Size controls (independent of Title).
+- Shader cache key `smb_body_zone_shader_v088c` (tube shield from v0.7.5 kept). Cache-bust `?v=0.8.8`.
+
 ### v0.8.7 notes
 - **Title/slogan letter gap via measureText**: keep v0.8.6 world placement (`ht ≤ max(ht*1.18, bandH*1.2)`, `yAim += bandH*0.08`, no downward nudge). On the includeSlogan canvas: `descent = actualBoundingBoxDescent` (fb `titlePx*0.25`), slogan `ascent = actualBoundingBoxAscent` (fb `sPx*0.8`); `clearGap = max(titlePx*0.28, sPx*0.22, ch*0.045)`; `titleY ≈ ch*0.26`; `sloganY = titleY + descent + clearGap + ascent`; clamp slogan bottom ≤ `ch*0.58` and shrink fonts if needed (never drop into bottom half / grow world H). Mild nose-ward `xMain += fusLen*0.02` (solidMaxX clamped). Goal: clear gap under y-descender + full slogan on window band (not fairing) on A320/787.
 - Paint zone shader cache key still `smb_body_zone_shader_v075`. Cache-bust `?v=0.8.7`

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600;700&family=PT+Sans+Narrow:wght@400;700&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=0.8.7" />
+  <link rel="stylesheet" href="css/styles.css?v=0.8.8" />
   <script type="importmap">
   {
     "imports": {
@@ -18,7 +18,7 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=0.8.7"></script>
+  <script type="module" src="js/app.js?v=0.8.8"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -213,6 +213,36 @@
               <input type="hidden" id="reg-zone" value="aft" />
             </label>
 
+            <div class="field-row">
+              <label class="field grow">
+                <span>Registration size</span>
+                <div class="segmented wrap" role="group" aria-label="Registration size">
+                  <button type="button" class="seg" data-reg-size="S">S</button>
+                  <button type="button" class="seg active" data-reg-size="M">M</button>
+                  <button type="button" class="seg" data-reg-size="L">L</button>
+                  <button type="button" class="seg" data-reg-size="XL">XL</button>
+                  <button type="button" class="seg" data-reg-size="XXL">XXL</button>
+                </div>
+                <input type="hidden" id="reg-size" value="M" />
+              </label>
+            </div>
+            <label class="field">
+              <span>Registration font</span>
+              <select id="reg-font" class="select">
+                <option value="montserrat">Montserrat</option>
+                <option value="oswald" selected>Oswald</option>
+                <option value="bebas">Bebas Neue</option>
+                <option value="anton">Anton</option>
+                <option value="roboto-condensed">Roboto Condensed</option>
+                <option value="pt-sans-narrow">PT Sans Narrow</option>
+                <option value="helvetica">Helvetica-like (Arial)</option>
+                <option value="segoe">Segoe UI</option>
+                <option value="impact">Impact</option>
+                <option value="georgia">Georgia</option>
+                <option value="trebuchet">Trebuchet MS</option>
+              </select>
+            </label>
+
             <!-- Legacy placement field kept hidden for export compat -->
             <input type="hidden" id="text-placement" value="fuselage" />
 
@@ -223,7 +253,7 @@
               </label>
               <label class="field grow">
                 <span>Title size</span>
-                <div class="segmented wrap" role="group" aria-label="Text size">
+                <div class="segmented wrap" role="group" aria-label="Title size">
                   <button type="button" class="seg" data-size="S">S</button>
                   <button type="button" class="seg" data-size="M">M</button>
                   <button type="button" class="seg" data-size="L">L</button>
@@ -235,7 +265,7 @@
             </div>
 
             <label class="field">
-              <span>Airline font</span>
+              <span>Airline / Title font</span>
               <select id="text-font" class="select">
                 <option value="montserrat" selected>Montserrat</option>
                 <option value="oswald">Oswald</option>
@@ -588,7 +618,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.8.7 · measureText clearGap · hangar axis · Y stack · tube shield · fonts · DDS BC7</span>
+      <span>v0.8.8 · nose clip · wing/HT zones · reg font/size · clearGap · DDS BC7</span>
     </footer>
   </div>
 </body>
