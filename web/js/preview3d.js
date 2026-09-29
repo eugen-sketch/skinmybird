@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.7.1 — simpler paint zones, flags-only, custom textures, 3 text zones.
+ * SkinMyBird 3D hangar preview v0.7.2 — clearer paint zones, reliable custom textures, larger fuselage text.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -10,7 +10,7 @@ import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
 const TEX_W = 2048;
 const TEX_H = 1024;
 const REG_W = 2048;
-const REG_H = 512;
+const REG_H = 640;
 const DECAL_W = 4096;
 const DECAL_H = 768;
 
@@ -430,7 +430,7 @@ function classifyMeshRole(name, box, craftBox) {
   return "fuselage";
 }
 
-/** Paint-zone ids — v0.7.1 simplified solid face zones (no accent/doors/crown/…). */
+/** Paint-zone ids — v0.7.2 simplified solid face zones (majority vote + light subdivide). */
 const ZONE_ID = {
   fuselage: 0,
   nose: 1,
@@ -548,7 +548,7 @@ function classifyPoint(x, y, z, ctx) {
   const absZ = Math.abs(z);
   const { sy, halfZ, wingY, seeds, engineR } = ctx;
 
-  // Engines (nacelle seeds) + pylons (merged into engines in v0.7.1)
+  // Engines (nacelle seeds) + pylons
   for (let i = 0; i < seeds.length; i++) {
     const s = seeds[i];
     const dx = x - s[0];
@@ -577,37 +577,274 @@ function classifyPoint(x, y, z, ctx) {
   if (u < 0.22 && v > 0.45 && w < 0.40) return ZONE_ID.tail;
   if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75)
     return ZONE_ID.tail;
-  if (u > 0.9 && w < 0.35) return ZONE_ID.nose;
+  if (u > 0.92 && w < 0.32) return ZONE_ID.nose;
 
   // Wings — tightened so fuselage sides are not stolen
-  if (w > 0.28 && absZ > halfZ * 0.18 && u > 0.28 && u < 0.82) {
-    const nearWingPlane = Math.abs(y - wingY) < sy * 0.16;
+  if (w > 0.30 && absZ > halfZ * 0.20 && u > 0.28 && u < 0.82) {
+    const nearWingPlane = Math.abs(y - wingY) < sy * 0.15;
     if (nearWingPlane && v > 0.08 && v < 0.58) return ZONE_ID.wings;
-    if (w > 0.42 && v > 0.1 && v < 0.52) return ZONE_ID.wings;
+    if (w > 0.44 && v > 0.1 && v < 0.52) return ZONE_ID.wings;
   }
 
-  // Former fairings → fuselage (nearest parent)
-  // Relative height along fuselage tube
+  // Clean parametric bands on the fuselage tube (v0.7.2)
   const fuseSy = ctx.fuseSy || sy;
   const vTube = (y - ctx.min.y) / fuseSy;
   const fuseTop = ctx.fuseTop || ctx.max.y;
   const span = Math.max(fuseTop - wingY, 1e-6);
   const tWing = (y - wingY) / span;
 
-  // Former cockpit → nose
-  if (u > 0.78 && u < 0.95 && vTube > 0.55 && w < 0.30) return ZONE_ID.nose;
+  // Cockpit / nose taper
+  if (u > 0.78 && u < 0.95 && vTube > 0.55 && w < 0.28) return ZONE_ID.nose;
 
-  // Body side — keep v0.6.12/0.6.16 wing-relative windowband (title placement)
-  // Windowband tWing 0.28–0.55; former accent (0.18–0.28) → fuselage; crown → fuselage
-  if (w < 0.30 && u > 0.14 && u < 0.9) {
-    if (vTube < 0.22 || tWing < -0.05) return ZONE_ID.belly;
-    if (u > 0.18 && u < 0.88 && tWing > 0.28 && tWing < 0.55 && w > 0.06)
+  // Body tube only (narrow |Z|) — continuous airline-like stripes
+  if (w < 0.28 && u > 0.12 && u < 0.92) {
+    // Belly: low on tube / below wing plane
+    if (vTube < 0.20 || tWing < -0.06) return ZONE_ID.belly;
+    // Window band: continuous side stripe (clear tWing + side range)
+    if (
+      u > 0.16 &&
+      u < 0.90 &&
+      tWing >= 0.28 &&
+      tWing <= 0.55 &&
+      w >= 0.045 &&
+      w <= 0.275
+    ) {
       return ZONE_ID.windowband;
+    }
+    // Crown + rest of sides → fuselage (do not steal with nose mid-body)
   }
-  if (u > 0.86 && w < 0.30) return ZONE_ID.nose;
+  if (u > 0.88 && w < 0.28) return ZONE_ID.nose;
 
   // Always paintable — never leave raw GLB gray
   return ZONE_ID.fuselage;
+}
+
+/** Majority-vote zone priority (tie-break when triangle verts disagree). */
+const ZONE_MAJORITY_PRI = {
+  [ZONE_ID.windowband]: 0,
+  [ZONE_ID.fuselage]: 1,
+  [ZONE_ID.belly]: 2,
+  [ZONE_ID.nose]: 3,
+  [ZONE_ID.wings]: 4,
+  [ZONE_ID.winglet]: 5,
+  [ZONE_ID.engines]: 6,
+  [ZONE_ID.tail]: 7,
+};
+
+function majorityZoneId(z0, z1, z2) {
+  if (z0 === z1 || z0 === z2) return z0;
+  if (z1 === z2) return z1;
+  // all different — prefer cleaner body bands
+  let best = z0;
+  let bestPri = ZONE_MAJORITY_PRI[z0] != null ? ZONE_MAJORITY_PRI[z0] : 99;
+  for (const z of [z1, z2]) {
+    const p = ZONE_MAJORITY_PRI[z] != null ? ZONE_MAJORITY_PRI[z] : 99;
+    if (p < bestPri) {
+      bestPri = p;
+      best = z;
+    }
+  }
+  return best;
+}
+
+/**
+ * One-pass mid-edge subdivision for triangles with a long edge.
+ * Smooths zone boundaries on coarse fuselage-like GLB meshes without new deps.
+ */
+function subdivideGeometryLongEdges(geometry, maxEdge) {
+  const pos = geometry.getAttribute("position");
+  if (!pos || !pos.count) return geometry;
+  const norm = geometry.getAttribute("normal");
+  const uv = geometry.getAttribute("uv");
+  const index = geometry.getIndex();
+  const triCount = index ? Math.floor(index.count / 3) : Math.floor(pos.count / 3);
+  if (triCount <= 0) return geometry;
+
+  const maxE2 = maxEdge * maxEdge;
+  const outPos = [];
+  const outNrm = [];
+  const outUv = [];
+  const hasN = !!(norm && norm.count === pos.count);
+  const hasUv = !!(uv && uv.count === pos.count);
+
+  const getI = (t, k) => {
+    if (index) return index.getX(t * 3 + k);
+    return t * 3 + k;
+  };
+  const pushV = (vi) => {
+    outPos.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+    if (hasN) outNrm.push(norm.getX(vi), norm.getY(vi), norm.getZ(vi));
+    if (hasUv) outUv.push(uv.getX(vi), uv.getY(vi));
+  };
+  const midKey = (a, b) => (a < b ? a + "_" + b : b + "_" + a);
+  const midCache = Object.create(null);
+  const pushMid = (ia, ib) => {
+    const key = midKey(ia, ib);
+    if (midCache[key] != null) {
+      const mi = midCache[key];
+      outPos.push(outPos[mi * 3], outPos[mi * 3 + 1], outPos[mi * 3 + 2]);
+      if (hasN) outNrm.push(outNrm[mi * 3], outNrm[mi * 3 + 1], outNrm[mi * 3 + 2]);
+      if (hasUv) outUv.push(outUv[mi * 2], outUv[mi * 2 + 1]);
+      return;
+    }
+    const mx = (pos.getX(ia) + pos.getX(ib)) * 0.5;
+    const my = (pos.getY(ia) + pos.getY(ib)) * 0.5;
+    const mz = (pos.getZ(ia) + pos.getZ(ib)) * 0.5;
+    const mi = outPos.length / 3;
+    outPos.push(mx, my, mz);
+    if (hasN) {
+      let nx = norm.getX(ia) + norm.getX(ib);
+      let ny = norm.getY(ia) + norm.getY(ib);
+      let nz = norm.getZ(ia) + norm.getZ(ib);
+      const nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+      outNrm.push(nx / nl, ny / nl, nz / nl);
+    }
+    if (hasUv) {
+      outUv.push((uv.getX(ia) + uv.getX(ib)) * 0.5, (uv.getY(ia) + uv.getY(ib)) * 0.5);
+    }
+    midCache[key] = mi;
+  };
+
+  let splitAny = false;
+  for (let t = 0; t < triCount; t++) {
+    const i0 = getI(t, 0);
+    const i1 = getI(t, 1);
+    const i2 = getI(t, 2);
+    if (i0 >= pos.count || i1 >= pos.count || i2 >= pos.count) continue;
+    const d01 =
+      (pos.getX(i0) - pos.getX(i1)) ** 2 +
+      (pos.getY(i0) - pos.getY(i1)) ** 2 +
+      (pos.getZ(i0) - pos.getZ(i1)) ** 2;
+    const d12 =
+      (pos.getX(i1) - pos.getX(i2)) ** 2 +
+      (pos.getY(i1) - pos.getY(i2)) ** 2 +
+      (pos.getZ(i1) - pos.getZ(i2)) ** 2;
+    const d20 =
+      (pos.getX(i2) - pos.getX(i0)) ** 2 +
+      (pos.getY(i2) - pos.getY(i0)) ** 2 +
+      (pos.getZ(i2) - pos.getZ(i0)) ** 2;
+    if (d01 <= maxE2 && d12 <= maxE2 && d20 <= maxE2) {
+      pushV(i0);
+      pushV(i1);
+      pushV(i2);
+      continue;
+    }
+    splitAny = true;
+    // 4-way midpoint split
+    const base = outPos.length / 3;
+    pushV(i0);
+    pushV(i1);
+    pushV(i2);
+    // mids appended after the 3 corners — recompute locally without cache for simplicity
+    // Use dedicated mid verts into temp then emit 4 tris
+    // Actually rebuild this triangle cleanly:
+    outPos.length = base * 3;
+    if (hasN) outNrm.length = base * 3;
+    if (hasUv) outUv.length = base * 2;
+
+    const emitCorner = (vi) => pushV(vi);
+    const emitMidAB = (ia, ib) => {
+      outPos.push(
+        (pos.getX(ia) + pos.getX(ib)) * 0.5,
+        (pos.getY(ia) + pos.getY(ib)) * 0.5,
+        (pos.getZ(ia) + pos.getZ(ib)) * 0.5
+      );
+      if (hasN) {
+        let nx = norm.getX(ia) + norm.getX(ib);
+        let ny = norm.getY(ia) + norm.getY(ib);
+        let nz = norm.getZ(ia) + norm.getZ(ib);
+        const nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+        outNrm.push(nx / nl, ny / nl, nz / nl);
+      }
+      if (hasUv) {
+        outUv.push(
+          (uv.getX(ia) + uv.getX(ib)) * 0.5,
+          (uv.getY(ia) + uv.getY(ib)) * 0.5
+        );
+      }
+    };
+    // corners 0,1,2 then mids 01,12,20 → indices base..base+5
+    emitCorner(i0);
+    emitCorner(i1);
+    emitCorner(i2);
+    emitMidAB(i0, i1);
+    emitMidAB(i1, i2);
+    emitMidAB(i2, i0);
+    const c0 = base, c1 = base + 1, c2 = base + 2;
+    const m01 = base + 3, m12 = base + 4, m20 = base + 5;
+    // We already pushed verts; now we need indexed tris — easier to duplicate verts per tri
+    // Rewind and emit 4 separate triangles as non-indexed verts
+    outPos.length = base * 3;
+    if (hasN) outNrm.length = base * 3;
+    if (hasUv) outUv.length = base * 2;
+    const V = [
+      [pos.getX(i0), pos.getY(i0), pos.getZ(i0)],
+      [pos.getX(i1), pos.getY(i1), pos.getZ(i1)],
+      [pos.getX(i2), pos.getY(i2), pos.getZ(i2)],
+    ];
+    const N = hasN
+      ? [
+          [norm.getX(i0), norm.getY(i0), norm.getZ(i0)],
+          [norm.getX(i1), norm.getY(i1), norm.getZ(i1)],
+          [norm.getX(i2), norm.getY(i2), norm.getZ(i2)],
+        ]
+      : null;
+    const U = hasUv
+      ? [
+          [uv.getX(i0), uv.getY(i0)],
+          [uv.getX(i1), uv.getY(i1)],
+          [uv.getX(i2), uv.getY(i2)],
+        ]
+      : null;
+    const mid = (a, b) => [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5, (a[2] + b[2]) * 0.5];
+    const midN = (a, b) => {
+      let nx = a[0] + b[0], ny = a[1] + b[1], nz = a[2] + b[2];
+      const nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+      return [nx / nl, ny / nl, nz / nl];
+    };
+    const midU = (a, b) => [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
+    const m01v = mid(V[0], V[1]);
+    const m12v = mid(V[1], V[2]);
+    const m20v = mid(V[2], V[0]);
+    const m01n = N ? midN(N[0], N[1]) : null;
+    const m12n = N ? midN(N[1], N[2]) : null;
+    const m20n = N ? midN(N[2], N[0]) : null;
+    const m01u = U ? midU(U[0], U[1]) : null;
+    const m12u = U ? midU(U[1], U[2]) : null;
+    const m20u = U ? midU(U[2], U[0]) : null;
+    const emit = (pv, nv, uvv) => {
+      outPos.push(pv[0], pv[1], pv[2]);
+      if (hasN) outNrm.push(nv[0], nv[1], nv[2]);
+      if (hasUv) outUv.push(uvv[0], uvv[1]);
+    };
+    const tris = [
+      [V[0], m01v, m20v, N && N[0], m01n, m20n, U && U[0], m01u, m20u],
+      [V[1], m12v, m01v, N && N[1], m12n, m01n, U && U[1], m12u, m01u],
+      [V[2], m20v, m12v, N && N[2], m20n, m12n, U && U[2], m20u, m12u],
+      [m01v, m12v, m20v, m01n, m12n, m20n, m01u, m12u, m20u],
+    ];
+    for (const tr of tris) {
+      emit(tr[0], tr[3], tr[6]);
+      emit(tr[1], tr[4], tr[7]);
+      emit(tr[2], tr[5], tr[8]);
+    }
+  }
+
+  if (!splitAny) return geometry;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(outPos, 3));
+  if (hasN && outNrm.length === outPos.length) {
+    geo.setAttribute("normal", new THREE.Float32BufferAttribute(outNrm, 3));
+  } else {
+    geo.computeVertexNormals();
+  }
+  if (hasUv && outUv.length === (outPos.length / 3) * 2) {
+    geo.setAttribute("uv", new THREE.Float32BufferAttribute(outUv, 2));
+  }
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
+  return geo;
 }
 
 /** @deprecated alias — face path uses classifyPoint */
@@ -630,8 +867,8 @@ function makeGlbZoneMaterial(hexColor) {
 }
 
 /**
- * v0.6.0 — Face-based solid zones.
- * Classify each triangle by craft-space centroid, then split into one
+ * v0.7.2 — Face-based solid zones.
+ * Classify each triangle by vertex majority vote, then split into one
  * BufferGeometry + MeshStandardMaterial per zone. No mixed-face vertex colors
  * → GPU cannot interpolate across zone boundaries → sharp edges.
  * Shared materials per zone name so applyPaint only updates material.color.
@@ -684,11 +921,36 @@ function buildGlbFaceZoneSplits(craft) {
   const ctx = buildGlbZoneContext(samples, lb, noseSign);
 
   const zoneMaterials = Object.create(null);
+  const craftSize = lb.getSize(new THREE.Vector3());
+  const bodyEdgeMax = Math.max(craftSize.x, craftSize.y, craftSize.z) * 0.045;
 
   meshes.forEach((mesh) => {
-    const geo = mesh.geometry;
-    const pos = geo.getAttribute("position");
+    let geo = mesh.geometry;
+    let pos = geo.getAttribute("position");
     if (!pos || !pos.count) return;
+
+    // Light subdivision on coarse body-like meshes (elongated, near centerline)
+    try {
+      const mbox = new THREE.Box3().setFromObject(mesh);
+      const msize = mbox.getSize(new THREE.Vector3());
+      const mcen = mbox.getCenter(new THREE.Vector3());
+      const localCen = mcen.clone().applyMatrix4(craftInv);
+      const nearCenter = Math.abs(localCen.z) < ctx.halfZ * 0.45;
+      const elongated = msize.x > Math.max(msize.y, msize.z) * 1.35;
+      const triEst = geo.getIndex()
+        ? Math.floor(geo.getIndex().count / 3)
+        : Math.floor(pos.count / 3);
+      if (nearCenter && elongated && triEst > 20 && triEst < 12000) {
+        const subdivided = subdivideGeometryLongEdges(geo, bodyEdgeMax);
+        if (subdivided !== geo) {
+          try { geo.dispose(); } catch (_) {}
+          mesh.geometry = subdivided;
+          geo = subdivided;
+          pos = geo.getAttribute("position");
+        }
+      }
+    } catch (_) {}
+
     const norm = geo.getAttribute("normal");
     const uv = geo.getAttribute("uv");
     const index = geo.getIndex();
@@ -730,10 +992,11 @@ function buildGlbFaceZoneSplits(craft) {
       tmpA.fromBufferAttribute(pos, i0).applyMatrix4(toCraft);
       tmpB.fromBufferAttribute(pos, i1).applyMatrix4(toCraft);
       tmpC.fromBufferAttribute(pos, i2).applyMatrix4(toCraft);
-      const cx = (tmpA.x + tmpB.x + tmpC.x) / 3;
-      const cy = (tmpA.y + tmpB.y + tmpC.y) / 3;
-      const cz = (tmpA.z + tmpB.z + tmpC.z) / 3;
-      const zid = classifyPoint(cx, cy, cz, ctx);
+      // v0.7.2: vertex majority vote (not centroid) → fewer jagged zone stairs
+      const z0 = classifyPoint(tmpA.x, tmpA.y, tmpA.z, ctx);
+      const z1 = classifyPoint(tmpB.x, tmpB.y, tmpB.z, ctx);
+      const z2 = classifyPoint(tmpC.x, tmpC.y, tmpC.z, ctx);
+      const zid = majorityZoneId(z0, z1, z2);
       const bucket = ensure(zid);
       pushVert(bucket, i0);
       pushVert(bucket, i1);
@@ -1491,7 +1754,7 @@ function paintDecalCanvas(canvas, state) {
 
   const textColor = state.textColor || "#FFFFFF";
   const sizeKey = state.textSize || "M";
-  const basePx = sizeKey === "S" ? 120 : sizeKey === "L" ? 260 : 200; // v0.7.1 larger title
+  const basePx = sizeKey === "S" ? 140 : sizeKey === "L" ? 320 : 240; // v0.7.2 larger title
   const maxW = W * 0.92;
 
   ctx.fillStyle = textColor;
@@ -1518,7 +1781,7 @@ function paintDecalCanvas(canvas, state) {
       ? (style.includes("bold") ? "bold-italic" : "italic")
       : "regular";
     const sState = { ...state, textStyle: sloganStyle };
-    const sPx = fitFontPx(ctx, state.slogan, maxW, Math.round(basePx * 0.48), sState, 12);
+    const sPx = fitFontPx(ctx, state.slogan, maxW, Math.round(basePx * 0.55), sState, 14);
     ctx.font = resolveFontFace(sState, sPx);
     ctx.fillText(state.slogan, W / 2, H * 0.48 + airPx * 0.58);
   }
@@ -1812,7 +2075,7 @@ function makeRegTexture(state) {
   ctx.shadowBlur = 8;
   const px =
     typeof fitFontPx === "function"
-      ? fitFontPx(ctx, state.registration, REG_W * 0.92, 160, rState, 28)
+      ? fitFontPx(ctx, state.registration, REG_W * 0.92, 200, rState, 36)
       : 72;
   ctx.font =
     typeof resolveFontFace === "function"
@@ -1831,19 +2094,52 @@ function makeRegTexture(state) {
 }
 
 /**
- * v0.7.1 — Custom uploaded texture decals (Custom 1/2/3).
+ * v0.7.2 — Custom uploaded texture decals (Custom 1/2/3).
  * Project PNG/JPG onto Fuselage (both sides) / Wings / Tail / Belly with opacity, scale, X/Y.
+ * If dataUrl exists but Image not ready, load it and re-trigger applyPaint (never silent-skip forever).
  */
+function ensureCustomSlotImage(slot) {
+  if (!slot || !slot.dataUrl) return null;
+  const existing = slot._img;
+  if (existing && existing.complete && existing.naturalWidth) return existing;
+  if (slot._pendingImgLoad) return null;
+  slot._pendingImgLoad = true;
+  const img = new Image();
+  img.onload = () => {
+    slot._img = img;
+    slot._pendingImgLoad = false;
+    try {
+      const prev = typeof window !== "undefined" ? window.__SMB_PREVIEW : null;
+      if (prev) {
+        prev._lastStateKey = "";
+        if (prev._lastPaintState) prev.applyPaint(prev._lastPaintState);
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("skinmybird-custom-texture-ready"));
+      }
+    } catch (err) {
+      console.warn("custom texture remount failed", err);
+    }
+  };
+  img.onerror = () => {
+    slot._pendingImgLoad = false;
+    console.warn("custom texture image failed to load", slot.name || "(unnamed)");
+  };
+  img.src = slot.dataUrl;
+  return null;
+}
+
 function addCustomTextureDecals(craft, state, group, targets, box, size, center, raycaster) {
   const slots = state.customTextures || [];
   if (!slots.length || !group) return;
   const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
   const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
   const maxFusAbsZ = fusR * 2.35;
+  const scored = targets.scored || [];
 
   slots.forEach((slot, idx) => {
     if (!slot || !slot.dataUrl) return;
-    const img = slot._img;
+    const img = ensureCustomSlotImage(slot);
     if (!img || !img.complete || !img.naturalWidth) return;
     const placement = slot.placement || "fuselage";
     const opacity = Math.max(0.05, Math.min(1, (Number(slot.opacity) || 100) / 100));
@@ -1855,16 +2151,15 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
     const cw = 1024, ch = 1024;
     canvas.width = cw;
     canvas.height = ch;
-    const ctx = canvas.getContext("2d");
-    prepareCanvas2d(ctx, cw, ch);
-    ctx.globalAlpha = opacity;
-    // Contain image in canvas
+    const ctx2d = canvas.getContext("2d");
+    prepareCanvas2d(ctx2d, cw, ch);
+    ctx2d.globalAlpha = opacity;
     const ir = img.naturalWidth / img.naturalHeight;
     let dw = cw, dh = ch;
     if (ir > 1) dh = cw / ir;
     else dw = ch * ir;
-    ctx.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
-    ctx.globalAlpha = 1;
+    ctx2d.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+    ctx2d.globalAlpha = 1;
     const tex = new THREE.CanvasTexture(canvas);
     configurePaintTexture(tex);
 
@@ -1881,21 +2176,38 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
     };
 
     let meshList;
-    if (placement === "wings" && targets.wings.length)
-      meshList = targets.wings.map((t) => t.mesh);
-    else if (placement === "tail" && targets.tail.length)
-      meshList = targets.tail.map((t) => t.mesh).concat(targets.fuselage.map((t) => t.mesh));
-    else if (placement === "belly") {
-      meshList = (targets.belly || []).map((t) => t.mesh).concat(targets.fuselage.map((t) => t.mesh));
+    if (placement === "wings") {
+      meshList = (targets.wings || []).map((t) => t.mesh);
+      if (!meshList.length) {
+        meshList = scored
+          .filter((s) => s.paintZone === "wings" || s.paintZone === "winglet" || s.role === "wings")
+          .map((s) => s.mesh);
+      }
+    } else if (placement === "tail") {
+      meshList = (targets.tail || []).map((t) => t.mesh)
+        .concat((targets.fuselage || []).map((t) => t.mesh));
+    } else if (placement === "belly") {
+      meshList = (targets.belly || []).map((t) => t.mesh)
+        .concat((targets.fuselage || []).map((t) => t.mesh));
     } else {
-      meshList = targets.fuselage.map((t) => t.mesh);
-      if (!meshList.length) meshList = targets.all.slice(0, 6);
+      // fuselage: prefer windowband + fuselage zone-split children
+      const sideParts = scored.filter(
+        (s) =>
+          s.paintZone === "windowband" ||
+          s.paintZone === "fuselage" ||
+          s.role === "fuselage"
+      );
+      meshList = sideParts.length
+        ? sideParts.map((s) => s.mesh)
+        : (targets.fuselage || []).map((t) => t.mesh);
+      if (!meshList.length) meshList = (targets.all || []).slice(0, 8);
     }
 
-    const baseW = Math.max(0.55, Math.min(size.x * 0.22, 1.6)) * scale;
+    // v0.7.2: clearly visible default size (~0.32 of fuselage length at 100%)
+    const baseW = Math.max(0.75, Math.min(size.x * 0.32, 2.6)) * scale;
     const baseH = baseW * (dh / dw);
-    const depth = Math.max(0.3, Math.min(size.y * 0.3, 0.5));
-    const decalSize = new THREE.Vector3(baseW, Math.max(0.35, baseH), depth);
+    const depth = Math.max(0.3, Math.min(size.y * 0.3, 0.55));
+    const decalSize = new THREE.Vector3(baseW, Math.max(0.4, baseH), depth);
 
     let x0 = center.x - size.x * posX * 0.35;
     let y0 = center.y + size.y * (0.02 + posY * 0.25);
@@ -1931,8 +2243,22 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
             preferSideZones: false,
           });
         }
+        // Second simpler raycast — less maxNy filtering before giving up
+        if (!hit) {
+          origin.z = center.z + side * (fusR * 3.2);
+          hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ * 1.35, y0, {
+            maxNy: 0.88,
+            preferSideZones: false,
+          });
+        }
+        if (!hit) {
+          hit = raycastBestHit(meshList, origin, dir, raycaster);
+        }
       }
-      if (!hit) return;
+      if (!hit) {
+        console.warn("addCustomTextureDecals: no hit for", placement, "side", side, slot.name || idx);
+        return;
+      }
       const flipU = placement === "fuselage" ? resolveFlipU(hit, side, false, false) : false;
       const mat = sideMaterialFromTex(tex, flipU, matOpts);
       projectDecal(group, hit, decalSize, mat, 4 + idx);
@@ -2061,12 +2387,12 @@ function addTextDecals(craft, state) {
   // User offsets (need posX/posY before yAim / xMain)
   const posX = Number(state.textPosX || 0) / 100;
   const posY = Number(state.textPosY != null ? state.textPosY : 8) / 100;
-  const scalePct = Math.max(0.5, Math.min(1.6, (Number(state.textScale) || 100) / 100));
+  const scalePct = Math.max(0.5, Math.min(1.8, (Number(state.textScale) || 155) / 100));
   // Title panel length first — needed for xMain and local-band X filter
   let panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
-    fusLen * 0.15; // v0.6.16 shorter panel so left TE clears wing-root notch
+    fusLen * 0.24; // v0.7.2 larger readable title panel
 
   // Solid-interval clamps (nose = +X). Used for fuselage title X and per-side candidates.
   let xAftMin = center.x + size.x * 0.08;
@@ -2079,21 +2405,20 @@ function addTextDecals(craft, state) {
   } else if (place === "wing") {
     xMain = center.x - size.x * 0.02;
   } else {
-    // v0.6.16: larger LE gap + shorter panel + more forward bias (clear left wing-root notch)
-    const gap = Math.max(0.07 * fusLen, 0.28);
-    xAftMin = (wingLeX != null) ? wingLeX + gap : center.x + size.x * 0.12;
+    // v0.7.2: larger panel (readable); keep forward of LE with gap; bias size over notch clearance
+    const gap = Math.max(0.055 * fusLen, 0.22);
+    xAftMin = (wingLeX != null) ? wingLeX + gap : center.x + size.x * 0.10;
     // Room to slide nose-ward; per-side wb hit avoids taper clip
-    xFwdMax = center.x + size.x * 0.23;
-    panelLen = fusLen * 0.15;
-    // Optional tiny default floor for long airline names
+    xFwdMax = center.x + size.x * 0.26;
+    panelLen = fusLen * 0.24;
     const airlineLen = String(state.airline || "").trim().length;
-    if (airlineLen > 10) panelLen *= 0.92;
+    if (airlineLen > 12) panelLen *= 0.94;
     const span = xFwdMax - xAftMin;
-    // if span inverted / too tight: fall back to proven forward cabin
-    if (span < panelLen * 0.6) {
-      xMain = center.x + size.x * 0.20;
-      panelLen = fusLen * 0.15;
-      if (airlineLen > 10) panelLen *= 0.92;
+    // if span inverted / too tight: fall back to proven forward cabin (still large)
+    if (span < panelLen * 0.55) {
+      xMain = center.x + size.x * 0.18;
+      panelLen = fusLen * 0.22;
+      if (airlineLen > 12) panelLen *= 0.94;
       xAftMin = xMain - panelLen * 0.5;
       xFwdMax = xMain + panelLen * 0.5;
     } else {
@@ -2166,14 +2491,14 @@ function addTextDecals(craft, state) {
   ];
   const yWindow = yAim;
 
-  // v0.7.1: larger writing area — titlePanelH ~0.78*bandH (stay inside band)
+  // v0.7.2: title fills most of windowband height (~0.90*bandH)
   const titlePanelH =
-    place === "wing" ? Math.max(0.35, panelLen * 0.35) :
-    place === "belly" || place === "tail" ? Math.max(0.32, Math.min(size.y * 0.28, 0.72)) :
-    Math.max(bandH * 0.62, Math.min(bandH * 0.88, bandH * 0.78));
+    place === "wing" ? Math.max(0.4, panelLen * 0.38) :
+    place === "belly" || place === "tail" ? Math.max(0.38, Math.min(size.y * 0.32, 0.85)) :
+    Math.max(bandH * 0.78, Math.min(bandH * 0.98, bandH * 0.90));
   const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
 
-  const stickerBoost = 1; // stickers removed in v0.7.1; title size from textScale / titlePanelH
+  const stickerBoost = 1; // stickers removed; title size from textScale / titlePanelH
   const flipLeft = !!state.textFlipLeft;
   const flipRight = !!state.textFlipRight;
   const decalSize = new THREE.Vector3(
@@ -2435,9 +2760,9 @@ function addTextDecals(craft, state) {
   let regTex = null;
   if (state.registration && place !== "tail" && place !== "wing") {
     regTex = makeRegTexture(state);
-    // Visible ~0.9–1.2 m wide
-    const regW = Math.min(1.2, Math.max(0.9, size.x * 0.12));
-    const regH = Math.max(bandH * 0.45, Math.min(bandH * 0.70, regW * 0.32));
+    // v0.7.2: larger aft registration
+    const regW = Math.min(1.55, Math.max(1.05, size.x * 0.15));
+    const regH = Math.max(bandH * 0.55, Math.min(bandH * 0.85, regW * 0.36));
     const regDepth = panelDepth * 0.9;
     const regSize = new THREE.Vector3(regW, regH, regDepth);
     const regXAft = [0.18, 0.22, 0.28, 0.32].map((f) => center.x - size.x * f);
@@ -3123,6 +3448,7 @@ export class Preview3D {
     this._ro = null;
     this.ok = false;
     this._lastStateKey = "";
+    this._lastPaintState = null;
     this._highlightedZone = null;
   }
 
@@ -3467,6 +3793,7 @@ export class Preview3D {
 
   applyPaint(state) {
     if (!this.ok || !this.root) return;
+    this._lastPaintState = state;
     const family = this.family || "narrow";
     const key = JSON.stringify({
       c: state.colors,
@@ -3485,7 +3812,8 @@ export class Preview3D {
       tfr: state.textFlipRight,
       fl: state.flags,
       ct: (state.customTextures || []).map((t) => ({
-        d: t.dataUrl ? t.dataUrl.slice(0, 64) : null,
+        dLen: t.dataUrl ? t.dataUrl.length : 0,
+        ready: !!(t._img && t._img.complete && t._img.naturalWidth),
         o: t.opacity, s: t.scale, x: t.posX, y: t.posY, p: t.placement, n: t.name,
       })),
       photo: state.soacraName || null,

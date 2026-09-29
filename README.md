@@ -15,6 +15,11 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.7.2 notes
+- Custom texture uploads remount when Image finishes loading (no silent skip); larger default decal; wider fuselage/windowband raycast targets.
+- Paint zones: vertex majority vote + light body-mesh subdivision + tighter parametric bands (less jagged windowband).
+- Larger fuselage title/slogan/registration defaults (`panelLen` ~0.24·fusLen, `textScale` 155%, title ~0.90·bandH). Cache-bust `?v=0.7.2`
+
 ### v0.7.1 notes
 - **Simpler paint zones** (8 face zones): Fuselage, Nose, Belly, Window band, Wings, Winglets, Engines, Tail. Merged accent/doors/fairings/crown/cockpit/stabilizer/pylons into nearest parent.
 - **Stickers removed** from UI and hangar drawing. **Flags kept** and expanded (~49 nations, EU focus + major world).

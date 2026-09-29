@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.7.1 — simpler paint zones, flags-only, custom textures, 3 text zones.
+ * SkinMyBird web editor v0.7.2 — clearer paint zones, reliable custom textures, larger fuselage text.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.7.1";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.7.2";
 
 const $ = (id) => document.getElementById(id);
 
@@ -57,7 +57,7 @@ const $ = (id) => document.getElementById(id);
     textPlacement: "fuselage",
     textPosX: 0,
     textPosY: 8,
-    textScale: 120,
+    textScale: 155,
     textFlipLeft: false,
     textFlipRight: false,
     stickers: { text: true }, // export compat — no decorative stickers in UI
@@ -116,12 +116,12 @@ const $ = (id) => document.getElementById(id);
     $("text-placement").value = state.textPlacement;
     if ($("text-pos-x")) $("text-pos-x").value = state.textPosX ?? 0;
     if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? 8;
-    if ($("text-scale")) $("text-scale").value = state.textScale ?? 120;
+    if ($("text-scale")) $("text-scale").value = state.textScale ?? 155;
     if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
     if ($("text-flip-right")) $("text-flip-right").checked = !!state.textFlipRight;
     if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
     if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? 8);
-    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 120) + "%";
+    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 155) + "%";
     updateHexLabels();
     syncSegmented("data-size", state.textSize);
     syncSegmented("data-style", state.textStyle);
@@ -197,7 +197,7 @@ const $ = (id) => document.getElementById(id);
     state.textPlacement = $("text-placement").value || "fuselage";
     state.textPosX = $("text-pos-x") ? Number($("text-pos-x").value) : 0;
     state.textPosY = $("text-pos-y") ? Number($("text-pos-y").value) : 8;
-    state.textScale = $("text-scale") ? Number($("text-scale").value) : 120;
+    state.textScale = $("text-scale") ? Number($("text-scale").value) : 155;
     state.textFlipLeft = $("text-flip-left") ? $("text-flip-left").checked : false;
     state.textFlipRight = $("text-flip-right") ? $("text-flip-right").checked : false;
     state.stickerText = state.slogan || "";
@@ -763,13 +763,23 @@ const $ = (id) => document.getElementById(id);
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result;
+      slot.dataUrl = dataUrl;
+      slot.name = file.name;
+      slot._img = null;
+      slot._pendingImgLoad = false;
+      syncCustomTextureInputs();
+      // Kick hangar once (may schedule Image load + remount via ensureCustomSlotImage)
+      drawPreview();
       const img = new Image();
       img.onload = () => {
-        slot.dataUrl = dataUrl;
-        slot.name = file.name;
         slot._img = img;
+        slot._pendingImgLoad = false;
         syncCustomTextureInputs();
         drawPreview();
+      };
+      img.onerror = () => {
+        console.warn("custom texture failed", file.name);
+        slot._pendingImgLoad = false;
       };
       img.src = dataUrl;
     };
@@ -879,12 +889,12 @@ const $ = (id) => document.getElementById(id);
       $("text-placement").value = state.textPlacement;
     if ($("text-pos-x")) $("text-pos-x").value = state.textPosX ?? 0;
     if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? 8;
-    if ($("text-scale")) $("text-scale").value = state.textScale ?? 100;
+    if ($("text-scale")) $("text-scale").value = state.textScale ?? 155;
     if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
     if ($("text-flip-right")) $("text-flip-right").checked = !!state.textFlipRight;
     if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
     if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? 8);
-    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 100) + "%";
+    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 155) + "%";
       syncSegmented("data-place", state.textPlacement);
       drawPreview();
     });
@@ -1099,5 +1109,9 @@ const $ = (id) => document.getElementById(id);
   syncInputsFromState();
   loadProfiles();
   // Draw empty hangar so canvas isn't blank before selection
+  window.addEventListener("skinmybird-custom-texture-ready", () => {
+    try { drawPreview(); } catch (_) {}
+  });
+
   drawPreview();
 
