@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.15 — push title forward of wing LE (bias wingLeX + forward interval).
+ * SkinMyBird 3D hangar preview v0.6.16 — clear left title trailing edge from wing-root notch.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1963,7 +1963,7 @@ function addTextDecals(craft, state) {
   let panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
-    fusLen * 0.18; // v0.6.15 panel length in solid LE→taper interval
+    fusLen * 0.15; // v0.6.16 shorter panel so left TE clears wing-root notch
 
   // Solid-interval clamps (nose = +X). Used for fuselage title X and per-side candidates.
   let xAftMin = center.x + size.x * 0.08;
@@ -1976,12 +1976,12 @@ function addTextDecals(craft, state) {
   } else if (place === "wing") {
     xMain = center.x - size.x * 0.02;
   } else {
-    // v0.6.15: solid interval more nose-ward — forward of wing LE (gap), clear of nose taper
-    const gap = Math.max(0.05 * fusLen, 0.18);
+    // v0.6.16: larger LE gap + shorter panel + more forward bias (clear left wing-root notch)
+    const gap = Math.max(0.07 * fusLen, 0.28);
     xAftMin = (wingLeX != null) ? wingLeX + gap : center.x + size.x * 0.12;
-    // Allow further forward than 0.14; per-side wb hit avoids taper clip
-    xFwdMax = center.x + size.x * 0.22;
-    panelLen = fusLen * 0.18;
+    // Room to slide nose-ward; per-side wb hit avoids taper clip
+    xFwdMax = center.x + size.x * 0.23;
+    panelLen = fusLen * 0.15;
     // Optional tiny default floor for long airline names
     const airlineLen = String(state.airline || "").trim().length;
     if (airlineLen > 10) panelLen *= 0.92;
@@ -1989,13 +1989,13 @@ function addTextDecals(craft, state) {
     // if span inverted / too tight: fall back to proven forward cabin
     if (span < panelLen * 0.6) {
       xMain = center.x + size.x * 0.20;
-      panelLen = fusLen * 0.18;
+      panelLen = fusLen * 0.15;
       if (airlineLen > 10) panelLen *= 0.92;
       xAftMin = xMain - panelLen * 0.5;
       xFwdMax = xMain + panelLen * 0.5;
     } else {
-      // prefer FORWARD half of interval (closer to nose, clear of wing)
-      xMain = xAftMin + span * 0.65;
+      // prefer even more FORWARD in interval (closer to nose, clear of wing-root notch)
+      xMain = xAftMin + span * 0.75;
       xMain = Math.min(xFwdMax - panelLen * 0.5, Math.max(xAftMin + panelLen * 0.5, xMain));
     }
     // Guarantees: aft edge >= xAftMin (forward of LE), fwd edge <= xFwdMax (clear of taper)
@@ -2175,8 +2175,8 @@ function addTextDecals(craft, state) {
     return hit.object.userData.paintZone || hit.object.userData.zoneName || null;
   }
 
-  // v0.6.15: build per-side title X candidates — prefer more forward first
-  function buildSideTitleXs() {
+  // v0.6.16: build per-side title X candidates — left adds extra nose-ward first
+  function buildSideTitleXs(side) {
     const preferred = [];
     const lastResort = [];
     const fwdLimit = xFwdMax + 0.01 * fusLen;
@@ -2190,8 +2190,9 @@ function addTextDecals(craft, state) {
       if (x > fwdLimit) return;
       if (!into.includes(x)) into.push(x);
     }
-    // Prefer forward candidates first (nose-ward), then slightly aft
-    const raw = [
+    // Prefer forward candidates first (nose-ward), then slightly aft.
+    // Left (−Z): extra forward candidates first so TE clears wing-root fairing notch.
+    const rawRight = [
       xMain,
       xMain + 0.02 * fusLen,
       center.x + size.x * 0.20,
@@ -2202,6 +2203,20 @@ function addTextDecals(craft, state) {
       center.x + size.x * 0.12,
       xMain - 0.04 * fusLen,
     ];
+    const rawLeft = [
+      xMain + 0.03 * fusLen,
+      center.x + size.x * 0.21,
+      xMain,
+      xMain + 0.02 * fusLen,
+      center.x + size.x * 0.20,
+      center.x + size.x * 0.18,
+      center.x + size.x * 0.16,
+      center.x + size.x * 0.14,
+      xMain - 0.02 * fusLen,
+      center.x + size.x * 0.12,
+      xMain - 0.04 * fusLen,
+    ];
+    const raw = side === -1 ? rawLeft : rawRight;
     for (const x of raw) {
       if (x < aftSoft) pushCand(x, lastResort);
       else pushCand(x, preferred);
@@ -2226,16 +2241,34 @@ function addTextDecals(craft, state) {
     let hit = null;
     let usedX = null;
     const yCands = place === "belly" || place === "wing" ? [yWindow] : yAlts;
-    const { preferred, lastResort } = buildSideTitleXs();
+    const { preferred, lastResort } = buildSideTitleXs(side);
     const allXs = preferred.concat(lastResort);
 
-    // Pass 1: first good windowband hit wins for this side
-    for (const tx of preferred) {
-      const h = trySideHit(side, tx, yCands, meshListTitle, titleCastOpts);
-      if (h && hitPaintZone(h) === "windowband") {
-        hit = h;
-        usedX = tx;
-        break;
+    // Pass 1: windowband hits — right: first good; left: prefer larger hit.point.x (nose-ward)
+    if (side === -1) {
+      let bestWb = null;
+      let bestTx = null;
+      for (const tx of preferred) {
+        const h = trySideHit(side, tx, yCands, meshListTitle, titleCastOpts);
+        if (h && hitPaintZone(h) === "windowband" && h.point) {
+          if (!bestWb || h.point.x > bestWb.point.x) {
+            bestWb = h;
+            bestTx = tx;
+          }
+        }
+      }
+      if (bestWb) {
+        hit = bestWb;
+        usedX = bestTx;
+      }
+    } else {
+      for (const tx of preferred) {
+        const h = trySideHit(side, tx, yCands, meshListTitle, titleCastOpts);
+        if (h && hitPaintZone(h) === "windowband") {
+          hit = h;
+          usedX = tx;
+          break;
+        }
       }
     }
     // Pass 2: any side hit on accent/fuselage/windowband at band Y (preferred then last resort)
