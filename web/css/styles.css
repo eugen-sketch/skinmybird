@@ -1,4 +1,4 @@
-/* SkinMyBird v0.7.0 — simpler paint zones · flags-only · custom textures · 3 text zones */
+/* SkinMyBird v0.7.3 — smooth parametric zones · custom textures · larger text */
 :root {
   --bg: #0b0b0d;
   --bg-elev: #121214;
@@ -330,6 +330,7 @@ button:focus-visible, input:focus-visible, .tab:focus-visible, .seg:focus-visibl
   display: grid;
   grid-template-columns: var(--tools-w) 1fr var(--layers-w);
   gap: 0;
+  align-items: start;
   min-height: calc(100vh - var(--header-h) - 44px);
   max-width: 1600px;
   width: 100%;
@@ -344,6 +345,8 @@ button:focus-visible, input:focus-visible, .tab:focus-visible, .seg:focus-visibl
   display: flex;
   flex-direction: column;
   min-height: 0;
+  max-height: calc(100vh - var(--header-h) - 44px);
+  overflow: hidden;
 }
 .tools-panel {
   border-right: 1px solid var(--border);
@@ -594,6 +597,12 @@ input[type="text"]:focus {
   min-width: 0;
   background: var(--bg);
   padding: 0.85rem 1rem 1rem;
+  /* v0.7.3: don't let tall Tools tabs (Textures) blow hangar canvas height */
+  max-height: calc(100vh - var(--header-h) - 44px);
+  position: sticky;
+  top: 0;
+  align-self: start;
+  overflow: hidden;
 }
 .preview-toolbar {
   display: flex;
@@ -632,9 +641,10 @@ input[type="text"]:focus {
 
 .stage {
   position: relative;
-  flex: 1;
-  min-height: 420px;
-  height: min(62vh, 640px);
+  flex: 0 0 auto;
+  min-height: 360px;
+  height: min(56vh, 520px);
+  max-height: min(56vh, 520px);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   overflow: hidden;

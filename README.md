@@ -15,6 +15,11 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.7.3 notes
+- **Smooth parametric zones**: body meshes use `MeshStandardMaterial` + `onBeforeCompile` fragment classification (craft-local `classifyPoint`) — continuous windowband / belly edges; no face-split stair-steps. Wings / winglets / engines stay solid role materials (no white nacelle teeth).
+- **Custom textures visible**: fuselage aim matches title path (forward of wing LE + windowband mid); multi-X side raycasts; PlaneGeometry hard fallback if raycast misses.
+- Stage height clamped so Textures tab does not blow hangar canvas tall. Cache-bust `?v=0.7.3`
+
 ### v0.7.2 notes
 - Custom texture uploads remount when Image finishes loading (no silent skip); larger default decal; wider fuselage/windowband raycast targets.
 - Paint zones: vertex majority vote + light body-mesh subdivision + tighter parametric bands (less jagged windowband).

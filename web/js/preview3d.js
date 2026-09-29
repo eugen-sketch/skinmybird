@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.7.2 — clearer paint zones, reliable custom textures, larger fuselage text.
+ * SkinMyBird 3D hangar preview v0.7.3 — smooth parametric zone shader, reliable custom textures, larger fuselage text.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -430,7 +430,7 @@ function classifyMeshRole(name, box, craftBox) {
   return "fuselage";
 }
 
-/** Paint-zone ids — v0.7.2 simplified solid face zones (majority vote + light subdivide). */
+/** Paint-zone ids — v0.7.3 fragment-shader body bands + solid role mats for wings/engines. */
 const ZONE_ID = {
   fuselage: 0,
   nose: 1,
@@ -586,7 +586,7 @@ function classifyPoint(x, y, z, ctx) {
     if (w > 0.44 && v > 0.1 && v < 0.52) return ZONE_ID.wings;
   }
 
-  // Clean parametric bands on the fuselage tube (v0.7.2)
+  // Clean parametric bands on the fuselage tube (shared with fragment shader)
   const fuseSy = ctx.fuseSy || sy;
   const vTube = (y - ctx.min.y) / fuseSy;
   const fuseTop = ctx.fuseTop || ctx.max.y;
@@ -867,21 +867,262 @@ function makeGlbZoneMaterial(hexColor) {
 }
 
 /**
- * v0.7.2 — Face-based solid zones.
- * Classify each triangle by vertex majority vote, then split into one
- * BufferGeometry + MeshStandardMaterial per zone. No mixed-face vertex colors
- * → GPU cannot interpolate across zone boundaries → sharp edges.
- * Shared materials per zone name so applyPaint only updates material.color.
+ * v0.7.3 — Hybrid zone paint:
+ * Body meshes (fuselage/nose/belly/tail/windowband roles) share ONE MeshStandardMaterial
+ * with onBeforeCompile fragment classification → smooth parametric stripes (no tri stairs).
+ * Wings / winglets / engines get solid MeshStandardMaterial by mesh role (no mixed faces).
+ * Face-split geometry is bypassed for body appearance.
  */
-function buildGlbFaceZoneSplits(craft) {
+function craftLocalPoint(craft, worldPoint, out = new THREE.Vector3()) {
+  out.copy(worldPoint);
+  craft.updateMatrixWorld(true);
+  const inv = craft.userData._craftInv || new THREE.Matrix4();
+  inv.copy(craft.matrixWorld).invert();
+  craft.userData._craftInv = inv;
+  return out.applyMatrix4(inv);
+}
+
+function zoneNameFromId(zid) {
+  return ZONE_NAMES[zid] || "fuselage";
+}
+
+function makeBodyZoneShaderMaterial(ctx) {
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(0xffffff),
+    metalness: 0.1,
+    roughness: 0.72,
+    vertexColors: false,
+    flatShading: false,
+    envMap: null,
+    map: null,
+    emissive: new THREE.Color(0x000000),
+    emissiveIntensity: 0,
+  });
+
+  const seedVecs = [0, 1, 2, 3].map((i) => {
+    const s = ctx.seeds[i];
+    return s
+      ? new THREE.Vector3(s[0], s[1], s[2])
+      : new THREE.Vector3(0, -9999, 0);
+  });
+
+  const uniforms = {
+    uCraftWorldInverse: { value: new THREE.Matrix4() },
+    uMin: { value: ctx.min.clone() },
+    uMax: { value: ctx.max.clone() },
+    uSx: { value: ctx.sx },
+    uSy: { value: ctx.sy },
+    uHalfZ: { value: ctx.halfZ },
+    uWingY: { value: ctx.wingY },
+    uNoseSign: { value: ctx.noseSign },
+    uEngineR: { value: ctx.engineR },
+    uFuseTop: { value: ctx.fuseTop },
+    uFuseSy: { value: ctx.fuseSy },
+    uSeedCount: { value: Math.min(4, ctx.seeds.length) },
+    uSeed0: { value: seedVecs[0] },
+    uSeed1: { value: seedVecs[1] },
+    uSeed2: { value: seedVecs[2] },
+    uSeed3: { value: seedVecs[3] },
+    uColFuselage: { value: new THREE.Color(0xf2f4f7) },
+    uColNose: { value: new THREE.Color(0xf2f4f7) },
+    uColBelly: { value: new THREE.Color(0xb0b6be) },
+    uColWindowband: { value: new THREE.Color(0x2ec4b6) },
+    uColTail: { value: new THREE.Color(0xf2f4f7) },
+    uColWings: { value: new THREE.Color(0x1b2430) },
+    uColWinglet: { value: new THREE.Color(0x1b2430) },
+    uColEngines: { value: new THREE.Color(0x1b2430) },
+    uHighlightZone: { value: -1 },
+  };
+
+  mat.userData.zoneUniforms = uniforms;
+  mat.userData.isBodyZoneShader = true;
+  mat.userData.baseColor = new THREE.Color(0xffffff);
+  mat.customProgramCacheKey = () => "smb_body_zone_shader_v073";
+
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    mat.userData.shaderRef = shader;
+
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+varying vec3 vCraftPos;
+uniform mat4 uCraftWorldInverse;`
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+vCraftPos = (uCraftWorldInverse * modelMatrix * vec4( transformed, 1.0 )).xyz;`
+      );
+
+    const fragInject = `
+varying vec3 vCraftPos;
+uniform vec3 uMin;
+uniform vec3 uMax;
+uniform float uSx;
+uniform float uSy;
+uniform float uHalfZ;
+uniform float uWingY;
+uniform float uNoseSign;
+uniform float uEngineR;
+uniform float uFuseTop;
+uniform float uFuseSy;
+uniform int uSeedCount;
+uniform vec3 uSeed0;
+uniform vec3 uSeed1;
+uniform vec3 uSeed2;
+uniform vec3 uSeed3;
+uniform vec3 uColFuselage;
+uniform vec3 uColNose;
+uniform vec3 uColBelly;
+uniform vec3 uColWindowband;
+uniform vec3 uColTail;
+uniform vec3 uColWings;
+uniform vec3 uColWinglet;
+uniform vec3 uColEngines;
+uniform int uHighlightZone;
+
+int smbClassifyCraft(vec3 p) {
+  float xx = p.x * uNoseSign;
+  float xmin = uNoseSign > 0.0 ? uMin.x : -uMax.x;
+  float u = (xx - xmin) / max(uSx, 1e-6);
+  float v = (p.y - uMin.y) / max(uSy, 1e-6);
+  float w = abs(p.z) / max(uHalfZ, 1e-6);
+  float absZ = abs(p.z);
+  float sy = uSy;
+  float halfZ = uHalfZ;
+  float wingY = uWingY;
+  float engineR = uEngineR;
+
+  vec3 seeds[4];
+  seeds[0] = uSeed0; seeds[1] = uSeed1; seeds[2] = uSeed2; seeds[3] = uSeed3;
+  for (int i = 0; i < 4; i++) {
+    if (i >= uSeedCount) break;
+    vec3 s = seeds[i];
+    vec3 d = p - s;
+    if (dot(d, d) < engineR * engineR) return 5; // engines
+  }
+  for (int i = 0; i < 4; i++) {
+    if (i >= uSeedCount) break;
+    vec3 s = seeds[i];
+    float dx = p.x - s.x;
+    float dy = p.y - s.y;
+    float dz = p.z - s.z;
+    float horiz = sqrt(dx * dx + dz * dz);
+    if (horiz < engineR * 0.9 && dy > engineR * 0.15 && dy < engineR * 1.55 && p.y < wingY + sy * 0.1) {
+      return 5;
+    }
+  }
+
+  if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return 4; // winglet
+  if (u < 0.22 && v > 0.45 && w < 0.40) return 6; // tail
+  if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75) return 6;
+  if (u > 0.92 && w < 0.32) return 1; // nose
+
+  if (w > 0.30 && absZ > halfZ * 0.20 && u > 0.28 && u < 0.82) {
+    float nearWingPlane = abs(p.y - wingY);
+    if (nearWingPlane < sy * 0.15 && v > 0.08 && v < 0.58) return 3; // wings
+    if (w > 0.44 && v > 0.1 && v < 0.52) return 3;
+  }
+
+  float fuseSy = max(uFuseSy, 1e-6);
+  float vTube = (p.y - uMin.y) / fuseSy;
+  float fuseTop = uFuseTop;
+  float span = max(fuseTop - wingY, 1e-6);
+  float tWing = (p.y - wingY) / span;
+
+  if (u > 0.78 && u < 0.95 && vTube > 0.55 && w < 0.28) return 1;
+  if (w < 0.28 && u > 0.12 && u < 0.92) {
+    if (vTube < 0.20 || tWing < -0.06) return 2; // belly
+    if (u > 0.16 && u < 0.90 && tWing >= 0.28 && tWing <= 0.55 && w >= 0.045 && w <= 0.275) {
+      return 7; // windowband
+    }
+  }
+  if (u > 0.88 && w < 0.28) return 1;
+  return 0; // fuselage
+}
+
+vec3 smbZoneColor(int z) {
+  if (z == 1) return uColNose;
+  if (z == 2) return uColBelly;
+  if (z == 3) return uColWings;
+  if (z == 4) return uColWinglet;
+  if (z == 5) return uColEngines;
+  if (z == 6) return uColTail;
+  if (z == 7) return uColWindowband;
+  return uColFuselage;
+}
+`;
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", `#include <common>\n${fragInject}`)
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+{
+  int zid = smbClassifyCraft(vCraftPos);
+  vec3 zcol = smbZoneColor(zid);
+  if (uHighlightZone >= 0) {
+    if (zid == uHighlightZone) {
+      zcol = mix(zcol, vec3(1.0, 0.604, 0.290), 0.35);
+    } else {
+      zcol *= 0.72;
+    }
+  }
+  diffuseColor.rgb = zcol;
+}`
+      );
+  };
+
+  return mat;
+}
+
+function syncBodyZoneCraftMatrix(craft) {
+  const mat = craft && craft.userData && craft.userData.bodyZoneMaterial;
+  if (!mat || !mat.userData || !mat.userData.zoneUniforms) return;
+  craft.updateMatrixWorld(true);
+  mat.userData.zoneUniforms.uCraftWorldInverse.value.copy(craft.matrixWorld).invert();
+}
+
+function estimateWindowBandWorld(craft, size, center) {
+  const ctx = craft && craft.userData && craft.userData.zoneCtx;
+  if (!ctx) {
+    const bandH = Math.max(0.12, size.y * 0.10);
+    const yAim = center.y + size.y * 0.04;
+    return {
+      yAim,
+      bandH,
+      bandMidY: yAim,
+      yBandFloor: yAim - bandH * 0.55,
+      yPreferFloor: yAim - bandH * 0.25,
+    };
+  }
+  const span = Math.max(ctx.fuseTop - ctx.wingY, 1e-6);
+  const bandH = Math.max(0.06, (0.55 - 0.28) * span);
+  const tMid = (0.28 + 0.55) * 0.5;
+  const localY = ctx.wingY + tMid * span;
+  const world = new THREE.Vector3(0, localY, 0);
+  craft.localToWorld(world);
+  const yAim = world.y;
+  return {
+    yAim,
+    bandH,
+    bandMidY: yAim,
+    yBandFloor: yAim - bandH * 0.45,
+    yPreferFloor: yAim - bandH * 0.25,
+  };
+}
+
+/**
+ * Build hybrid zone materials on intact GLB meshes (no body face-split).
+ */
+function buildGlbShaderZonePaint(craft) {
   craft.updateMatrixWorld(true);
   const craftBox = new THREE.Box3().setFromObject(craft);
   const craftInv = craft.matrixWorld.clone().invert();
   const samples = [];
   const tmp = new THREE.Vector3();
-  const tmpA = new THREE.Vector3();
-  const tmpB = new THREE.Vector3();
-  const tmpC = new THREE.Vector3();
   const meshes = [];
 
   craft.traverse((child) => {
@@ -920,164 +1161,120 @@ function buildGlbFaceZoneSplits(craft) {
   );
   const ctx = buildGlbZoneContext(samples, lb, noseSign);
 
-  const zoneMaterials = Object.create(null);
-  const craftSize = lb.getSize(new THREE.Vector3());
-  const bodyEdgeMax = Math.max(craftSize.x, craftSize.y, craftSize.z) * 0.045;
+  const bodyMat = makeBodyZoneShaderMaterial(ctx);
+  const solidMats = {
+    wings: makeGlbZoneMaterial("#1b2430"),
+    winglet: makeGlbZoneMaterial("#1b2430"),
+    engines: makeGlbZoneMaterial("#1b2430"),
+  };
+
+  const BODY_ROLES = new Set(["fuselage", "nose", "belly", "windowband", "tail"]);
+  const SOLID_ROLES = new Set(["wings", "winglet", "engines"]);
 
   meshes.forEach((mesh) => {
-    let geo = mesh.geometry;
-    let pos = geo.getAttribute("position");
-    if (!pos || !pos.count) return;
-
-    // Light subdivision on coarse body-like meshes (elongated, near centerline)
-    try {
-      const mbox = new THREE.Box3().setFromObject(mesh);
-      const msize = mbox.getSize(new THREE.Vector3());
-      const mcen = mbox.getCenter(new THREE.Vector3());
-      const localCen = mcen.clone().applyMatrix4(craftInv);
-      const nearCenter = Math.abs(localCen.z) < ctx.halfZ * 0.45;
-      const elongated = msize.x > Math.max(msize.y, msize.z) * 1.35;
-      const triEst = geo.getIndex()
-        ? Math.floor(geo.getIndex().count / 3)
-        : Math.floor(pos.count / 3);
-      if (nearCenter && elongated && triEst > 20 && triEst < 12000) {
-        const subdivided = subdivideGeometryLongEdges(geo, bodyEdgeMax);
-        if (subdivided !== geo) {
-          try { geo.dispose(); } catch (_) {}
-          mesh.geometry = subdivided;
-          geo = subdivided;
-          pos = geo.getAttribute("position");
-        }
-      }
-    } catch (_) {}
-
-    const norm = geo.getAttribute("normal");
-    const uv = geo.getAttribute("uv");
-    const index = geo.getIndex();
-    const toCraft = new THREE.Matrix4()
-      .copy(craftInv)
-      .multiply(mesh.matrixWorld);
-
-    /** @type {Record<number, {pos:number[], nrm:number[], uv:number[]}>} */
-    const buckets = Object.create(null);
-    const ensure = (zid) => {
-      if (!buckets[zid]) buckets[zid] = { pos: [], nrm: [], uv: [] };
-      return buckets[zid];
-    };
-
-    const pushVert = (bucket, vi) => {
-      bucket.pos.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
-      if (norm) {
-        bucket.nrm.push(norm.getX(vi), norm.getY(vi), norm.getZ(vi));
-      }
-      if (uv) {
-        bucket.uv.push(uv.getX(vi), uv.getY(vi));
-      }
-    };
-
-    const triCount = index ? Math.floor(index.count / 3) : Math.floor(pos.count / 3);
-    for (let t = 0; t < triCount; t++) {
-      let i0, i1, i2;
-      if (index) {
-        i0 = index.getX(t * 3);
-        i1 = index.getX(t * 3 + 1);
-        i2 = index.getX(t * 3 + 2);
-      } else {
-        i0 = t * 3;
-        i1 = t * 3 + 1;
-        i2 = t * 3 + 2;
-      }
-      if (i0 >= pos.count || i1 >= pos.count || i2 >= pos.count) continue;
-
-      tmpA.fromBufferAttribute(pos, i0).applyMatrix4(toCraft);
-      tmpB.fromBufferAttribute(pos, i1).applyMatrix4(toCraft);
-      tmpC.fromBufferAttribute(pos, i2).applyMatrix4(toCraft);
-      // v0.7.2: vertex majority vote (not centroid) → fewer jagged zone stairs
-      const z0 = classifyPoint(tmpA.x, tmpA.y, tmpA.z, ctx);
-      const z1 = classifyPoint(tmpB.x, tmpB.y, tmpB.z, ctx);
-      const z2 = classifyPoint(tmpC.x, tmpC.y, tmpC.z, ctx);
-      const zid = majorityZoneId(z0, z1, z2);
-      const bucket = ensure(zid);
-      pushVert(bucket, i0);
-      pushVert(bucket, i1);
-      pushVert(bucket, i2);
-    }
-
-    // Clear prior zone children if re-run
+    // Drop any leftover face-split children from older sessions
     const toRemove = [];
     mesh.children.forEach((ch) => {
       if (ch.userData && ch.userData.zonePaintPart) toRemove.push(ch);
     });
     toRemove.forEach((ch) => {
       mesh.remove(ch);
-      // Dispose geometry only — materials are shared across zone parts
       if (ch.geometry) {
         try { ch.geometry.dispose(); } catch (_) {}
       }
     });
+    if (mesh.userData) {
+      delete mesh.userData.zoneSplitParent;
+      delete mesh.userData.paintZones;
+    }
+    // Restore raycast if a prior build emptied the parent
+    if (typeof mesh.raycast !== "function" || mesh.geometry?.attributes?.position == null) {
+      // keep geometry as-is; only reset raycast override
+    }
+    if (mesh.raycast && mesh.userData && mesh.userData._hadEmptyZoneParent) {
+      mesh.raycast = THREE.Mesh.prototype.raycast;
+    }
 
-    let made = 0;
-    Object.keys(buckets).forEach((zidStr) => {
-      const zid = Number(zidStr);
-      const data = buckets[zid];
-      if (!data.pos.length) return;
-      const zoneName = ZONE_NAMES[zid] || "fuselage";
-      if (!zoneMaterials[zoneName]) {
-        zoneMaterials[zoneName] = makeGlbZoneMaterial("#ffffff");
-      }
-      const zgeo = new THREE.BufferGeometry();
-      zgeo.setAttribute("position", new THREE.Float32BufferAttribute(data.pos, 3));
-      if (data.nrm.length === data.pos.length) {
-        zgeo.setAttribute("normal", new THREE.Float32BufferAttribute(data.nrm, 3));
-      } else {
-        zgeo.computeVertexNormals();
-      }
-      if (uv && data.uv.length === (data.pos.length / 3) * 2) {
-        zgeo.setAttribute("uv", new THREE.Float32BufferAttribute(data.uv, 2));
-      }
-      zgeo.computeBoundingBox();
-      zgeo.computeBoundingSphere();
-      const child = new THREE.Mesh(zgeo, zoneMaterials[zoneName]);
-      child.name = `${mesh.name || "mesh"}_${zoneName}`;
-      child.userData.paintZone = zoneName;
-      child.userData.zonePaintPart = true;
-      child.castShadow = true;
-      child.receiveShadow = true;
-      child.renderOrder = mesh.renderOrder || 0;
-      mesh.add(child);
-      made++;
-    });
-
-    // Parent no longer draws; children carry solid zone materials
-    if (made > 0) {
-      try {
-        geo.dispose();
-      } catch (_) {}
-      mesh.geometry = new THREE.BufferGeometry();
-      mesh.raycast = () => {};
-      const hideMat = new THREE.MeshBasicMaterial({ visible: false });
-      mesh.material = hideMat;
-      mesh.userData.zoneSplitParent = true;
+    const meshBox = new THREE.Box3().setFromObject(mesh);
+    const role = classifyMeshRole(mesh.name, meshBox, craftBox);
+    if (SOLID_ROLES.has(role)) {
+      mesh.material = solidMats[role];
+      mesh.userData.paintZone = role;
+      mesh.userData.bodyZoneShaded = false;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    } else {
+      // Body-like (incl. unknown → fuselage): fragment classification
+      mesh.material = bodyMat;
+      mesh.userData.paintZone = BODY_ROLES.has(role) ? role : "fuselage";
+      mesh.userData.bodyZoneShaded = true;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      // Prefer intact mesh picking by classifyPoint at hit
       mesh.userData.paintZones = true;
     }
   });
 
+  // zoneMaterials map used by applyPaint / highlight
+  const zoneMaterials = {
+    fuselage: bodyMat,
+    nose: bodyMat,
+    belly: bodyMat,
+    windowband: bodyMat,
+    tail: bodyMat,
+    wings: solidMats.wings,
+    winglet: solidMats.winglet,
+    engines: solidMats.engines,
+  };
+
   craft.userData.zoneMaterials = zoneMaterials;
+  craft.userData.bodyZoneMaterial = bodyMat;
+  craft.userData.solidZoneMaterials = solidMats;
   craft.userData.zoneCtx = ctx;
-  craft.userData.faceZones = true;
-  return { ctx, zoneMaterials };
+  craft.userData.faceZones = false;
+  craft.userData.shaderZones = true;
+  syncBodyZoneCraftMatrix(craft);
+  return { ctx, zoneMaterials, bodyMat };
+}
+
+/** @deprecated — face splits removed in v0.7.3; kept as alias for any stale callers. */
+function buildGlbFaceZoneSplits(craft) {
+  return buildGlbShaderZonePaint(craft);
 }
 
 /**
- * Fast path: update shared per-zone material.color only (no geometry rebuild).
+ * Fast path: update zone colors via shader uniforms / solid materials (no geometry rebuild).
  */
 function applyGlbZonePaint(craft, colorsByZone) {
   if (!craft) return false;
   const mats = craft.userData && craft.userData.zoneMaterials;
   if (!mats || typeof mats !== "object") return false;
-  Object.keys(mats).forEach((name) => {
-    const m = mats[name];
-    if (!m) return;
+
+  syncBodyZoneCraftMatrix(craft);
+
+  const bodyMat = craft.userData.bodyZoneMaterial;
+  if (bodyMat && bodyMat.userData && bodyMat.userData.zoneUniforms) {
+    const u = bodyMat.userData.zoneUniforms;
+    const setCol = (uni, name) => {
+      const c = colorsByZone[name] || colorsByZone.fuselage;
+      uni.value.copy(c);
+    };
+    setCol(u.uColFuselage, "fuselage");
+    setCol(u.uColNose, "nose");
+    setCol(u.uColBelly, "belly");
+    setCol(u.uColWindowband, "windowband");
+    setCol(u.uColTail, "tail");
+    setCol(u.uColWings, "wings");
+    setCol(u.uColWinglet, "winglet");
+    setCol(u.uColEngines, "engines");
+    bodyMat.userData.baseColor = (colorsByZone.fuselage || new THREE.Color(0xffffff)).clone();
+    bodyMat.needsUpdate = true;
+  }
+
+  const solid = craft.userData.solidZoneMaterials || {};
+  ["wings", "winglet", "engines"].forEach((name) => {
+    const m = solid[name] || mats[name];
+    if (!m || m.userData && m.userData.isBodyZoneShader) return;
     const c = colorsByZone[name] || colorsByZone.fuselage;
     if (!m.userData) m.userData = {};
     m.userData.baseColor = c.clone();
@@ -1092,6 +1289,7 @@ function applyGlbZonePaint(craft, colorsByZone) {
     if ("roughness" in m) m.roughness = Math.max(m.roughness ?? 0.72, 0.7);
     m.needsUpdate = true;
   });
+
   return true;
 }
 
@@ -1839,11 +2037,12 @@ function collectDecalTargetMeshes(craft) {
     const size = box.getSize(new THREE.Vector3());
     const vol = Math.max(size.x, 0.001) * Math.max(size.y, 0.001) * Math.max(size.z, 0.001);
     const isZonePart = !!(child.userData && child.userData.zonePaintPart);
-    if (vol < 0.02 && !isZonePart) return;
+    const isBodyShaded = !!(child.userData && child.userData.bodyZoneShaded);
+    if (vol < 0.02 && !isZonePart && !isBodyShaded) return;
     let role = classifyMeshRole(child.name, box, craftBox);
-    let paintZone = isZonePart ? child.userData.paintZone : null;
-    // Map paint-zone parts to decal roles. Side skins only → "fuselage" for lateral titles.
-    if (isZonePart && paintZone) {
+    // v0.7.3: read paintZone from solid-role / body-shaded meshes (not only zonePaintPart)
+    let paintZone = (child.userData && child.userData.paintZone) || null;
+    if (paintZone) {
       const z = paintZone;
       if (SIDE_ZONES.has(z)) role = "fuselage";
       else if (z === "belly") role = "belly";
@@ -1851,6 +2050,9 @@ function collectDecalTargetMeshes(craft) {
       else if (z === "wings" || z === "winglet") role = "wings";
       else if (z === "tail") role = "tail";
       else if (z === "engines") role = "engines";
+    } else if (isBodyShaded) {
+      paintZone = "fuselage";
+      if (role === "fuselage" || role === "nose" || role === "windowband") role = "fuselage";
     }
     const sidePri = paintZone != null && SIDE_ZONE_PRI[paintZone] != null
       ? SIDE_ZONE_PRI[paintZone]
@@ -2094,9 +2296,9 @@ function makeRegTexture(state) {
 }
 
 /**
- * v0.7.2 — Custom uploaded texture decals (Custom 1/2/3).
- * Project PNG/JPG onto Fuselage (both sides) / Wings / Tail / Belly with opacity, scale, X/Y.
- * If dataUrl exists but Image not ready, load it and re-trigger applyPaint (never silent-skip forever).
+ * v0.7.3 — Custom uploaded texture decals (Custom 1/2/3).
+ * Fuselage placement aims forward of wing LE at windowband mid (same path as titles).
+ * Multi-X side raycasts; PlaneGeometry hard fallback if still no hit.
  */
 function ensureCustomSlotImage(slot) {
   if (!slot || !slot.dataUrl) return null;
@@ -2129,6 +2331,23 @@ function ensureCustomSlotImage(slot) {
   return null;
 }
 
+function placeFallbackPlaneDecal(group, craft, side, x, y, fusR, center, decalSize, mat, renderOrder) {
+  const z = center.z + side * fusR;
+  const geo = new THREE.PlaneGeometry(
+    Math.max(0.4, decalSize.x),
+    Math.max(0.35, decalSize.y)
+  );
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  // Face outward (±Z)
+  mesh.lookAt(x, y, z + side * 2);
+  mesh.renderOrder = renderOrder;
+  mesh.userData.isTextDecal = true;
+  mesh.userData.isCustomFallback = true;
+  group.add(mesh);
+  return mesh;
+}
+
 function addCustomTextureDecals(craft, state, group, targets, box, size, center, raycaster) {
   const slots = state.customTextures || [];
   if (!slots.length || !group) return;
@@ -2136,6 +2355,62 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
   const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
   const maxFusAbsZ = fusR * 2.35;
   const scored = targets.scored || [];
+  const fusLen = size.x;
+
+  // Wing LE + title-like forward X (fixes v0.7.2 miss at center.x / wing root)
+  let wingLeX = null;
+  if (targets.wings && targets.wings.length) {
+    const fusNearZ = Math.max(0.45, Math.min(size.y * 0.4, size.z * 0.14));
+    const nearRoot = [];
+    for (const w of targets.wings) {
+      if (!w.box) continue;
+      const cz = (w.box.min.z + w.box.max.z) * 0.5;
+      const straddles = w.box.min.z <= center.z && w.box.max.z >= center.z;
+      const absCz = Math.abs(cz - center.z);
+      if (straddles || absCz <= fusNearZ * 2.5) nearRoot.push(w);
+    }
+    const useWings = nearRoot.length ? nearRoot : targets.wings;
+    let maxX = -Infinity;
+    let minX = Infinity;
+    for (const w of useWings) {
+      if (w.box) {
+        maxX = Math.max(maxX, w.box.max.x);
+        minX = Math.min(minX, w.box.min.x);
+      }
+    }
+    if (Number.isFinite(maxX)) {
+      wingLeX = maxX;
+      const noseX = center.x + size.x * 0.5;
+      if (maxX < center.x && Number.isFinite(minX) &&
+          Math.abs(noseX - minX) < Math.abs(noseX - maxX)) {
+        wingLeX = minX;
+      }
+    }
+  }
+  if (wingLeX != null) {
+    wingLeX += Math.max(0.04 * fusLen, 0.15);
+    wingLeX = Math.max(wingLeX, center.x + size.x * 0.02);
+  }
+
+  const wbScored = scored.filter((s) => s.paintZone === "windowband");
+  let yAimTitle;
+  let bandH;
+  if (wbScored.length) {
+    const union = new THREE.Box3();
+    for (const s of wbScored) union.union(s.box);
+    bandH = Math.max(0.06, union.max.y - union.min.y);
+    yAimTitle = union.min.y + bandH * 0.50;
+  } else {
+    const est = estimateWindowBandWorld(craft, size, center);
+    yAimTitle = est.yAim;
+    bandH = est.bandH;
+  }
+
+  const gap = Math.max(0.055 * fusLen, 0.22);
+  const xAftMin = (wingLeX != null) ? wingLeX + gap : center.x + size.x * 0.12;
+  const xFwdMax = center.x + size.x * 0.22;
+  let xTitle = xAftMin + Math.max(0, xFwdMax - xAftMin) * 0.65;
+  if (!(xFwdMax > xAftMin)) xTitle = center.x + size.x * 0.16;
 
   slots.forEach((slot, idx) => {
     if (!slot || !slot.dataUrl) return;
@@ -2190,12 +2465,13 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
       meshList = (targets.belly || []).map((t) => t.mesh)
         .concat((targets.fuselage || []).map((t) => t.mesh));
     } else {
-      // fuselage: prefer windowband + fuselage zone-split children
+      // fuselage: prefer windowband + fuselage (intact body meshes in v0.7.3)
       const sideParts = scored.filter(
         (s) =>
           s.paintZone === "windowband" ||
           s.paintZone === "fuselage" ||
-          s.role === "fuselage"
+          s.role === "fuselage" ||
+          (s.mesh && s.mesh.userData && s.mesh.userData.bodyZoneShaded)
       );
       meshList = sideParts.length
         ? sideParts.map((s) => s.mesh)
@@ -2203,17 +2479,52 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
       if (!meshList.length) meshList = (targets.all || []).slice(0, 8);
     }
 
-    // v0.7.2: clearly visible default size (~0.32 of fuselage length at 100%)
+    // Clearly visible default size (~0.32 of fuselage length at 100%)
     const baseW = Math.max(0.75, Math.min(size.x * 0.32, 2.6)) * scale;
     const baseH = baseW * (dh / dw);
     const depth = Math.max(0.3, Math.min(size.y * 0.3, 0.55));
     const decalSize = new THREE.Vector3(baseW, Math.max(0.4, baseH), depth);
 
-    let x0 = center.x - size.x * posX * 0.35;
-    let y0 = center.y + size.y * (0.02 + posY * 0.25);
+    let x0;
+    let y0;
+    if (placement === "fuselage") {
+      // Same forward-of-LE / windowband mid aim as titles
+      x0 = xTitle - size.x * posX * 0.35;
+      x0 = Math.min(xFwdMax, Math.max(xAftMin - 0.02 * fusLen, x0));
+      y0 = yAimTitle + bandH * (posY * 0.12);
+    } else {
+      x0 = center.x - size.x * posX * 0.35;
+      y0 = center.y + size.y * (0.02 + posY * 0.25);
+    }
     if (placement === "belly") y0 = center.y - size.y * 0.15;
     if (placement === "wings") y0 = center.y + size.y * 0.05;
     if (placement === "tail") x0 = center.x - size.x * (0.28 + posX * 0.1);
+
+    // Multi-X samples (title-like) for fuselage / tail sides
+    const xSamples = [x0];
+    if (placement === "fuselage" || placement === "tail") {
+      const extras = [
+        x0,
+        x0 + fusLen * 0.03,
+        x0 - fusLen * 0.03,
+        center.x + size.x * 0.18,
+        center.x + size.x * 0.14,
+        center.x + size.x * 0.12,
+        center.x + size.x * 0.20,
+        xAftMin + (xFwdMax - xAftMin) * 0.5,
+      ];
+      for (const x of extras) {
+        if (Number.isFinite(x) && !xSamples.includes(x)) xSamples.push(x);
+      }
+    }
+
+    const yCands = [
+      y0,
+      y0 - bandH * 0.08,
+      y0 + bandH * 0.08,
+      y0 - bandH * 0.18,
+      yAimTitle,
+    ];
 
     const sides = placement === "fuselage" || placement === "tail" ? [-1, 1] : [1];
     sides.forEach((side) => {
@@ -2229,34 +2540,67 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
         );
         hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, -1, 0), raycaster);
       } else {
-        const zDist = fusR * 2.4;
-        const origin = new THREE.Vector3(x0, y0, center.z + side * zDist);
-        const dir = new THREE.Vector3(0, 0, -side);
-        hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y0, {
-          maxNy: 0.55,
-          preferSideZones: placement === "fuselage",
-        });
-        if (!hit) {
-          origin.z = center.z + side * (fusR * 3.6);
-          hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y0, {
-            maxNy: 0.55,
-            preferSideZones: false,
-          });
+        // Title-path lateral casts with preferSideZones on windowband+fuselage
+        let best = null;
+        let bestErr = Infinity;
+        for (const tx of xSamples) {
+          for (const y of yCands) {
+            const zDist = fusR * 2.4;
+            const origin = new THREE.Vector3(tx, y, center.z + side * zDist);
+            const dir = new THREE.Vector3(0, 0, -side);
+            let h = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, {
+              maxNy: 0.55,
+              preferSideZones: placement === "fuselage",
+            });
+            if (!h) {
+              origin.z = center.z + side * (fusR * 3.6);
+              h = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y, {
+                maxNy: 0.55,
+                preferSideZones: false,
+              });
+            }
+            if (!h) {
+              origin.z = center.z + side * (fusR * 3.2);
+              h = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ * 1.35, y, {
+                maxNy: 0.88,
+                preferSideZones: false,
+              });
+            }
+            if (!h) h = raycastBestHit(meshList, origin, dir, raycaster);
+            if (!h || !h.point) continue;
+            const err = Math.abs(h.point.y - yAimTitle) + Math.abs(h.point.x - x0) * 0.15;
+            if (err < bestErr) {
+              bestErr = err;
+              best = h;
+            }
+          }
+          if (best && bestErr < bandH * 0.35) break;
         }
-        // Second simpler raycast — less maxNy filtering before giving up
-        if (!hit) {
-          origin.z = center.z + side * (fusR * 3.2);
-          hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ * 1.35, y0, {
-            maxNy: 0.88,
-            preferSideZones: false,
-          });
-        }
-        if (!hit) {
-          hit = raycastBestHit(meshList, origin, dir, raycaster);
-        }
+        hit = best;
       }
       if (!hit) {
-        console.warn("addCustomTextureDecals: no hit for", placement, "side", side, slot.name || idx);
+        console.warn(
+          "addCustomTextureDecals: no hit for",
+          placement,
+          "side",
+          side,
+          slot.name || idx,
+          "— using plane fallback"
+        );
+        const flipU = placement === "fuselage" ? side < 0 : false;
+        const mat = sideMaterialFromTex(tex, flipU, matOpts);
+        placeFallbackPlaneDecal(
+          group,
+          craft,
+          side,
+          x0,
+          y0,
+          fusR * 1.02,
+          center,
+          decalSize,
+          mat,
+          4 + idx
+        );
         return;
       }
       const flipU = placement === "fuselage" ? resolveFlipU(hit, side, false, false) : false;
@@ -2375,12 +2719,24 @@ function addTextDecals(craft, state) {
       ? fuselageScored
       : scored.filter((s) => s.paintZone === "fuselage");
   }
-  const sideBeltMeshes = sideBeltScored.map((s) => s.mesh);
+  let sideBeltMeshes = sideBeltScored.map((s) => s.mesh);
+  // v0.7.3: without zone-split children, use intact body-shaded / fuselage-role meshes
+  if (!sideBeltMeshes.length) {
+    sideBeltMeshes = scored
+      .filter(
+        (s) =>
+          s.role === "fuselage" ||
+          (s.mesh && s.mesh.userData && s.mesh.userData.bodyZoneShaded)
+      )
+      .map((s) => s.mesh);
+  }
   const fuselageSideMeshes = scored
     .filter(
       (s) =>
         s.paintZone === "fuselage" ||
-        s.paintZone === "windowband"
+        s.paintZone === "windowband" ||
+        s.role === "fuselage" ||
+        (s.mesh && s.mesh.userData && s.mesh.userData.bodyZoneShaded)
     )
     .map((s) => s.mesh);
 
@@ -2474,11 +2830,13 @@ function addTextDecals(craft, state) {
     yBandFloor = union.min.y + bandH * 0.15;
     yPreferFloor = union.min.y + bandH * 0.25;
   } else {
-    bandH = Math.max(0.12, size.y * 0.10);
-    yAim = center.y + size.y * (0.04 + posY * 0.25);
-    bandMidY = yAim;
-    yBandFloor = yAim - bandH * 0.55;
-    yPreferFloor = yAim - bandH * 0.25;
+    // v0.7.3: no face-split windowband boxes — estimate from zoneCtx parametric bands
+    const est = estimateWindowBandWorld(craft, size, center);
+    bandH = est.bandH;
+    bandMidY = est.bandMidY;
+    yAim = est.yAim + bandH * (posY * 0.12);
+    yBandFloor = est.yBandFloor;
+    yPreferFloor = est.yPreferFloor;
   }
   // Softer Y ladder: aim, then ±8%, −18%/+15%, then band mid
   const yAlts = [
@@ -3743,11 +4101,11 @@ export class Preview3D {
     this.root.add(craft);
     craft.updateMatrixWorld(true);
 
-    // Face-solid zone splits (sharp edges; no vertex-color blur)
+    // Hybrid parametric zone paint (body fragment shader + solid wing/engine mats)
     try {
-      buildGlbFaceZoneSplits(craft);
+      buildGlbShaderZonePaint(craft);
     } catch (zoneErr) {
-      console.warn("GLB face zone split failed:", zoneErr);
+      console.warn("GLB shader zone paint failed:", zoneErr);
     }
 
     let decal = { tex: null, regTex: null };
@@ -3835,7 +4193,7 @@ export class Preview3D {
         windowband: hexToThree(state.colors.windowband || state.colors.fuselage || "#f2f4f7"),
       };
       const craft = this.root.getObjectByName("aircraft");
-      // Face-solid zone materials (preferred). Rebuild splits only on mount.
+      // Shader / solid zone materials (preferred). Geometry rebuild only on mount.
       let usedFaceZones = false;
       if (craft && craft.userData && craft.userData.zoneMaterials) {
         usedFaceZones = applyGlbZonePaint(craft, colors);
@@ -3962,16 +4320,26 @@ export class Preview3D {
     const mats = craft && craft.userData && craft.userData.zoneMaterials;
     if (!mats) return;
     const hl = this._highlightedZone;
-    Object.keys(mats).forEach((name) => {
-      const m = mats[name];
-      if (!m) return;
+    const hlId = hl != null && ZONE_ID[hl] != null ? ZONE_ID[hl] : -1;
+
+    const bodyMat = craft.userData.bodyZoneMaterial;
+    if (bodyMat && bodyMat.userData && bodyMat.userData.zoneUniforms) {
+      bodyMat.userData.zoneUniforms.uHighlightZone.value = hl ? hlId : -1;
+      bodyMat.needsUpdate = true;
+    }
+
+    const solid = craft.userData.solidZoneMaterials || {};
+    const seen = new Set();
+    Object.keys(solid).forEach((name) => {
+      const m = solid[name];
+      if (!m || seen.has(m)) return;
+      seen.add(m);
       const base = (m.userData && m.userData.baseColor) || m.color;
       if (hl && name === hl) {
         m.color.copy(base);
         if (m.emissive) m.emissive.setHex(0xff9a4a);
         m.emissiveIntensity = 0.45;
       } else if (hl) {
-        // Slight dim so the focused zone pops
         m.color.copy(base).multiplyScalar(0.72);
         if (m.emissive) m.emissive.setHex(0x000000);
         m.emissiveIntensity = 0;
@@ -4004,6 +4372,11 @@ export class Preview3D {
       if (!h.object || !h.object.isMesh) continue;
       if (h.object.userData && h.object.userData.isTextDecal) continue;
       if (h.object.userData && h.object.userData.zoneSplitParent) continue;
+      // Body shader meshes: classify hit point in craft space (smooth bands)
+      if (h.object.userData && h.object.userData.bodyZoneShaded && craft.userData.zoneCtx && h.point) {
+        const local = craftLocalPoint(craft, h.point);
+        return zoneNameFromId(classifyPoint(local.x, local.y, local.z, craft.userData.zoneCtx));
+      }
       if (h.object.userData && h.object.userData.paintZone) {
         return h.object.userData.paintZone;
       }
