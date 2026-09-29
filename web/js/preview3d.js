@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.8.2 — under-title slogan Y clearance vs title panel; hangar axis/fin + flank hits from v0.8.1; paint zones v0.7.5 tube shield kept.
+ * SkinMyBird 3D hangar preview v0.8.3 — under-title slogan stays on window-band (modest gap, wing-root clamp); hangar axis/fin + flank from v0.8.1; paint zones v0.7.5 tube shield kept.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1523,7 +1523,7 @@ const TEXT_ZONE_DEFS = {
   // panelFrac reduced vs v0.8.0 so XL/XXL titles stay inside solid fuselage (less nose clip)
   windowband: { xFrac: 0.12, yMode: "window", yBias: 0.00, panelFrac: 0.40, hMul: 1.15, place: "fuselage" },
   forward:    { xFrac: 0.22, yMode: "window", yBias: 0.00, panelFrac: 0.34, hMul: 1.00, place: "fuselage" },
-  mid:        { xFrac: 0.02, yMode: "window", yBias: -0.55, panelFrac: 0.36, hMul: 0.92, place: "fuselage" },
+  mid:        { xFrac: 0.02, yMode: "window", yBias: -0.18, panelFrac: 0.36, hMul: 0.92, place: "fuselage" },
   aft:        { xFrac: -0.26, yMode: "window", yBias: -0.15, panelFrac: 0.26, hMul: 0.80, place: "fuselage" },
   nose:       { xFrac: 0.34, yMode: "window", yBias: -0.10, panelFrac: 0.18, hMul: 0.90, place: "fuselage" },
   tail:       { xFrac: -0.40, yMode: "tail", yBias: 0.35, panelFrac: 0.28, hMul: 1.20, place: "tail" },
@@ -1531,11 +1531,12 @@ const TEXT_ZONE_DEFS = {
 };
 
 /** Per-role vertical stacking so slogan/reg never sit on the title glyph band.
- * v0.8.2: slogan default ~1.05·bandH; under-title mode uses title panelH clearance instead.
+ * v0.8.3: under-title uses modest gap under title + wingY clamp (not half-panel dump into fairing).
+ * Fallback stackMul kept mild when no title snapshot.
  */
 const ROLE_Y_STACK = {
   title: 0.0,
-  slogan: -1.05, // bandH multiples below title aim (fallback when no title snapshot)
+  slogan: -0.72, // bandH multiples below title aim (fallback when no title snapshot)
   reg: -0.38,
 };
 
@@ -1560,7 +1561,7 @@ function textSizeMul(sizeKey) {
 function canvasBasePx(sizeKey, role) {
   const k = String(sizeKey || "XL").toUpperCase();
   const titlePx = k === "S" ? 220 : k === "M" ? 320 : k === "L" ? 420 : k === "XXL" ? 620 : 520;
-  if (role === "slogan") return Math.round(titlePx * 0.42); // v0.8.2: fit under title band
+  if (role === "slogan") return Math.round(titlePx * 0.42); // fit under title band
   if (role === "reg") return Math.round(titlePx * 0.48);
   return titlePx;
 }
@@ -2948,7 +2949,7 @@ function estimateFuselageHalfWidth(size) {
 }
 
 /**
- * Mesh-projected text/sticker decals — v0.8.2 under-title slogan clearance + v0.8.1 zones/flank/Y stack.
+ * Mesh-projected text/sticker decals — v0.8.3 under-title slogan (modest gap + wing clamp) + v0.8.1 zones/flank/Y stack.
  */
 function addTextDecals(craft, state) {
   craft.updateMatrixWorld(true);
@@ -3177,7 +3178,7 @@ function addTextDecals(craft, state) {
         (aim.zone === "mid" || sameZone || nearTitleX || aim.zone === "windowband" || aim.zone === "forward");
 
       if (underTitleSlogan) {
-        // Prefer same X as title so left/right don't drift differently
+        // Prefer same X as title (forward of wing LE) — never slide aft toward wing root
         xMain = titleAimSnapshot.xMain;
         const titleY =
           titleAimSnapshot.hitY != null ? titleAimSnapshot.hitY : titleAimSnapshot.yAim;
@@ -3186,17 +3187,34 @@ function addTextDecals(craft, state) {
           titleAimSnapshot.panelH != null ? titleAimSnapshot.panelH : titleAimSnapshot.bandH * 1.2
         );
         const sloganH = Math.max(0.28, htPreview);
-        // Gap ≥ ~0.55–0.7 of title glyph (~0.32·panelH) or ~0.40·bandH
-        const gap = Math.max(
-          titleH * 0.32,
-          (titleAimSnapshot.bandH || aim.bandH) * 0.42,
-          aim.bandH * 0.40
-        );
-        // Centers: title mid − half title − gap − half slogan
+        const bandRef = titleAimSnapshot.bandH || aim.bandH;
+        // v0.8.3: modest gap just below title bottom (readable pair, stay on window-band / upper flank)
+        // Was ~0.32·titleH + 0.40·bandH which dumped slogan into wing-root fairing on A320/787.
+        const gap = Math.max(titleH * 0.10, bandRef * 0.14, sloganH * 0.10, size.y * 0.006);
         yAim = titleY - titleH * 0.5 - gap - sloganH * 0.48;
-        // Floor: at least half title + 0.55·glyph(~0.32 panel) + half slogan below title mid
-        const minDrop = titleH * 0.5 + gap + sloganH * 0.45;
-        yAim = Math.min(yAim, titleY - minDrop);
+        // Clamp above wing root / belly when craft metrics available
+        let wingYWorld = null;
+        const zctx = craft && craft.userData && craft.userData.zoneCtx;
+        if (zctx && zctx.wingY != null && Number.isFinite(zctx.wingY)) {
+          const wpt = new THREE.Vector3(0, zctx.wingY, 0);
+          craft.localToWorld(wpt);
+          wingYWorld = wpt.y;
+        } else if (targets.wings && targets.wings.length) {
+          let maxTop = -Infinity;
+          for (const w of targets.wings) {
+            if (w.box) maxTop = Math.max(maxTop, w.box.max.y);
+          }
+          if (Number.isFinite(maxTop)) wingYWorld = maxTop;
+        }
+        if (wingYWorld != null) {
+          const wingClear = Math.max(size.y * 0.035, bandRef * 0.38);
+          const wingFloor = wingYWorld + wingClear + sloganH * 0.42;
+          if (yAim < wingFloor) yAim = wingFloor;
+        }
+        // Still no title overlap: keep slogan center at/below title bottom + tiny gap
+        const noOverlapMax =
+          titleY - titleH * 0.5 - Math.max(titleH * 0.06, bandRef * 0.08) - sloganH * 0.45;
+        if (yAim > noOverlapMax) yAim = noOverlapMax;
       } else if (titleAimSnapshot) {
         const baseY = titleAimSnapshot.yAim;
         yAim = yAim + aim.bandH * Math.min(0, stackMul * 0.45);
@@ -3237,10 +3255,9 @@ function addTextDecals(craft, state) {
     const yAlts = underTitleSlogan
       ? [
           yAim,
-          yAim - aim.bandH * 0.08,
-          yAim - aim.bandH * 0.18,
-          yAim - aim.bandH * 0.28,
-          yAim + aim.bandH * 0.04,
+          yAim + aim.bandH * 0.06,
+          yAim - aim.bandH * 0.05,
+          yAim - aim.bandH * 0.10,
         ]
       : [
           yAim,
@@ -3254,7 +3271,7 @@ function addTextDecals(craft, state) {
           aim.bandMidY,
         ];
     const xCands = underTitleSlogan
-      ? [xMain, xMain + fusLen * 0.02, xMain - fusLen * 0.02]
+      ? [xMain, xMain + fusLen * 0.02, xMain + fusLen * 0.04]
       : [
           xMain,
           xMain + fusLen * 0.025,
@@ -3273,7 +3290,7 @@ function addTextDecals(craft, state) {
       );
       const titleY =
         titleAimSnapshot.hitY != null ? titleAimSnapshot.hitY : titleAimSnapshot.yAim;
-      const gap = Math.max(titleH * 0.28, (titleAimSnapshot.bandH || aim.bandH) * 0.35);
+      const gap = Math.max(titleH * 0.08, (titleAimSnapshot.bandH || aim.bandH) * 0.12);
       sloganMaxY = titleY - titleH * 0.5 - gap - ht * 0.35;
     }
 
@@ -3303,11 +3320,11 @@ function addTextDecals(craft, state) {
         titleAimSnapshot.hitBySide[side] != null
       ) {
         const titleH = Math.max(0.28, titleAimSnapshot.panelH || titleAimSnapshot.bandH * 1.2);
-        const gap = Math.max(titleH * 0.28, (titleAimSnapshot.bandH || aim.bandH) * 0.35);
+        const gap = Math.max(titleH * 0.08, (titleAimSnapshot.bandH || aim.bandH) * 0.12);
         maxY = titleAimSnapshot.hitBySide[side] - titleH * 0.5 - gap - ht * 0.35;
       }
       const preferFloor = underTitleSlogan
-        ? yAim - aim.bandH * 0.55
+        ? yAim - aim.bandH * 0.18
         : aim.yPreferFloor;
       for (const tx of xCands) {
         hit = trySideHit(side, tx, yAlts, meshList, place, yAim, aim.yBandFloor, preferFloor, {
@@ -3396,7 +3413,7 @@ function addTextDecals(craft, state) {
   const regZone = normalizeTextZone(state.regZone, "aft");
 
   const titleTex = mountRole("title", titleZone, 2, 1.0);
-  // v0.8.2: slightly shorter slogan panel so glyphs fit under the title band
+  // Slightly shorter slogan panel so glyphs fit under the title band
   const sloganTex = mountRole("slogan", sloganZone, 2, 0.58);
   const regTex = mountRole("reg", regZone, 3, 0.55);
 

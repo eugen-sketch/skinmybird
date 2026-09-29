@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.8.2 — under-title slogan clearance; hangar axis/fin + flank hits from v0.8.1; paint zones v0.7.5 tube shield kept.
+ * SkinMyBird web editor v0.8.3 — under-title slogan stays on window-band; hangar axis/fin + flank from v0.8.1; paint zones v0.7.5 tube shield kept.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.2";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.3";
 
 const $ = (id) => document.getElementById(id);
 

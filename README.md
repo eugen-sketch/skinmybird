@@ -15,6 +15,10 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.8.3 notes
+- **Under-title slogan wing-root fix**: Mid / under-title slogan no longer uses large `titlePanelH/2 + ~0.32·panelH + sloganH/2` drop into the wing-root fairing. Prefer Y just below title bottom with a **modest gap** (~0.10·titleH / ~0.14·bandH); share title X (forward of wing LE, never slide aft); clamp Y above `wingY + margin` when craft metrics exist. A320neo + 787 must show full “Fly your story”; 737 still clear; no title overlap.
+- Mid zone `yBias` softened −0.55 → −0.18. Paint zone shader cache key still `smb_body_zone_shader_v075`. Cache-bust `?v=0.8.3`
+
 ### v0.8.2 notes
 - **Under-title slogan clearance**: when Slogan zone is Mid / under title (or near the title), aim Y is forced below the title decal using title panel height — gap ≥ ~0.32·titlePanelH (~0.55–0.7 glyph) or ~0.40·bandH; slogan shares title X; raycasts that climb into the title fall back to a plane at the lower Y.
 - Slightly smaller slogan canvas font (0.42× title px) and panel scale (0.58) so “Fly your story” fits under “SkinMyBird” on Window band.
