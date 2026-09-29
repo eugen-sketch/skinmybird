@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.8.10 — tail-fin logos centered + upright both sides; aft clip; Main vs ID text.
+ * SkinMyBird web editor v0.8.11 — tail-fin logos centered + upright both sides; aft clip; Main vs ID text.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.10";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.8.11";
 
 const $ = (id) => document.getElementById(id);
 
@@ -52,12 +52,16 @@ const $ = (id) => document.getElementById(id);
     stickerText: "",
     textColor: "#1b2430",
     regColor: "#1b2430",
+    sloganColor: "#1b2430",
     textSize: "XL",
     textStyle: "bold",
     textFont: "montserrat",
     regFont: "oswald",
     regSize: "M",
     regStyle: "bold",
+    sloganFont: "montserrat",
+    sloganSize: "L",
+    sloganStyle: "bold",
     textPlacement: "fuselage",
     titleZone: "windowband",
     sloganZone: "mid",
@@ -118,10 +122,14 @@ const $ = (id) => document.getElementById(id);
     $("slogan").value = state.slogan || "";
     $("text-color").value = state.textColor;
     if ($("reg-color")) $("reg-color").value = state.regColor || state.textColor || "#1b2430";
+    if ($("slogan-color")) $("slogan-color").value = state.sloganColor || state.textColor || "#1b2430";
     $("text-size").value = state.textSize;
     $("text-style").value = state.textStyle;
     if ($("text-font")) $("text-font").value = state.textFont || "montserrat";
     if ($("reg-font")) $("reg-font").value = state.regFont || "oswald";
+    if ($("slogan-font")) $("slogan-font").value = state.sloganFont || "montserrat";
+    if ($("slogan-size")) $("slogan-size").value = state.sloganSize || "L";
+    if ($("slogan-style")) $("slogan-style").value = state.sloganStyle || "bold";
     if ($("reg-size")) $("reg-size").value = state.regSize || "M";
     if ($("reg-style")) $("reg-style").value = state.regStyle || "bold";
     if ($("text-placement")) $("text-placement").value = state.textPlacement || "fuselage";
@@ -143,6 +151,8 @@ const $ = (id) => document.getElementById(id);
     syncSegmented("data-style", state.textStyle);
     syncSegmented("data-title-zone", state.titleZone || "windowband");
     syncSegmented("data-slogan-zone", state.sloganZone || "mid");
+    syncSegmented("data-slogan-size", state.sloganSize || "L");
+    syncSegmented("data-slogan-style", state.sloganStyle || "bold");
     syncSegmented("data-reg-zone", state.regZone || "aft");
     document.querySelectorAll(".flag-check").forEach((el) => {
       el.checked = !!(state.flags && state.flags.codes && state.flags.codes.includes(el.value));
@@ -210,12 +220,16 @@ const $ = (id) => document.getElementById(id);
     state.slogan = ($("slogan").value || "").trim();
     state.textColor = $("text-color").value || "#1b2430";
     state.regColor = ($("reg-color") && $("reg-color").value) || state.regColor || state.textColor || "#1b2430";
+    state.sloganColor = ($("slogan-color") && $("slogan-color").value) || state.sloganColor || state.textColor || "#1b2430";
     state.textSize = $("text-size").value || "L";
     state.textStyle = $("text-style").value || "bold";
     state.textFont = ($("text-font") && $("text-font").value) || "montserrat";
     state.regFont = ($("reg-font") && $("reg-font").value) || state.regFont || "oswald";
     state.regSize = ($("reg-size") && $("reg-size").value) || state.regSize || "M";
     state.regStyle = ($("reg-style") && $("reg-style").value) || state.regStyle || "bold";
+    state.sloganFont = ($("slogan-font") && $("slogan-font").value) || state.sloganFont || "montserrat";
+    state.sloganSize = ($("slogan-size") && $("slogan-size").value) || state.sloganSize || "L";
+    state.sloganStyle = ($("slogan-style") && $("slogan-style").value) || state.sloganStyle || "bold";
     state.textPlacement = ($("text-placement") && $("text-placement").value) || "fuselage";
     state.titleZone = ($("title-zone") && $("title-zone").value) || state.titleZone || "windowband";
     state.sloganZone = ($("slogan-zone") && $("slogan-zone").value) || state.sloganZone || "mid";
@@ -286,12 +300,16 @@ const $ = (id) => document.getElementById(id);
       text: {
         color: state.textColor,
         regColor: state.regColor,
+        sloganColor: state.sloganColor,
         size: state.textSize,
         style: state.textStyle,
         font: state.textFont,
         regFont: state.regFont,
         regSize: state.regSize,
         regStyle: state.regStyle,
+        sloganFont: state.sloganFont,
+        sloganSize: state.sloganSize,
+        sloganStyle: state.sloganStyle,
         placement: state.textPlacement,
         titleZone: state.titleZone,
         sloganZone: state.sloganZone,
@@ -627,8 +645,10 @@ const $ = (id) => document.getElementById(id);
         force_png: false,
       };
 
+      // Tail logo: prefer customTextures[0], else legacy soacra — NEVER fuselage bake
+      const ctLogo = (state.customTextures || []).find((s) => s && s.dataUrl);
       let res;
-      if (state.soacraFile) {
+      if (ctLogo || state.soacraFile) {
         const fd = new FormData();
         fd.append("profile_id", payload.profile_id);
         fd.append("name", payload.name);
@@ -638,7 +658,13 @@ const $ = (id) => document.getElementById(id);
         fd.append("colors_json", JSON.stringify(payload.colors));
         fd.append("stickers_json", JSON.stringify(payload.stickers));
         fd.append("make_zip", "true");
-        fd.append("photo", state.soacraFile);
+        if (ctLogo && ctLogo.dataUrl) {
+          const blob = await (await fetch(ctLogo.dataUrl)).blob();
+          const fname = ctLogo.name || "tail-logo.png";
+          fd.append("logo", blob, fname);
+        } else if (state.soacraFile) {
+          fd.append("logo", state.soacraFile);
+        }
         res = await fetch("/api/export-form", { method: "POST", body: fd });
       } else {
         res = await fetch("/api/export", {
@@ -784,7 +810,7 @@ const $ = (id) => document.getElementById(id);
     for (let n = 1; n <= 3; n++) {
       const slot = ensureCustomTextureSlot(n - 1);
       const place = document.querySelector('.ct-place[data-slot="' + n + '"]');
-      // v0.8.10: logos always on tail fin only (hidden placement field for export compat)
+      // v0.8.11: logos always on tail fin only (hidden placement field for export compat)
       slot.placement = "tail";
       if (place) place.value = "tail";
       const side = document.querySelector('.ct-side[data-slot="' + n + '"]');
@@ -888,6 +914,23 @@ const $ = (id) => document.getElementById(id);
       state.regStyle = btn.getAttribute("data-reg-style");
       if ($("reg-style")) $("reg-style").value = state.regStyle;
       syncSegmented("data-reg-style", state.regStyle);
+      drawPreview();
+    });
+  });
+
+  document.querySelectorAll("[data-slogan-size]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.sloganSize = btn.getAttribute("data-slogan-size");
+      if ($("slogan-size")) $("slogan-size").value = state.sloganSize;
+      syncSegmented("data-slogan-size", state.sloganSize);
+      drawPreview();
+    });
+  });
+  document.querySelectorAll("[data-slogan-style]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.sloganStyle = btn.getAttribute("data-slogan-style");
+      if ($("slogan-style")) $("slogan-style").value = state.sloganStyle;
+      syncSegmented("data-slogan-style", state.sloganStyle);
       drawPreview();
     });
   });

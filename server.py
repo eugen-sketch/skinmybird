@@ -25,7 +25,7 @@ DEFAULT_COMMUNITY = Path(
     )
 )
 
-app = FastAPI(title="SkinMyBird", version="0.8.10")
+app = FastAPI(title="SkinMyBird", version="0.8.11")
 
 
 class ExportRequest(BaseModel):
@@ -62,7 +62,7 @@ def health() -> dict:
     edition = get_edition()
     return {
         "ok": True,
-        "version": "0.8.10",
+        "version": "0.8.11",
         "edition": edition,
         "texconv": str(tex) if tex else None,
         "wine": bool(shutil.which("wine")),
@@ -74,7 +74,7 @@ def health() -> dict:
 def api_edition() -> dict:
     from exporter.profiles import get_edition
 
-    return {"edition": get_edition(), "version": "0.8.10"}
+    return {"edition": get_edition(), "version": "0.8.11"}
 
 
 @app.get("/api/profiles")
@@ -115,6 +115,18 @@ def api_export(body: ExportRequest) -> dict:
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e
 
+    logo_path = body.logo
+    tmpdir = None
+    if logo_path and str(logo_path).startswith("data:"):
+        # data URL from hangar customTextures — decode to temp PNG (TAIL only)
+        import base64, re as _re
+        m = _re.match(r"data:(image/[^;]+);base64,(.+)", str(logo_path), _re.S)
+        if not m:
+            raise HTTPException(400, "Invalid logo data URL")
+        ext = "png" if "png" in m.group(1) else "jpg"
+        tmpdir = tempfile.mkdtemp(prefix="smb_logo_")
+        logo_path = str(Path(tmpdir) / f"logo.{ext}")
+        Path(logo_path).write_bytes(base64.b64decode(m.group(2)))
     cfg = {
         "id": body.name,
         "name": body.name,
@@ -128,8 +140,8 @@ def api_export(body: ExportRequest) -> dict:
             {"type": "heart", "enabled": False},
         ],
         "profile": body.profile_id,
-        "logo": body.logo,
-        "soacraPhoto": None,
+        "logo": logo_path,
+        "soacraPhoto": logo_path,
     }
     OUTPUT.mkdir(parents=True, exist_ok=True)
     try:
@@ -139,9 +151,14 @@ def api_export(body: ExportRequest) -> dict:
             zip_out=body.make_zip,
             force_png=body.force_png,
             profile=profile,
+            photo=Path(logo_path) if logo_path else None,
         )
     except Exception as e:
+        if tmpdir:
+            shutil.rmtree(tmpdir, ignore_errors=True)
         raise HTTPException(500, f"Export failed: {e}") from e
+    if tmpdir:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
     package_folder = result.stem if result.suffix == ".zip" else result.name
     package_path = OUTPUT / package_folder
@@ -172,16 +189,20 @@ async def api_export_form(
     force_png: bool = Form(False),
     make_zip: bool = Form(True),
     photo: UploadFile | None = File(None),
+    logo: UploadFile | None = File(None),
 ) -> dict:
-    """Multipart export with optional logo/photo upload."""
+    """Multipart export with optional TAIL logo (logo/photo — never fuselage)."""
     colors = json.loads(colors_json) if colors_json else {}
     stickers = json.loads(stickers_json) if stickers_json else []
     photo_path = None
+    logo_path = None
     tmpdir = None
-    if photo and photo.filename:
+    upload = logo if (logo and logo.filename) else photo
+    if upload and upload.filename:
         tmpdir = tempfile.mkdtemp(prefix="smb_up_")
-        photo_path = Path(tmpdir) / Path(photo.filename).name
-        photo_path.write_bytes(await photo.read())
+        logo_path = Path(tmpdir) / Path(upload.filename).name
+        logo_path.write_bytes(await upload.read())
+        photo_path = logo_path  # exporter treats photo as tail-logo fallback
 
     body = ExportRequest(
         profile_id=profile_id,
@@ -217,14 +238,15 @@ async def api_export_form(
                 {"type": "team_stripe", "enabled": True},
             ],
             "profile": body.profile_id,
-            "soacraPhoto": str(photo_path) if photo_path else None,
+            "logo": str(logo_path) if logo_path else None,
+            "soacraPhoto": str(logo_path) if logo_path else None,
         }
         OUTPUT.mkdir(parents=True, exist_ok=True)
         result = export_package(
             cfg,
             OUTPUT,
             zip_out=body.make_zip,
-            photo=photo_path,
+            photo=logo_path,
             force_png=body.force_png,
             profile=profile,
         )

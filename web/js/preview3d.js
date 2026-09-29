@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.8.10 — tail-fin logos centered + no U-flip (same upright orientation both sides); aft hard-clip; Main vs ID text.
+ * SkinMyBird 3D hangar preview v0.8.11 — tail-fin logos centered + no U-flip (same upright orientation both sides); aft hard-clip; Main vs ID text.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -2291,15 +2291,14 @@ function paintDecalCanvas(canvas, state) {
   ctx.fillText(airline, W / 2, H * 0.48);
 
   if (state.slogan) {
-    const sloganState = { ...state, textStyle: state.textStyle === "bold-italic" || state.textStyle === "italic" ? "italic" : "regular" };
-    // keep weight lighter for slogan but honor italic
-    const style = String(state.textStyle || "").toLowerCase();
-    const sloganStyle = style.includes("italic")
-      ? (style.includes("bold") ? "bold-italic" : "italic")
-      : "regular";
-    const sState = { ...state, textStyle: sloganStyle };
+    const sState = {
+      ...state,
+      textStyle: state.sloganStyle || "bold",
+      textFont: state.sloganFont || state.textFont || "montserrat",
+    };
     const sPx = fitFontPx(ctx, state.slogan, maxW, Math.round(basePx * 0.55), sState, 14);
     ctx.font = resolveFontFace(sState, sPx);
+    ctx.fillStyle = state.sloganColor || state.textColor || "#FFFFFF";
     ctx.fillText(state.slogan, W / 2, H * 0.48 + airPx * 0.58);
   }
 
@@ -2364,11 +2363,14 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
     raw = String(state.airline || "").trim();
   } else if (role === "slogan") {
     raw = String(state.slogan || "").trim();
-    const style = String(state.textStyle || "").toLowerCase();
-    const sloganStyle = style.includes("italic")
-      ? (style.includes("bold") ? "bold-italic" : "italic")
-      : "regular";
-    styleState = { ...state, textStyle: sloganStyle };
+    // v0.8.11: slogan has its own font / size / color / style (independent of Title)
+    sizeKey = state.sloganSize || "L";
+    textColor = state.sloganColor || state.textColor || "#FFFFFF";
+    styleState = {
+      ...state,
+      textStyle: state.sloganStyle || "bold",
+      textFont: state.sloganFont || state.textFont || "montserrat",
+    };
     minPx = 40;
   } else if (role === "reg") {
     raw = String(state.registration || "").trim();
@@ -2408,13 +2410,24 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
     let titlePx = fitFontPx(ctx, titleRaw, maxW, basePx, state, 56);
     const titleY = ch * 0.26;
 
-    const style = String(state.textStyle || "").toLowerCase();
-    const sloganStyle = style.includes("italic")
-      ? (style.includes("bold") ? "bold-italic" : "italic")
-      : "regular";
-    const sState = { ...state, textStyle: sloganStyle };
-    // Slightly smaller slogan (~0.34·titlePx) packs under title in same world H
-    let sPx = fitFontPx(ctx, sloganRaw, maxW, Math.round(titlePx * 0.34), sState, 36);
+    // v0.8.11: independent slogan font/style/color/size (does not inherit title)
+    const sState = {
+      ...state,
+      textStyle: state.sloganStyle || "bold",
+      textFont: state.sloganFont || state.textFont || "montserrat",
+    };
+    const sloganSizeKey = state.sloganSize || "L";
+    const sloganColor = state.sloganColor || state.textColor || "#FFFFFF";
+    const sloganBase = canvasBasePx(sloganSizeKey, "slogan");
+    // Pack under title: cap vs titlePx but honor slogan size choice
+    let sPx = fitFontPx(
+      ctx,
+      sloganRaw,
+      maxW,
+      Math.min(sloganBase, Math.round(titlePx * 0.55)),
+      sState,
+      36
+    );
 
     // textBaseline=middle: ascent/descent are distances from the mid Y to glyph bounds
     const measureExtents = (faceState, px, text, ascentFb, descentFb) => {
@@ -2460,6 +2473,7 @@ function makeRoleTexture(state, role, w = DECAL_W, h = DECAL_H, opts) {
     ctx.strokeText(titleRaw, cw / 2, titleY);
     ctx.fillText(titleRaw, cw / 2, titleY);
 
+    ctx.fillStyle = sloganColor;
     ctx.font = resolveFontFace(sState, sPx);
     ctx.lineWidth = Math.max(2, sPx * 0.055);
     ctx.shadowBlur = 7;
@@ -2826,7 +2840,7 @@ function makeRegTexture(state) {
 }
 
 /**
- * v0.8.10 — Custom logo/image decals on the VERTICAL STABILIZER (tail fin) only.
+ * v0.8.11 — Custom logo/image decals on the VERTICAL STABILIZER (tail fin) only.
  * Centered on fin geometry; same upright/readable orientation on both faces (no U-flip).
  * posX/posY nudge within the fin; scale / opacity / rotate / side.
  */
@@ -2879,51 +2893,68 @@ function placeFallbackPlaneDecal(group, craft, side, x, y, fusR, center, decalSi
 
 function estimateTailFinAim(craft, size, center, targets) {
   const fusLen = size.x;
-  // Default: visual mid-panel of vertical fin (A320 hangar-tuned). Not tip.
-  let xAim = center.x - fusLen * 0.39;
-  let yAim = center.y + size.y * 0.15;
-  let finH = Math.max(0.55, size.y * 0.28);
+  // Visual mid-panel of the vertical stabilizer (airline logo sweet spot).
+  // Tip / upper-aft corner looks wrong; root/HT junction is too low.
+  let xAim = center.x - fusLen * 0.41;
+  let yAim = center.y + size.y * 0.20;
+  let finH = Math.max(0.55, size.y * 0.34);
   let finW = Math.max(0.45, fusLen * 0.12);
 
-  const tails = (targets && targets.tail) || [];
-  if (tails.length) {
-    const union = new THREE.Box3();
-    let any = false;
-    for (const t of tails) {
-      if (!t.box) continue;
-      // Prefer upright fins (tall + near centerline) over wide HT
-      const h = t.box.max.y - t.box.min.y;
-      const cz = Math.abs((t.box.min.z + t.box.max.z) * 0.5 - center.z);
-      if (h > size.y * 0.12 && cz < size.z * 0.22) {
-        union.union(t.box);
-        any = true;
+  // Collect aft + elevated + near-centerline verts → vertical-fin face bounds.
+  const vBox = new THREE.Box3();
+  let vCount = 0;
+  const tmp = new THREE.Vector3();
+  const aftCut = center.x - fusLen * 0.25;
+  const yFloor = center.y + size.y * 0.02;
+  const zHalf = Math.max(0.35, size.z * 0.07); // thin fin skin, not HT
+  if (craft) {
+    craft.traverse((mesh) => {
+      if (!mesh.isMesh || !mesh.geometry) return;
+      if (mesh.name === "textDecals" || (mesh.parent && mesh.parent.name === "textDecals"))
+        return;
+      if (mesh.userData && mesh.userData.isTextDecal) return;
+      const pos = mesh.geometry.attributes && mesh.geometry.attributes.position;
+      if (!pos) return;
+      mesh.updateWorldMatrix(true, false);
+      const step = Math.max(1, Math.floor(pos.count / 5000));
+      for (let i = 0; i < pos.count; i += step) {
+        tmp.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+        if (tmp.x > aftCut) continue;
+        if (tmp.y < yFloor) continue;
+        if (Math.abs(tmp.z - center.z) > zHalf) continue;
+        vBox.expandByPoint(tmp);
+        vCount++;
       }
-    }
-    if (!any) {
-      for (const t of tails) {
-        if (t.box) {
-          union.union(t.box);
-          any = true;
-        }
-      }
-    }
-    if (any && Number.isFinite(union.min.x)) {
-      const fh = union.max.y - union.min.y;
-      const fw = union.max.x - union.min.x;
-      // LE = max.x (noseward), TE = min.x (aft)
-      xAim = union.max.x - fw * 0.50;
-      yAim = union.min.y + fh * 0.45;
-      finH = Math.max(0.4, fh);
+    });
+  }
+
+  if (vCount >= 30 && Number.isFinite(vBox.min.x)) {
+    const fw = vBox.max.x - vBox.min.x;
+    const fh = vBox.max.y - vBox.min.y;
+    // If scan only caught the tip (tiny height), synthesize full fin panel height
+    if (fh >= size.y * 0.18) {
+      // LE = max.x (noseward), TE = min.x (aft). Visual center is slightly aft of mid-chord on swept fins.
+      xAim = vBox.max.x - fw * 0.55;
+      yAim = vBox.min.y + fh * 0.50;
+      finH = Math.max(0.45, fh);
       finW = Math.max(0.35, fw);
+    } else {
+      // Tip-only scan: keep X from verts, Y at visual mid between fuse top & tip
+      xAim = (vBox.min.x + vBox.max.x) * 0.5;
+      const tipY = Math.max(vBox.max.y, center.y + size.y * 0.42);
+      const rootY = center.y + size.y * 0.04;
+      yAim = rootY + (tipY - rootY) * 0.48;
+      finH = Math.max(0.55, tipY - rootY);
+      finW = Math.max(0.4, fw, fusLen * 0.11);
     }
   }
 
-  // Soft clamp: empennage / mid-fin (never tip or mid-cabin)
-  xAim = Math.min(xAim, center.x - fusLen * 0.22);
-  xAim = Math.max(xAim, center.x - fusLen * 0.50);
-  yAim = Math.max(yAim, center.y + size.y * 0.06);
-  yAim = Math.min(yAim, center.y + size.y * 0.32);
-  return { xAim, yAim, finH, finW };
+  // Soft clamp: empennage mid-fin (never tip spike, never mid-cabin)
+  xAim = Math.min(xAim, center.x - fusLen * 0.32);
+  xAim = Math.max(xAim, center.x - fusLen * 0.52);
+  yAim = Math.max(yAim, center.y + size.y * 0.12);
+  yAim = Math.min(yAim, center.y + size.y * 0.36);
+  return { xAim, yAim, finH, finW, vCount };
 }
 
 function addCustomTextureDecals(craft, state, group, targets, box, size, center, raycaster) {
@@ -3005,7 +3036,7 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
     };
 
     // Size relative to fin panel (cap so mid-fin logos are not tip-clipped)
-    const baseW = Math.max(0.32, Math.min(fin.finW * 0.72, fusLen * 0.18)) * scale;
+    const baseW = Math.max(0.28, Math.min(fin.finW * 0.55, fusLen * 0.14)) * scale;
     const baseH = baseW * (dh / Math.max(dw, 1e-6));
     const depth = Math.max(0.25, Math.min(size.y * 0.28, 0.55));
     const decalSize = new THREE.Vector3(baseW, Math.max(0.28, baseH), depth);
@@ -3035,7 +3066,7 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
     else if (sideMode === "right") sides = [1];
     else sides = [-1, 1];
 
-    // v0.8.10: ALWAYS U-flip fin logos on BOTH faces.
+    // v0.8.11: ALWAYS U-flip fin logos on BOTH faces.
     // DecalGeometry UV on vertical fins reads mirrored from outside; flipping the
     // canvas once per side keeps HB/owl upright + readable the same way on L and R
     // (do NOT flip only one side — that left the other face backwards).
@@ -3076,8 +3107,8 @@ function addCustomTextureDecals(craft, state, group, targets, box, size, center,
           if (sideFacing < 0.35) continue;
           if (Math.abs(wN.y) > 0.72) continue;
           const err =
-            Math.abs(h.point.y - y0) * 2.4 +
-            Math.abs(h.point.x - x0) * 1.1 +
+            Math.abs(h.point.y - y0) * 2.8 +
+            Math.abs(h.point.x - x0) * 2.2 +
             Math.abs(h.point.z - center.z) * 0.08 +
             (1 - sideFacing) * 0.35;
           if (err < bestErr) {
@@ -3754,11 +3785,11 @@ function paintFuselageCanvas(canvas, state, family) {
         ctx.fillText(state.airline, xCenter, y);
       }
       if (hasSlogan) {
-        const style = String(state.textStyle || "").toLowerCase();
-        const sloganStyle = style.includes("italic")
-          ? (style.includes("bold") ? "bold-italic" : "italic")
-          : "regular";
-        const sState = { ...state, textStyle: sloganStyle };
+        const sState = {
+          ...state,
+          textStyle: state.sloganStyle || "bold",
+          textFont: state.sloganFont || state.textFont || "montserrat",
+        };
         const sPx = fitFontPx(ctx, state.slogan, maxW, Math.round(basePx * 0.5), sState, 10);
         ctx.font = resolveFontFace(sState, sPx);
         ctx.fillText(state.slogan, xCenter, y + Math.max(airPx, basePx * 0.4) * 0.58);
@@ -4624,12 +4655,16 @@ export class Preview3D {
       s: state.slogan,
       tc: state.textColor,
       rc: state.regColor,
+      sc: state.sloganColor,
       ts: state.textSize,
       ty: state.textStyle,
       tf: state.textFont,
       rs: state.regSize,
       rf: state.regFont,
       rsty: state.regStyle,
+      sf: state.sloganFont,
+      ss: state.sloganSize,
+      ssty: state.sloganStyle,
       tp: state.textPlacement,
       tz: state.titleZone,
       sz: state.sloganZone,

@@ -62,6 +62,13 @@ A320NEO_TEXTS_UV = {
     "small_glyph_c": (255, 1777, 784, 1875),
 }
 
+# LatinVFR A319 TAIL19 mid-fin logo (cx, cy, diam). Do NOT fill whole UV rect —
+# oversized pastes spill onto nose/fuselage islands on the same atlas.
+A319_TAIL_LOGO_CENTERS = {
+    "upper": (780, 600, 520),
+    "lower": (780, 1620, 520),
+}
+
 DDS_JSON_TEMPLATE = {
     "Version": 2,
     "SourceFileName": "",
@@ -343,8 +350,14 @@ def make_a319_style_map(
     logo_path: Path | None,
     photo_path: Path | None,
     size: int,
+    profile: dict | None = None,
 ) -> Image.Image:
-    """Paint LatinVFR-style maps (fuselage/tail with UV titles when available)."""
+    """Paint LatinVFR-style maps (fuselage titles + TAIL-ONLY logo).
+
+    Logo/photo MUST only hit the tail fin texture. Pasting onto fuselage
+    (or filling the whole TAR UV footprint) showed a huge distorted emblem
+    on the nose in MSFS while the fin also had the mark.
+    """
     color = _role_color(colors, role)
     img = make_solid(color, stem, size=size)
 
@@ -370,31 +383,56 @@ def make_a319_style_map(
                 draw = ImageDraw.Draw(img)
                 draw.rectangle([80, y, size - 80, y + 40], fill=(255, 255, 255, 230))
 
-        if photo_path and photo_path.exists():
-            try:
-                photo = Image.open(photo_path).convert("RGBA")
-                photo.thumbnail((280, 280))
-                img.paste(photo, (size // 2 - 140, size // 2 + 100), photo)
-            except OSError:
-                pass
+        # Never paste logo/photo onto fuselage.
 
-    if role == "tail" and uv:
-        for key in ("tail_logo_upper", "tail_logo_lower"):
-            if key not in uv or not logo_path or not logo_path.exists():
-                continue
-            x0, y0, x1, y1 = tuple(uv[key])
-            rw, rh = x1 - x0, y1 - y0
+    if role == "tail":
+        centers = None
+        if profile and isinstance(profile.get("tail_logo_centers"), dict):
+            centers = profile["tail_logo_centers"]
+        logo_src = None
+        for candidate in (logo_path, photo_path):
+            if candidate and Path(candidate).exists():
+                logo_src = Path(candidate)
+                break
+        if logo_src is not None:
             try:
-                logo = Image.open(logo_path).convert("RGBA")
-                logo.thumbnail((int(rw * 0.7), int(rh * 0.7)), Image.Resampling.LANCZOS)
-                lx = x0 + (rw - logo.width) // 2
-                ly = y0 + (rh - logo.height) // 2
-                img.paste(logo, (lx, ly), logo)
+                emblem = Image.open(logo_src).convert("RGBA")
             except OSError:
-                paste_text_in_rect(img, airline[:12] or "SMB", uv[key])
-
-    if role == "fuselage" and (not uv) and logo_path:
-        img = paste_centered_logo(img, logo_path)
+                emblem = None
+            if emblem is not None:
+                for side_key, uv_key in (
+                    ("upper", "tail_logo_upper"),
+                    ("lower", "tail_logo_lower"),
+                ):
+                    if centers and side_key in centers:
+                        c = centers[side_key]
+                        cx = int(c["cx"])
+                        cy = int(c["cy"])
+                        diam = int(c.get("diam", 520))
+                    elif side_key in A319_TAIL_LOGO_CENTERS:
+                        cx, cy, diam = A319_TAIL_LOGO_CENTERS[side_key]
+                    elif uv and uv_key in uv:
+                        x0, y0, x1, y1 = tuple(uv[uv_key])
+                        cx = (x0 + x1) // 2
+                        cy = (y0 + y1) // 2
+                        diam = int(min(x1 - x0, y1 - y0) * 0.55)
+                    else:
+                        continue
+                    diam = max(64, min(diam, size // 2))
+                    owl = emblem.copy()
+                    owl.thumbnail((diam, diam), Image.Resampling.LANCZOS)
+                    side = max(owl.width, owl.height)
+                    square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+                    square.paste(
+                        owl,
+                        ((side - owl.width) // 2, (side - owl.height) // 2),
+                        owl,
+                    )
+                    img.paste(square, (cx - side // 2, cy - side // 2), square)
+        elif uv and airline:
+            for key in ("tail_logo_upper", "tail_logo_lower"):
+                if key in uv:
+                    paste_text_in_rect(img, (airline[:12] or "SMB"), uv[key])
 
     return img
 
@@ -409,11 +447,10 @@ def make_whole_albedo_map(
     photo_path: Path | None,
     size: int,
 ) -> Image.Image:
-    """Unknown-UV stub: solid role color + optional centered logo/text on primary."""
+    """Unknown-UV stub: solid role color + title on fuselage; logo ONLY on tail."""
     color = _role_color(colors, role)
     img = make_solid(color, stem, size=size)
     if role in ("fuselage", "primary"):
-        img = paste_centered_logo(img, logo_path, max_frac=0.4)
         draw = ImageDraw.Draw(img)
         label = airline or registration
         font = _font(72, bold=True)
@@ -425,14 +462,17 @@ def make_whole_albedo_map(
             fill=(255, 255, 255, 220),
             font=font,
         )
-        if photo_path and photo_path.exists():
-            try:
-                photo = Image.open(photo_path).convert("RGBA")
-                photo.thumbnail((280, 280))
-                img.paste(photo, (size // 2 - 140, int(size * 0.55)), photo)
-            except OSError:
-                pass
+        # No logo/photo on fuselage — prevents nose spill in MSFS.
+    elif role == "tail":
+        src = None
+        for candidate in (logo_path, photo_path):
+            if candidate and Path(candidate).exists():
+                src = Path(candidate)
+                break
+        if src is not None:
+            img = paste_centered_logo(img, src, max_frac=0.45)
     return img
+
 
 
 def make_thumbnails(
@@ -534,14 +574,14 @@ def aircraft_cfg_from_profile(
     icao = cfg.get("icao", "SMB")
     name = cfg.get("name", "Custom")
     base = profile.get("base_container", "..\\Asobo_A320_NEO")
-    # Escape backslashes for cfg
-    base_esc = base.replace("\\", "\\\\")
+    # MSFS aircraft.cfg needs a SINGLE backslash (e.g. ..\lvfr-319-cfm).
+    # Double-escaping (..\\folder) breaks variation resolve → pink checkerboard.
     return f"""[VERSION]
 major = 1
 minor = 0
 
 [VARIATION]
-base_container = "{base_esc}"
+base_container = "{base}"
 
 ; SkinMyBird generated variation — profile {profile.get('id')}
 [FLTSIM.0]
@@ -799,6 +839,13 @@ def build_images_for_profile(
         if not lp.is_absolute():
             lp = ROOT / lp
         logo_path = lp if lp.exists() else None
+    # UI soacra / customTextures arrive as soacraPhoto or photo — TAIL logo only
+    if logo_path is None and cfg.get("soacraPhoto"):
+        cand = Path(cfg["soacraPhoto"])
+        if cand.exists():
+            logo_path = cand
+    if logo_path is None and photo_path and Path(photo_path).exists():
+        logo_path = Path(photo_path)
 
     images: dict[str, Image.Image] = {}
     textures = profile.get("textures") or []
@@ -837,18 +884,19 @@ def build_images_for_profile(
                 logo_path,
                 photo_path,
                 size,
+                profile=profile,
             )
         elif paint_mode == "uv_rects" and role == "texts":
             images[stem] = make_texts_layer(registration, airline, uv)
         elif paint_mode == "uv_rects" and role == "fuselage":
             images[stem] = make_a319_style_map(
                 stem, role, colors, stickers, registration, airline, uv,
-                logo_path, photo_path, size,
+                logo_path, photo_path, size, profile=profile,
             )
         elif paint_mode == "uv_rects" and role == "tail":
             images[stem] = make_a319_style_map(
                 stem, role, colors, stickers, registration, airline, uv,
-                logo_path, photo_path, size,
+                logo_path, photo_path, size, profile=profile,
             )
         elif paint_mode == "uv_rects" and role == "livery":
             images[stem] = make_livery_layer(stickers, registration)

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600;700&family=PT+Sans+Narrow:wght@400;700&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=0.8.10" />
+  <link rel="stylesheet" href="css/styles.css?v=0.8.11" />
   <script type="importmap">
   {
     "imports": {
@@ -18,7 +18,7 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=0.8.10"></script>
+  <script type="module" src="js/app.js?v=0.8.11"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -162,10 +162,10 @@
 
                               <div class="tab-panel" id="tab-text" role="tabpanel" hidden>
             <h2>Text on aircraft</h2>
-            <p class="hint">Main text (title / slogan) and ID / registration are fully separate — each has its own font, size, and color.</p>
+            <p class="hint">Title, Slogan, and ID / registration are fully separate — each has its own font, size, color, and style.</p>
 
             <div class="zone-group text-panel" id="panel-main-text">
-              <h3 class="zone-group-title">Main text — Title &amp; Slogan</h3>
+              <h3 class="zone-group-title">Title (airline name)</h3>
 
               <label class="field">
                 <span>Title <em>(airline name)</em></span>
@@ -183,22 +183,6 @@
                   <button type="button" class="seg" data-title-zone="belly">Belly</button>
                 </div>
                 <input type="hidden" id="title-zone" value="windowband" />
-              </label>
-
-              <label class="field">
-                <span>Slogan <em>(optional)</em></span>
-                <input type="text" id="slogan" value="" maxlength="72" placeholder="e.g. Fly your story" />
-              </label>
-              <label class="field">
-                <span>Slogan zone</span>
-                <div class="segmented wrap zone-chips" role="group" aria-label="Slogan zone">
-                  <button type="button" class="seg active" data-slogan-zone="mid">Under title / Mid</button>
-                  <button type="button" class="seg" data-slogan-zone="windowband">Window band</button>
-                  <button type="button" class="seg" data-slogan-zone="forward">Forward cabin</button>
-                  <button type="button" class="seg" data-slogan-zone="aft">Aft fuselage</button>
-                  <button type="button" class="seg" data-slogan-zone="belly">Belly</button>
-                </div>
-                <input type="hidden" id="slogan-zone" value="mid" />
               </label>
 
               <div class="field-row">
@@ -223,7 +207,6 @@
                 <span>Title font</span>
                 <select id="text-font" class="select">
                   <option value="montserrat" selected>Montserrat</option>
-                <option value="montserrat">Montserrat</option>
                 <option value="oswald">Oswald</option>
                 <option value="bebas">Bebas Neue</option>
                 <option value="anton">Anton</option>
@@ -272,6 +255,73 @@
                   <span>Fix if right still mirrored</span>
                 </label>
               </details>
+            </div>
+
+            <div class="zone-group text-panel" id="panel-slogan-text">
+              <h3 class="zone-group-title">Slogan</h3>
+              <p class="hint">Independent from Title — changing slogan font/size/color/style never changes the airline title.</p>
+
+              <label class="field">
+                <span>Slogan <em>(optional)</em></span>
+                <input type="text" id="slogan" value="" maxlength="72" placeholder="e.g. Fly your story" />
+              </label>
+              <label class="field">
+                <span>Slogan zone</span>
+                <div class="segmented wrap zone-chips" role="group" aria-label="Slogan zone">
+                  <button type="button" class="seg active" data-slogan-zone="mid">Under title / Mid</button>
+                  <button type="button" class="seg" data-slogan-zone="windowband">Window band</button>
+                  <button type="button" class="seg" data-slogan-zone="forward">Forward cabin</button>
+                  <button type="button" class="seg" data-slogan-zone="aft">Aft fuselage</button>
+                  <button type="button" class="seg" data-slogan-zone="belly">Belly</button>
+                </div>
+                <input type="hidden" id="slogan-zone" value="mid" />
+              </label>
+
+              <div class="field-row">
+                <label class="field shrink">
+                  <span>Slogan color</span>
+                  <input type="color" id="slogan-color" value="#1b2430" />
+                </label>
+                <label class="field grow">
+                  <span>Slogan size</span>
+                  <div class="segmented wrap" role="group" aria-label="Slogan size">
+                    <button type="button" class="seg" data-slogan-size="S">S</button>
+                    <button type="button" class="seg" data-slogan-size="M">M</button>
+                    <button type="button" class="seg active" data-slogan-size="L">L</button>
+                    <button type="button" class="seg" data-slogan-size="XL">XL</button>
+                    <button type="button" class="seg" data-slogan-size="XXL">XXL</button>
+                  </div>
+                  <input type="hidden" id="slogan-size" value="L" />
+                </label>
+              </div>
+
+              <label class="field">
+                <span>Slogan font</span>
+                <select id="slogan-font" class="select">
+                  <option value="montserrat" selected>Montserrat</option>
+                  <option value="oswald">Oswald</option>
+                  <option value="bebas">Bebas Neue</option>
+                  <option value="anton">Anton</option>
+                  <option value="roboto-condensed">Roboto Condensed</option>
+                  <option value="pt-sans-narrow">PT Sans Narrow</option>
+                  <option value="helvetica">Helvetica-like (Arial)</option>
+                  <option value="segoe">Segoe UI</option>
+                  <option value="impact">Impact</option>
+                  <option value="georgia">Georgia</option>
+                  <option value="trebuchet">Trebuchet MS</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Slogan style</span>
+                <div class="segmented wrap" role="group" aria-label="Slogan style">
+                  <button type="button" class="seg" data-slogan-style="regular">Regular</button>
+                  <button type="button" class="seg active" data-slogan-style="bold">Bold</button>
+                  <button type="button" class="seg" data-slogan-style="italic">Italic</button>
+                  <button type="button" class="seg" data-slogan-style="bold-italic">Bold Italic</button>
+                </div>
+                <input type="hidden" id="slogan-style" value="bold" />
+              </label>
             </div>
 
             <div class="zone-group text-panel" id="panel-id-text">
@@ -652,7 +702,7 @@
 
     <footer class="app-foot">
       <span>SkinMyBird · bird-pilot · €9.99</span>
-      <span>v0.8.10 · tail logos centered · upright both sides · aft clip · DDS BC7</span>
+      <span>v0.8.11 · export packaging fix · fin center · independent slogan · DDS BC7</span>
     </footer>
   </div>
 </body>

@@ -15,6 +15,13 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.8.11 notes
+- **MSFS export packaging**: `base_container` no longer double-escapes backslashes (`..\\folder` → pink/magenta checkerboard). LatinVFR A319 `texture.cfg` fallbacks match official paintkits.
+- **Tail logo bake**: customTextures / logo bake **only** onto TAIL mid-fin centers (measured `780,600` / `780,1620`, diam 520). Never fuselage/nose — fixes huge distorted owl on nose.
+- **Fin logo hangar**: geometric center of vertical-fin face from mesh verts (not tip AABB / upper-aft corner).
+- **Slogan independence**: own font, size, color, style panel (like ID/reg) — changing slogan does not change Title.
+- Cache-bust `?v=0.8.11`.
+
 ### v0.8.10 notes
 - **Tail logo orientation**: both fin faces share the same upright/readable image (U-flip applied on **both** sides so HB/owl is not backwards on either face).
 - **Tail logo centering**: aim at visual mid-panel of the vertical stabilizer (slightly aft of mid-chord on swept fins); tighter ray samples so the mark stays symmetric.
