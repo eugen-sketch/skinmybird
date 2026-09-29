@@ -1,4 +1,4 @@
-/* SkinMyBird v0.6.7 — commercial app shell · anthracite + orange · deterministic window-band hangar text */
+/* SkinMyBird v0.7.0 — simpler paint zones · flags-only · custom textures · 3 text zones */
 :root {
   --bg: #0b0b0d;
   --bg-elev: #121214;
@@ -966,4 +966,23 @@ input[type="text"]:focus {
   outline: 1px solid rgba(255, 154, 74, 0.55);
   outline-offset: 2px;
   border-radius: 8px;
+}
+
+
+/* v0.7.0 — custom texture slots */
+.texture-slots { display: flex; flex-direction: column; gap: 1rem; }
+.texture-slot {
+  padding: 0.75rem;
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+}
+.texture-slot .file-drop.slim {
+  padding: 0.65rem 0.75rem;
+  min-height: auto;
+}
+.flag-grid {
+  max-height: 22rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
 }

@@ -1,8 +1,8 @@
 /**
- * SkinMyBird web editor v0.6.7 — title further forward + shorter panel (clear of wing); windowband yAim + face-solid paint + zone highlight.
+ * SkinMyBird web editor v0.7.0 — simpler paint zones, flags-only, custom textures, 3 text zones.
  * UI labels in English (worldwide). Keeps /api/export + /api/export-form contracts.
  */
-import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.6.16";
+import { Preview3D, resolveGlbMeta } from "./preview3d.js?v=0.7.0";
 
 const $ = (id) => document.getElementById(id);
 
@@ -43,14 +43,7 @@ const $ = (id) => document.getElementById(id);
       winglet: "#1b2430",
       engines: "#1b2430",
       tail: "#f2f4f7",
-      stabilizer: "#f2f4f7",
-      doors: "#f2f4f7",
       windowband: "#f2f4f7",
-      accent: "#f2f4f7",
-      crown: "#f2f4f7",
-      cockpit: "#f2f4f7",
-      pylons: "#1b2430",
-      fairings: "#f2f4f7",
     },
     name: "Two-Tone",
     registration: "YR-EUG",
@@ -58,36 +51,16 @@ const $ = (id) => document.getElementById(id);
     slogan: "",
     stickerText: "",
     textColor: "#FFFFFF",
-    textSize: "M",
+    textSize: "L",
     textStyle: "bold",
     textFont: "segoe",
     textPlacement: "fuselage",
     textPosX: 0,
     textPosY: 8,
-    textScale: 100,
+    textScale: 120,
     textFlipLeft: false,
     textFlipRight: false,
-    stickers: {
-      stripe: false,
-      heart: false,
-      text: true,
-      star: false,
-      lightning: false,
-      bird: false,
-      roundel: false,
-      chevron: false,
-      checkered: false,
-      smile: false,
-      crown: false,
-      diamond: false,
-      sun: false,
-      moon: false,
-      flag: false,
-      shield: false,
-      arrow: false,
-      sparkle: false,
-      wingbadge: false,
-    },
+    stickers: { text: true }, // export compat — no decorative stickers in UI
     stickerSize: "M",
     flags: {
       codes: [],
@@ -95,6 +68,11 @@ const $ = (id) => document.getElementById(id);
       posX: 0,
       posY: 10,
     },
+    customTextures: [
+      { id: 1, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, placement: "fuselage", _img: null },
+      { id: 2, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, placement: "fuselage", _img: null },
+      { id: 3, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0, placement: "fuselage", _img: null },
+    ],
     soacra: null,
     soacraName: null,
     soacraFile: null,
@@ -126,14 +104,7 @@ const $ = (id) => document.getElementById(id);
     if ($("c-winglet")) $("c-winglet").value = state.colors.winglet || "#1b2430";
     $("c-engines").value = state.colors.engines;
     $("c-tail").value = state.colors.tail;
-    if ($("c-stabilizer")) $("c-stabilizer").value = state.colors.stabilizer || state.colors.tail || "#f2f4f7";
-    if ($("c-doors")) $("c-doors").value = state.colors.doors || state.colors.fuselage || "#f2f4f7";
     if ($("c-windowband")) $("c-windowband").value = state.colors.windowband || state.colors.fuselage || "#f2f4f7";
-    if ($("c-accent")) $("c-accent").value = state.colors.accent || "#f2f4f7";
-    if ($("c-crown")) $("c-crown").value = state.colors.crown || state.colors.fuselage || "#f2f4f7";
-    if ($("c-cockpit")) $("c-cockpit").value = state.colors.cockpit || state.colors.fuselage || "#f2f4f7";
-    if ($("c-pylons")) $("c-pylons").value = state.colors.pylons || state.colors.engines || "#1b2430";
-    if ($("c-fairings")) $("c-fairings").value = state.colors.fairings || state.colors.fuselage || "#f2f4f7";
     $("livery-name").value = state.name;
     $("registration").value = state.registration;
     $("airline").value = state.airline;
@@ -145,31 +116,16 @@ const $ = (id) => document.getElementById(id);
     $("text-placement").value = state.textPlacement;
     if ($("text-pos-x")) $("text-pos-x").value = state.textPosX ?? 0;
     if ($("text-pos-y")) $("text-pos-y").value = state.textPosY ?? 8;
-    if ($("text-scale")) $("text-scale").value = state.textScale ?? 100;
+    if ($("text-scale")) $("text-scale").value = state.textScale ?? 120;
     if ($("text-flip-left")) $("text-flip-left").checked = !!state.textFlipLeft;
     if ($("text-flip-right")) $("text-flip-right").checked = !!state.textFlipRight;
     if ($("lab-text-x")) $("lab-text-x").textContent = String(state.textPosX ?? 0);
     if ($("lab-text-y")) $("lab-text-y").textContent = String(state.textPosY ?? 8);
-    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 100) + "%";
-    $("st-stripe").checked = !!state.stickers.stripe;
-    $("st-heart").checked = !!state.stickers.heart;
-    $("st-text").checked = !!state.stickers.text;
-    if ($("st-star")) $("st-star").checked = !!state.stickers.star;
-    if ($("st-lightning")) $("st-lightning").checked = !!state.stickers.lightning;
-    if ($("st-bird")) $("st-bird").checked = !!state.stickers.bird;
-    if ($("st-roundel")) $("st-roundel").checked = !!state.stickers.roundel;
-    if ($("st-chevron")) $("st-chevron").checked = !!state.stickers.chevron;
-    if ($("st-checkered")) $("st-checkered").checked = !!state.stickers.checkered;
-    ["smile","crown","diamond","sun","moon","flag","shield","arrow","sparkle","wingbadge"].forEach((k) => {
-      const el = $("st-" + k);
-      if (el) el.checked = !!state.stickers[k];
-    });
+    if ($("lab-text-scale")) $("lab-text-scale").textContent = String(state.textScale ?? 120) + "%";
     updateHexLabels();
     syncSegmented("data-size", state.textSize);
     syncSegmented("data-style", state.textStyle);
     syncSegmented("data-place", state.textPlacement);
-    if ($("sticker-size")) $("sticker-size").value = state.stickerSize || "M";
-    syncSegmented("data-sticker-size", state.stickerSize || "M");
     document.querySelectorAll(".flag-check").forEach((el) => {
       el.checked = !!(state.flags && state.flags.codes && state.flags.codes.includes(el.value));
     });
@@ -180,6 +136,7 @@ const $ = (id) => document.getElementById(id);
     if ($("lab-flag-x")) $("lab-flag-x").textContent = String((state.flags && state.flags.posX) ?? 0);
     if ($("lab-flag-y")) $("lab-flag-y").textContent = String((state.flags && state.flags.posY) ?? 10);
     syncFlagCustomPos();
+    syncCustomTextureInputs();
   }
 
   function syncSegmented(attr, value) {
@@ -212,14 +169,7 @@ const $ = (id) => document.getElementById(id);
       winglet: "hex-winglet",
       engines: "hex-engines",
       tail: "hex-tail",
-      stabilizer: "hex-stabilizer",
-      doors: "hex-doors",
       windowband: "hex-windowband",
-      accent: "hex-accent",
-      crown: "hex-crown",
-      cockpit: "hex-cockpit",
-      pylons: "hex-pylons",
-      fairings: "hex-fairings",
     };
     Object.keys(map).forEach((k) => {
       const el = $(map[k]);
@@ -235,44 +185,24 @@ const $ = (id) => document.getElementById(id);
     state.colors.winglet = $("c-winglet") ? $("c-winglet").value : (state.colors.winglet || "#1b2430");
     state.colors.engines = $("c-engines").value;
     state.colors.tail = $("c-tail").value;
-    state.colors.stabilizer = $("c-stabilizer") ? $("c-stabilizer").value : (state.colors.stabilizer || state.colors.tail || "#f2f4f7");
-    state.colors.doors = $("c-doors") ? $("c-doors").value : (state.colors.doors || state.colors.fuselage || "#f2f4f7");
     state.colors.windowband = $("c-windowband") ? $("c-windowband").value : (state.colors.windowband || state.colors.fuselage || "#f2f4f7");
-    state.colors.accent = $("c-accent") ? $("c-accent").value : (state.colors.accent || "#f2f4f7");
-    state.colors.crown = $("c-crown") ? $("c-crown").value : (state.colors.crown || state.colors.fuselage || "#f2f4f7");
-    state.colors.cockpit = $("c-cockpit") ? $("c-cockpit").value : (state.colors.cockpit || state.colors.fuselage || "#f2f4f7");
-    state.colors.pylons = $("c-pylons") ? $("c-pylons").value : (state.colors.pylons || state.colors.engines || "#1b2430");
-    state.colors.fairings = $("c-fairings") ? $("c-fairings").value : (state.colors.fairings || state.colors.fuselage || "#f2f4f7");
     state.name = $("livery-name").value.trim() || "Custom";
     state.registration = $("registration").value.trim() || "SMB-001";
     state.airline = $("airline").value.trim() || "SkinMyBird";
     state.slogan = ($("slogan").value || "").trim();
     state.textColor = $("text-color").value || "#FFFFFF";
-    state.textSize = $("text-size").value || "M";
+    state.textSize = $("text-size").value || "L";
     state.textStyle = $("text-style").value || "bold";
     state.textFont = ($("text-font") && $("text-font").value) || "segoe";
     state.textPlacement = $("text-placement").value || "fuselage";
     state.textPosX = $("text-pos-x") ? Number($("text-pos-x").value) : 0;
     state.textPosY = $("text-pos-y") ? Number($("text-pos-y").value) : 8;
-    state.textScale = $("text-scale") ? Number($("text-scale").value) : 100;
+    state.textScale = $("text-scale") ? Number($("text-scale").value) : 120;
     state.textFlipLeft = $("text-flip-left") ? $("text-flip-left").checked : false;
     state.textFlipRight = $("text-flip-right") ? $("text-flip-right").checked : false;
-    // custom_text payload: slogan only — registration is its own field (avoid double paint)
     state.stickerText = state.slogan || "";
-    state.stickers.stripe = $("st-stripe").checked;
-    state.stickers.heart = $("st-heart").checked;
-    state.stickers.text = $("st-text").checked;
-    state.stickers.star = $("st-star") ? $("st-star").checked : false;
-    state.stickers.lightning = $("st-lightning") ? $("st-lightning").checked : false;
-    state.stickers.bird = $("st-bird") ? $("st-bird").checked : false;
-    state.stickers.roundel = $("st-roundel") ? $("st-roundel").checked : false;
-    state.stickers.chevron = $("st-chevron") ? $("st-chevron").checked : false;
-    state.stickers.checkered = $("st-checkered") ? $("st-checkered").checked : false;
-    ["smile","crown","diamond","sun","moon","flag","shield","arrow","sparkle","wingbadge"].forEach((k) => {
-      const el = $("st-" + k);
-      state.stickers[k] = el ? el.checked : !!state.stickers[k];
-    });
-    if ($("sticker-size")) state.stickerSize = $("sticker-size").value || "M";
+    state.stickers = state.stickers || {};
+    state.stickers.text = true; // always export identity text
     // Flags
     state.flags = state.flags || { codes: [], placement: "both", posX: 0, posY: 10 };
     state.flags.codes = Array.from(document.querySelectorAll(".flag-check:checked")).map((el) => el.value);
@@ -287,6 +217,7 @@ const $ = (id) => document.getElementById(id);
     }
     if ($("lab-flag-x")) $("lab-flag-x").textContent = String(state.flags.posX);
     if ($("lab-flag-y")) $("lab-flag-y").textContent = String(state.flags.posY);
+    readCustomTextureInputs();
     syncFlagCustomPos();
     updateHexLabels();
   }
@@ -301,33 +232,11 @@ const $ = (id) => document.getElementById(id);
   }
 
   function buildStickersPayload() {
-    const kinds = [
-      ["team_stripe", "stripe"],
-      ["heart", "heart"],
-      ["star", "star"],
-      ["lightning", "lightning"],
-      ["bird", "bird"],
-      ["roundel", "roundel"],
-      ["chevron", "chevron"],
-      ["checkered", "checkered"],
-      ["smile", "smile"],
-      ["crown", "crown"],
-      ["diamond", "diamond"],
-      ["sun", "sun"],
-      ["moon", "moon"],
-      ["flag", "flag"],
-      ["shield", "shield"],
-      ["arrow", "arrow"],
-      ["sparkle", "sparkle"],
-      ["wingbadge", "wingbadge"],
-    ];
-    const list = kinds.map(([type, key]) => ({
-      type,
-      enabled: !!state.stickers[key],
-    }));
+    // v0.7.0: decorative stickers removed — export only slogan as custom_text when set
+    const list = [];
     list.push({
       type: "custom_text",
-      enabled: !!state.stickers.text && !!(state.stickerText && String(state.stickerText).trim()),
+      enabled: !!(state.stickerText && String(state.stickerText).trim()),
       text: state.stickerText || "",
       color: state.textColor,
       size: state.textSize,
@@ -374,21 +283,14 @@ const $ = (id) => document.getElementById(id);
   function updateSwatches() {
     const el = $("swatches");
     const entries = [
-      ["Body", state.colors.fuselage],
-      ["Crown", state.colors.crown],
-      ["Cockpit", state.colors.cockpit],
+      ["Fuselage", state.colors.fuselage],
       ["Nose", state.colors.nose],
       ["Belly", state.colors.belly],
-      ["Fairings", state.colors.fairings],
-      ["Wings", state.colors.wings],
-      ["Winglet", state.colors.winglet],
-      ["Stab", state.colors.stabilizer],
-      ["Engines", state.colors.engines],
-      ["Pylons", state.colors.pylons],
-      ["Tail", state.colors.tail],
-      ["Doors", state.colors.doors],
       ["Windows", state.colors.windowband],
-      ["Accent", state.colors.accent],
+      ["Wings", state.colors.wings],
+      ["Winglets", state.colors.winglet],
+      ["Engines", state.colors.engines],
+      ["Tail", state.colors.tail],
     ];
     el.innerHTML = entries
       .map(
@@ -404,41 +306,16 @@ const $ = (id) => document.getElementById(id);
       list.innerHTML = '<li class="layer empty">No model selected</li>';
       return;
     }
+    const ctOn = (state.customTextures || []).filter((t) => t && t.dataUrl).length;
     const items = [
       { on: true, label: "Fuselage", meta: state.colors.fuselage, color: state.colors.fuselage },
-      { on: true, label: "Crown / roof", meta: state.colors.crown, color: state.colors.crown },
-      { on: true, label: "Cockpit", meta: state.colors.cockpit, color: state.colors.cockpit },
       { on: true, label: "Nose", meta: state.colors.nose, color: state.colors.nose },
       { on: true, label: "Belly", meta: state.colors.belly, color: state.colors.belly },
-      { on: true, label: "Fairings", meta: state.colors.fairings, color: state.colors.fairings },
-      { on: true, label: "Wings", meta: state.colors.wings, color: state.colors.wings },
-      { on: true, label: "Winglet", meta: state.colors.winglet, color: state.colors.winglet },
-      { on: true, label: "Stabilizer", meta: state.colors.stabilizer, color: state.colors.stabilizer },
-      { on: true, label: "Engines", meta: state.colors.engines, color: state.colors.engines },
-      { on: true, label: "Pylons", meta: state.colors.pylons, color: state.colors.pylons },
-      { on: true, label: "Tail", meta: state.colors.tail, color: state.colors.tail },
-      { on: true, label: "Doors", meta: state.colors.doors, color: state.colors.doors },
       { on: true, label: "Window band", meta: state.colors.windowband, color: state.colors.windowband },
-      { on: true, label: "Accent", meta: state.colors.accent, color: state.colors.accent },
-      { on: state.stickers.stripe, label: "Team stripe", meta: "" },
-      { on: state.stickers.heart, label: "Heart", meta: "" },
-      { on: state.stickers.star, label: "Star", meta: "" },
-      { on: state.stickers.lightning, label: "Lightning", meta: "" },
-      { on: state.stickers.bird, label: "Bird", meta: "" },
-      { on: state.stickers.roundel, label: "Roundel", meta: "" },
-      { on: state.stickers.chevron, label: "Chevron", meta: "" },
-      { on: state.stickers.checkered, label: "Checkered", meta: "" },
-      { on: state.stickers.smile, label: "Smile", meta: "" },
-      { on: state.stickers.crown, label: "Crown", meta: "" },
-      { on: state.stickers.diamond, label: "Diamond", meta: "" },
-      { on: state.stickers.sun, label: "Sun", meta: "" },
-      { on: state.stickers.moon, label: "Moon", meta: "" },
-      { on: state.stickers.flag, label: "Pennant", meta: "" },
-      { on: state.stickers.shield, label: "Shield", meta: "" },
-      { on: state.stickers.arrow, label: "Arrow", meta: "" },
-      { on: state.stickers.sparkle, label: "Sparkle", meta: "" },
-      { on: state.stickers.wingbadge, label: "Wing badge", meta: "" },
-      { on: true, label: "Sticker size", meta: state.stickerSize || "M" },
+      { on: true, label: "Wings", meta: state.colors.wings, color: state.colors.wings },
+      { on: true, label: "Winglets", meta: state.colors.winglet, color: state.colors.winglet },
+      { on: true, label: "Engines", meta: state.colors.engines, color: state.colors.engines },
+      { on: true, label: "Tail", meta: state.colors.tail, color: state.colors.tail },
       {
         on: !!(state.flags && state.flags.codes && state.flags.codes.length),
         label: "Flags",
@@ -447,9 +324,24 @@ const $ = (id) => document.getElementById(id);
           : "",
       },
       {
-        on: state.stickers.text,
-        label: "Text",
-        meta: (state.textFont || "segoe") + " · " + state.textPlacement,
+        on: true,
+        label: "Title",
+        meta: (state.airline || "") + " · " + (state.textFont || "segoe"),
+      },
+      {
+        on: !!state.slogan,
+        label: "Slogan",
+        meta: state.slogan || "",
+      },
+      {
+        on: !!state.registration,
+        label: "Registration",
+        meta: state.registration || "",
+      },
+      {
+        on: ctOn > 0,
+        label: "Custom textures",
+        meta: ctOn ? ctOn + " uploaded" : "",
       },
       { on: !!state.soacra, label: "Logo / photo", meta: state.soacraName || "" },
     ];
@@ -812,6 +704,89 @@ const $ = (id) => document.getElementById(id);
     $("btn-more").setAttribute("aria-expanded", "false");
   }
 
+
+  function ensureCustomTextureSlot(i) {
+    if (!state.customTextures) state.customTextures = [];
+    while (state.customTextures.length < 3) {
+      const id = state.customTextures.length + 1;
+      state.customTextures.push({
+        id, dataUrl: null, name: null, opacity: 100, scale: 100, posX: 0, posY: 0,
+        placement: "fuselage", _img: null,
+      });
+    }
+    return state.customTextures[i];
+  }
+
+  function syncCustomTextureInputs() {
+    for (let n = 1; n <= 3; n++) {
+      const slot = ensureCustomTextureSlot(n - 1);
+      const lab = $("ct-label-" + n);
+      if (lab) lab.textContent = slot.name || "Drop or click — PNG / JPG";
+      const clearBtn = document.querySelector('.ct-clear[data-slot="' + n + '"]');
+      if (clearBtn) clearBtn.hidden = !slot.dataUrl;
+      const place = document.querySelector('.ct-place[data-slot="' + n + '"]');
+      if (place) place.value = slot.placement || "fuselage";
+      const op = document.querySelector('.ct-opacity[data-slot="' + n + '"]');
+      if (op) op.value = slot.opacity ?? 100;
+      const sc = document.querySelector('.ct-scale[data-slot="' + n + '"]');
+      if (sc) sc.value = slot.scale ?? 100;
+      const px = document.querySelector('.ct-pos-x[data-slot="' + n + '"]');
+      if (px) px.value = slot.posX ?? 0;
+      const py = document.querySelector('.ct-pos-y[data-slot="' + n + '"]');
+      if (py) py.value = slot.posY ?? 0;
+      const lop = $("ct-lab-op-" + n); if (lop) lop.textContent = (slot.opacity ?? 100) + "%";
+      const lsc = $("ct-lab-sc-" + n); if (lsc) lsc.textContent = (slot.scale ?? 100) + "%";
+      const lx = $("ct-lab-x-" + n); if (lx) lx.textContent = String(slot.posX ?? 0);
+      const ly = $("ct-lab-y-" + n); if (ly) ly.textContent = String(slot.posY ?? 0);
+    }
+  }
+
+  function readCustomTextureInputs() {
+    for (let n = 1; n <= 3; n++) {
+      const slot = ensureCustomTextureSlot(n - 1);
+      const place = document.querySelector('.ct-place[data-slot="' + n + '"]');
+      if (place) slot.placement = place.value || "fuselage";
+      const op = document.querySelector('.ct-opacity[data-slot="' + n + '"]');
+      if (op) slot.opacity = Number(op.value) || 100;
+      const sc = document.querySelector('.ct-scale[data-slot="' + n + '"]');
+      if (sc) slot.scale = Number(sc.value) || 100;
+      const px = document.querySelector('.ct-pos-x[data-slot="' + n + '"]');
+      if (px) slot.posX = Number(px.value) || 0;
+      const py = document.querySelector('.ct-pos-y[data-slot="' + n + '"]');
+      if (py) slot.posY = Number(py.value) || 0;
+    }
+  }
+
+  function loadCustomTextureFile(slotIndex, file) {
+    const slot = ensureCustomTextureSlot(slotIndex);
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const img = new Image();
+      img.onload = () => {
+        slot.dataUrl = dataUrl;
+        slot.name = file.name;
+        slot._img = img;
+        syncCustomTextureInputs();
+        drawPreview();
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearCustomTexture(slotIndex) {
+    const slot = ensureCustomTextureSlot(slotIndex);
+    slot.dataUrl = null;
+    slot.name = null;
+    slot._img = null;
+    const fileEl = document.querySelector('.ct-file[data-slot="' + (slotIndex + 1) + '"]');
+    if (fileEl) fileEl.value = "";
+    syncCustomTextureInputs();
+    drawPreview();
+  }
+
   // Tabs
   document.querySelectorAll(".tool-tabs .tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -860,6 +835,36 @@ const $ = (id) => document.getElementById(id);
     el.addEventListener("change", drawPreview);
   });
 
+  document.querySelectorAll(".ct-file").forEach((el) => {
+    el.addEventListener("change", (e) => {
+      const slot = Number(el.getAttribute("data-slot")) - 1;
+      const file = e.target.files && e.target.files[0];
+      if (file) loadCustomTextureFile(slot, file);
+    });
+  });
+  document.querySelectorAll(".ct-clear").forEach((el) => {
+    el.addEventListener("click", () => {
+      clearCustomTexture(Number(el.getAttribute("data-slot")) - 1);
+    });
+  });
+  document.querySelectorAll(".ct-place, .ct-opacity, .ct-scale, .ct-pos-x, .ct-pos-y").forEach((el) => {
+    el.addEventListener("input", () => {
+      const n = el.getAttribute("data-slot");
+      if (el.classList.contains("ct-opacity") && $("ct-lab-op-" + n))
+        $("ct-lab-op-" + n).textContent = el.value + "%";
+      if (el.classList.contains("ct-scale") && $("ct-lab-sc-" + n))
+        $("ct-lab-sc-" + n).textContent = el.value + "%";
+      if (el.classList.contains("ct-pos-x") && $("ct-lab-x-" + n))
+        $("ct-lab-x-" + n).textContent = el.value;
+      if (el.classList.contains("ct-pos-y") && $("ct-lab-y-" + n))
+        $("ct-lab-y-" + n).textContent = el.value;
+      drawPreview();
+    });
+    el.addEventListener("change", drawPreview);
+  });
+
+
+
   document.querySelectorAll("[data-style]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.textStyle = btn.getAttribute("data-style");
@@ -895,43 +900,17 @@ const $ = (id) => document.getElementById(id);
     "c-fuselage",
     "c-nose",
     "c-belly",
-    "c-crown",
-    "c-cockpit",
     "c-wings",
     "c-winglet",
     "c-engines",
-    "c-pylons",
-    "c-fairings",
     "c-tail",
-    "c-stabilizer",
-    "c-doors",
     "c-windowband",
-    "c-accent",
     "livery-name",
     "registration",
     "airline",
     "slogan",
     "text-color",
     "text-font",
-    "st-stripe",
-    "st-heart",
-    "st-text",
-    "st-star",
-    "st-lightning",
-    "st-bird",
-    "st-roundel",
-    "st-chevron",
-    "st-checkered",
-    "st-smile",
-    "st-crown",
-    "st-diamond",
-    "st-sun",
-    "st-moon",
-    "st-flag",
-    "st-shield",
-    "st-arrow",
-    "st-sparkle",
-    "st-wingbadge",
     "text-pos-x",
     "text-pos-y",
     "text-scale",
@@ -958,18 +937,11 @@ const $ = (id) => document.getElementById(id);
     "c-fuselage",
     "c-nose",
     "c-belly",
-    "c-crown",
-    "c-cockpit",
     "c-wings",
     "c-winglet",
     "c-engines",
-    "c-pylons",
-    "c-fairings",
     "c-tail",
-    "c-stabilizer",
-    "c-doors",
     "c-windowband",
-    "c-accent",
   ];
   let _zoneHlClearTimer = null;
   function zoneNameFromColorId(id) {

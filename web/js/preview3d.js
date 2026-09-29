@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.16 — clear left title trailing edge from wing-root notch.
+ * SkinMyBird 3D hangar preview v0.7.0 — simpler paint zones, flags-only, custom textures, 3 text zones.
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -401,12 +401,12 @@ function cloneGeometriesDeep(root) {
 
 function classifyMeshRole(name, box, craftBox) {
   const n = String(name || "").toLowerCase();
-  if (/engine|nacelle|motor|fan|pylon/.test(n)) return "engines";
+  if (/engine|nacelle|motor|fan|pylon/.test(n)) return "engines"; // pylons → engines
   if (/winglet|sharklet/.test(n)) return "winglet";
   if (/wing|aileron|flap|slat/.test(n)) return "wings";
-  if (/stabil|elevator|htail|h-?stab|horiz/.test(n)) return "stabilizer";
+  if (/stabil|elevator|htail|h-?stab|horiz/.test(n)) return "tail";
   if (/tail|fin|rudder|vtail|v-?stab/.test(n)) return "tail";
-  if (/door|exit|hatch|outline/.test(n)) return "doors";
+  if (/door|exit|hatch|outline/.test(n)) return "fuselage";
   if (/window|cabin.?band|cheat|windowband/.test(n)) return "windowband";
   if (/nose|cockpit|radome/.test(n)) return "nose";
   if (/belly|underside|keel/.test(n)) return "belly";
@@ -430,7 +430,7 @@ function classifyMeshRole(name, box, craftBox) {
   return "fuselage";
 }
 
-/** Paint-zone ids stored in geometry.userData.zoneIds (Uint8Array). */
+/** Paint-zone ids — v0.7.0 simplified solid face zones (no accent/doors/crown/…). */
 const ZONE_ID = {
   fuselage: 0,
   nose: 1,
@@ -439,15 +439,7 @@ const ZONE_ID = {
   winglet: 4,
   engines: 5,
   tail: 6,
-  stabilizer: 7,
-  doors: 8,
-  windowband: 9,
-  accent: 10,
-  // v0.5.8 — more specific body / mount zones (ids appended; old ids stable)
-  crown: 11,
-  cockpit: 12,
-  pylons: 13,
-  fairings: 14,
+  windowband: 7,
 };
 const ZONE_NAMES = [
   "fuselage",
@@ -457,14 +449,7 @@ const ZONE_NAMES = [
   "winglet",
   "engines",
   "tail",
-  "stabilizer",
-  "doors",
   "windowband",
-  "accent",
-  "crown",
-  "cockpit",
-  "pylons",
-  "fairings",
 ];
 
 /**
@@ -563,7 +548,7 @@ function classifyPoint(x, y, z, ctx) {
   const absZ = Math.abs(z);
   const { sy, halfZ, wingY, seeds, engineR } = ctx;
 
-  // Engines (nacelle seeds)
+  // Engines (nacelle seeds) + pylons (merged into engines in v0.7.0)
   for (let i = 0; i < seeds.length; i++) {
     const s = seeds[i];
     const dx = x - s[0];
@@ -571,8 +556,6 @@ function classifyPoint(x, y, z, ctx) {
     const dz = z - s[2];
     if (dx * dx + dy * dy + dz * dz < engineR * engineR) return ZONE_ID.engines;
   }
-
-  // Pylons: above nacelle seeds, between engine and wing plane
   for (let i = 0; i < seeds.length; i++) {
     const s = seeds[i];
     const dx = x - s[0];
@@ -585,14 +568,15 @@ function classifyPoint(x, y, z, ctx) {
       dy < engineR * 1.55 &&
       y < wingY + sy * 0.1
     ) {
-      return ZONE_ID.pylons;
+      return ZONE_ID.engines; // pylons → engines
     }
   }
 
   if (w > 0.9 && v > 0.18 && v < 0.85 && u > 0.2 && u < 0.9) return ZONE_ID.winglet;
+  // Tail + former stabilizer (merged)
   if (u < 0.22 && v > 0.45 && w < 0.40) return ZONE_ID.tail;
   if (u < 0.24 && v > 0.22 && v < 0.55 && w > 0.18 && w < 0.75)
-    return ZONE_ID.stabilizer;
+    return ZONE_ID.tail;
   if (u > 0.9 && w < 0.35) return ZONE_ID.nose;
 
   // Wings — tightened so fuselage sides are not stolen
@@ -602,51 +586,25 @@ function classifyPoint(x, y, z, ctx) {
     if (w > 0.42 && v > 0.1 && v < 0.52) return ZONE_ID.wings;
   }
 
-  // Fairings: wing-root / belly fairing (low-mid v, moderate w, mid u)
-  if (
-    w > 0.14 &&
-    w < 0.38 &&
-    v > 0.12 &&
-    v < 0.38 &&
-    u > 0.35 &&
-    u < 0.72 &&
-    Math.abs(y - wingY) < sy * 0.22
-  ) {
-    return ZONE_ID.fairings;
-  }
-
-  // Relative height along fuselage tube (not full craft Y — fin used to steal crown)
+  // Former fairings → fuselage (nearest parent)
+  // Relative height along fuselage tube
   const fuseSy = ctx.fuseSy || sy;
   const vTube = (y - ctx.min.y) / fuseSy;
-  // Wing-relative height: 0 = wing plane, 1 = fuseTop (true cabin window line above wing root)
   const fuseTop = ctx.fuseTop || ctx.max.y;
   const span = Math.max(fuseTop - wingY, 1e-6);
   const tWing = (y - wingY) / span;
 
-  // Cockpit: forward upper canopy (before crown so nose glass stays distinct)
-  if (u > 0.78 && u < 0.95 && vTube > 0.55 && w < 0.30) return ZONE_ID.cockpit;
+  // Former cockpit → nose
+  if (u > 0.78 && u < 0.95 && vTube > 0.55 && w < 0.30) return ZONE_ID.nose;
 
-  // Crown / spine: upper tube roof — high above wing, low |Z|, mid body
-  // Must fire before fuselage default so the roof ridge is never left white.
-  // v0.6.12: tWing > 0.62 so crown sits above windowband (0.28–0.55)
-  if (w < 0.30 && u > 0.16 && u < 0.85 && tWing > 0.62) return ZONE_ID.crown;
-
-  // Body side — windowband relative to wingY (true cabin height above wing root)
-  // v0.6.12: tWing windowband 0.28–0.55; accent 0.18–0.28; u 0.18–0.88 avoids nose-taper jag
+  // Body side — keep v0.6.12/0.6.16 wing-relative windowband (title placement)
+  // Windowband tWing 0.28–0.55; former accent (0.18–0.28) → fuselage; crown → fuselage
   if (w < 0.30 && u > 0.14 && u < 0.9) {
     if (vTube < 0.22 || tWing < -0.05) return ZONE_ID.belly;
     if (u > 0.18 && u < 0.88 && tWing > 0.28 && tWing < 0.55 && w > 0.06)
       return ZONE_ID.windowband;
-    if (u > 0.18 && u < 0.88 && tWing > 0.18 && tWing < 0.28 && w > 0.06)
-      return ZONE_ID.accent;
   }
-  // Doors: mid-side patches below accent — do not steal the windowband
-  if (w > 0.1 && w < 0.26 && tWing > 0.02 && tWing < 0.18 && u > 0.28 && u < 0.78)
-    return ZONE_ID.doors;
   if (u > 0.86 && w < 0.30) return ZONE_ID.nose;
-
-  // Safety net: any remaining upper centerline on the tube → crown (above new band)
-  if (w < 0.34 && u > 0.14 && u < 0.88 && tWing > 0.62) return ZONE_ID.crown;
 
   // Always paintable — never leave raw GLB gray
   return ZONE_ID.fuselage;
@@ -1164,6 +1122,22 @@ const FLAG_CATALOG = {
   SA: { name: "Saudi Arabia", type: "sa" },
   CA: { name: "Canada", stripes: "v", colors: ["#FF0000", "#FFFFFF", "#FF0000"], ratios: [1, 2, 1] },
   CZ: { name: "Czechia", type: "cz" },
+  MD: { name: "Moldova", stripes: "v", colors: ["#003DA5", "#FFD200", "#CC092F"] },
+  BG: { name: "Bulgaria", stripes: "h", colors: ["#FFFFFF", "#00966E", "#D62612"] },
+  HU: { name: "Hungary", stripes: "h", colors: ["#CE2939", "#FFFFFF", "#477050"] },
+  RS: { name: "Serbia", stripes: "h", colors: ["#C6363C", "#0C4076", "#FFFFFF"] },
+  SK: { name: "Slovakia", stripes: "h", colors: ["#FFFFFF", "#0B4EA2", "#EE1C25"] },
+  AR: { name: "Argentina", stripes: "h", colors: ["#74ACDF", "#FFFFFF", "#74ACDF"], disc: "#F6B40E" },
+  IL: { name: "Israel", type: "il" },
+  EG: { name: "Egypt", stripes: "h", colors: ["#CE1126", "#FFFFFF", "#000000"], disc: "#C09300" },
+  ZA: { name: "South Africa", type: "za" },
+  NG: { name: "Nigeria", stripes: "v", colors: ["#008751", "#FFFFFF", "#008751"] },
+  KE: { name: "Kenya", type: "ke" },
+  HR: { name: "Croatia", stripes: "h", colors: ["#FF0000", "#FFFFFF", "#171796"] },
+  SI: { name: "Slovenia", stripes: "h", colors: ["#FFFFFF", "#0055A4", "#FF0000"] },
+  LT: { name: "Lithuania", stripes: "h", colors: ["#FDB913", "#006A44", "#C1272D"] },
+  LV: { name: "Latvia", stripes: "h", colors: ["#9E3039", "#FFFFFF", "#9E3039"], ratios: [2, 1, 2] },
+  EE: { name: "Estonia", stripes: "h", colors: ["#0072CE", "#000000", "#FFFFFF"] },
 };
 
 function drawSimpleFlag(ctx, x, y, w, h, code) {
@@ -1358,6 +1332,47 @@ function drawSimpleFlag(ctx, x, y, w, h, code) {
       ctx.fillRect(x + w * 0.18, y + h * 0.08, w * 0.05, h * 0.34);
       ctx.fillRect(x + w * 0.08, y + h * 0.2, w * 0.25, h * 0.08);
     }
+  } else if (def.type === "il") {
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#0038B8";
+    ctx.fillRect(x, y + h * 0.15, w, h * 0.12);
+    ctx.fillRect(x, y + h * 0.73, w, h * 0.12);
+    ctx.strokeStyle = "#0038B8";
+    ctx.lineWidth = Math.max(1, h * 0.04);
+    const cx = x + w / 2, cy = y + h / 2, r = h * 0.18;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r * 0.87, cy + r * 0.5); ctx.lineTo(cx - r * 0.87, cy + r * 0.5); ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + r); ctx.lineTo(cx + r * 0.87, cy - r * 0.5); ctx.lineTo(cx - r * 0.87, cy - r * 0.5); ctx.closePath();
+    ctx.stroke();
+  } else if (def.type === "za") {
+    ctx.fillStyle = "#002395";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#DE3831";
+    ctx.fillRect(x, y, w, h * 0.33);
+    ctx.fillStyle = "#007A4D";
+    ctx.fillRect(x, y + h * 0.67, w, h * 0.33);
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x + w * 0.4, y + h / 2); ctx.lineTo(x, y + h); ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#FFB612";
+    ctx.beginPath();
+    ctx.moveTo(x, y + h * 0.12); ctx.lineTo(x + w * 0.32, y + h / 2); ctx.lineTo(x, y + h * 0.88); ctx.closePath();
+    ctx.fill();
+  } else if (def.type === "ke") {
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(x, y, w, h * 0.33);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(x, y + h * 0.3, w, h * 0.08);
+    ctx.fillStyle = "#BB0000";
+    ctx.fillRect(x, y + h * 0.36, w, h * 0.28);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(x, y + h * 0.62, w, h * 0.08);
+    ctx.fillStyle = "#006600";
+    ctx.fillRect(x, y + h * 0.68, w, h * 0.32);
   } else if (def.bars && def.canton) {
     const n = def.bars.length;
     const hh = h / n;
@@ -1412,10 +1427,11 @@ function drawCountryFlagsOnCanvas(ctx, W, H, state, layout) {
 }
 
 function stickerSizeMul(state) {
-  const k = String((state && state.stickerSize) || "M").toUpperCase();
+  // Kept for flag scale; stickers removed in v0.7.0
+  const k = String((state && state.flagSize) || (state && state.stickerSize) || "M").toUpperCase();
   if (k === "S") return 1.6;
   if (k === "L") return 3.0;
-  return 2.2; // M — visibly larger than pre-0.5.1 defaults
+  return 2.2;
 }
 
 function drawStickersOnCanvas(ctx, W, H, state, layout) {
@@ -1459,31 +1475,23 @@ function paintDecalCanvas(canvas, state) {
   const H = canvas.height;
   prepareCanvas2d(ctx, W, H);
 
-  const st = state.stickers || {};
-  const anySticker =
-    st.stripe || st.heart || st.star || st.lightning || st.bird ||
-    st.roundel || st.chevron || st.checkered || st.smile || st.crown ||
-    st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow ||
-    st.sparkle || st.wingbadge;
-  // Airline title from Identity projects even if Stickers→Text is unchecked.
+  // v0.7.0: stickers removed — title / slogan / flags only
   const hasAirlineId = !!(state.airline && String(state.airline).trim());
-  const showText = !!st.text || hasAirlineId;
+  const hasSlogan = !!(state.slogan && String(state.slogan).trim());
+  const showText = hasAirlineId || hasSlogan;
   const flagCodes = (state.flags && state.flags.codes) || [];
   const hasFlags = flagCodes.length > 0;
 
-  if (anySticker) {
-    drawStickersOnCanvas(ctx, W, H, state, { xMid: W / 2, scale: 1.55 });
-  }
   if (hasFlags) {
     drawCountryFlagsOnCanvas(ctx, W, H, state, { xMid: W / 2, scale: stickerSizeMul(state) });
   }
 
-  if (!showText && !hasFlags && !anySticker) return;
+  if (!showText && !hasFlags) return;
   if (!showText) return;
 
   const textColor = state.textColor || "#FFFFFF";
   const sizeKey = state.textSize || "M";
-  const basePx = sizeKey === "S" ? 96 : sizeKey === "L" ? 200 : 150;
+  const basePx = sizeKey === "S" ? 120 : sizeKey === "L" ? 260 : 200; // v0.7.0 larger title
   const maxW = W * 0.92;
 
   ctx.fillStyle = textColor;
@@ -1555,11 +1563,8 @@ function collectDecalTargetMeshes(craft) {
   const SIDE_ZONE_PRI = {
     windowband: 0,
     fuselage: 1,
-    accent: 2,
-    doors: 3,
-    fairings: 4,
   };
-  const SIDE_ZONES = new Set(["windowband", "fuselage", "accent", "doors", "fairings"]);
+  const SIDE_ZONES = new Set(["windowband", "fuselage"]);
   craft.traverse((child) => {
     if (!child.isMesh || !child.geometry) return;
     if (child.name === "textDecals" || (child.parent && child.parent.name === "textDecals"))
@@ -1579,11 +1584,10 @@ function collectDecalTargetMeshes(craft) {
       const z = paintZone;
       if (SIDE_ZONES.has(z)) role = "fuselage";
       else if (z === "belly") role = "belly";
-      else if (z === "crown" || z === "cockpit") role = "crown"; // roof — not side targets
       else if (z === "nose") role = "nose";
       else if (z === "wings" || z === "winglet") role = "wings";
-      else if (z === "tail" || z === "stabilizer") role = "tail";
-      else if (z === "engines" || z === "pylons") role = "engines";
+      else if (z === "tail") role = "tail";
+      else if (z === "engines") role = "engines";
     }
     const sidePri = paintZone != null && SIDE_ZONE_PRI[paintZone] != null
       ? SIDE_ZONE_PRI[paintZone]
@@ -1643,7 +1647,7 @@ function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ, pre
   const options = opts || {};
   const maxNy = options.maxNy != null ? options.maxNy : 0.45;
   const preferSideZones = !!options.preferSideZones;
-  const SIDE_OK = new Set(["windowband", "fuselage", "accent", "doors"]);
+  const SIDE_OK = new Set(["windowband", "fuselage"]);
   raycaster.set(origin, dir.clone().normalize());
   const hits = raycaster.intersectObjects(meshes, true);
   let best = null;
@@ -1658,9 +1662,9 @@ function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ, pre
     if (az > maxAbsZ) continue; // wing / outboard rejection
     const zone = h.object.userData && h.object.userData.paintZone;
     // Hard reject roof/canopy/underside zone meshes — never treat crown as fuselage success
-    if (zone === "crown" || zone === "cockpit" || zone === "belly") continue;
+    if (zone === "belly") continue;
     // Soft pass: prefer named lateral skins when present
-    if (preferSideZones && zone && !SIDE_OK.has(zone) && zone !== "fairings") continue;
+    if (preferSideZones && zone && !SIDE_OK.has(zone)) continue;
     // World normal: keep mostly sideways; reject roof/belly-facing faces
     nMat.getNormalMatrix(h.object.matrixWorld);
     wN.copy(h.face.normal).applyNormalMatrix(nMat).normalize();
@@ -1668,9 +1672,8 @@ function raycastFuselageHit(meshes, origin, dir, raycaster, center, maxAbsZ, pre
     const sideFacing = Math.abs(wN.z); // 1 = pure side
     const vertical = Math.abs(wN.y);
     let zonePen = 0;
-    if (zone === "windowband" || zone === "fuselage" || zone === "accent" || zone === "doors")
+    if (zone === "windowband" || zone === "fuselage")
       zonePen = -2.0;
-    else if (zone === "fairings") zonePen = -0.5;
     const yErr = preferY != null ? Math.abs(h.point.y - preferY) * 2.5 : 0;
     // Lower score wins: side-facing window-band near aim Y
     const score =
@@ -1828,6 +1831,116 @@ function makeRegTexture(state) {
 }
 
 /**
+ * v0.7.0 — Custom uploaded texture decals (Custom 1/2/3).
+ * Project PNG/JPG onto Fuselage (both sides) / Wings / Tail / Belly with opacity, scale, X/Y.
+ */
+function addCustomTextureDecals(craft, state, group, targets, box, size, center, raycaster) {
+  const slots = state.customTextures || [];
+  if (!slots.length || !group) return;
+  const reach = Math.max(size.z, size.y, size.x) * 1.25 + 2;
+  const fusR = Math.max(0.35, Math.min(size.y * 0.26, 0.95));
+  const maxFusAbsZ = fusR * 2.35;
+
+  slots.forEach((slot, idx) => {
+    if (!slot || !slot.dataUrl) return;
+    const img = slot._img;
+    if (!img || !img.complete || !img.naturalWidth) return;
+    const placement = slot.placement || "fuselage";
+    const opacity = Math.max(0.05, Math.min(1, (Number(slot.opacity) || 100) / 100));
+    const scale = Math.max(0.3, Math.min(2.5, (Number(slot.scale) || 100) / 100));
+    const posX = Number(slot.posX || 0) / 100;
+    const posY = Number(slot.posY || 0) / 100;
+
+    const canvas = document.createElement("canvas");
+    const cw = 1024, ch = 1024;
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext("2d");
+    prepareCanvas2d(ctx, cw, ch);
+    ctx.globalAlpha = opacity;
+    // Contain image in canvas
+    const ir = img.naturalWidth / img.naturalHeight;
+    let dw = cw, dh = ch;
+    if (ir > 1) dh = cw / ir;
+    else dw = ch * ir;
+    ctx.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+    ctx.globalAlpha = 1;
+    const tex = new THREE.CanvasTexture(canvas);
+    configurePaintTexture(tex);
+
+    const matOpts = {
+      map: tex,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+      side: THREE.FrontSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+      opacity: 1,
+    };
+
+    let meshList;
+    if (placement === "wings" && targets.wings.length)
+      meshList = targets.wings.map((t) => t.mesh);
+    else if (placement === "tail" && targets.tail.length)
+      meshList = targets.tail.map((t) => t.mesh).concat(targets.fuselage.map((t) => t.mesh));
+    else if (placement === "belly") {
+      meshList = (targets.belly || []).map((t) => t.mesh).concat(targets.fuselage.map((t) => t.mesh));
+    } else {
+      meshList = targets.fuselage.map((t) => t.mesh);
+      if (!meshList.length) meshList = targets.all.slice(0, 6);
+    }
+
+    const baseW = Math.max(0.55, Math.min(size.x * 0.22, 1.6)) * scale;
+    const baseH = baseW * (dh / dw);
+    const depth = Math.max(0.3, Math.min(size.y * 0.3, 0.5));
+    const decalSize = new THREE.Vector3(baseW, Math.max(0.35, baseH), depth);
+
+    let x0 = center.x - size.x * posX * 0.35;
+    let y0 = center.y + size.y * (0.02 + posY * 0.25);
+    if (placement === "belly") y0 = center.y - size.y * 0.15;
+    if (placement === "wings") y0 = center.y + size.y * 0.05;
+    if (placement === "tail") x0 = center.x - size.x * (0.28 + posX * 0.1);
+
+    const sides = placement === "fuselage" || placement === "tail" ? [-1, 1] : [1];
+    sides.forEach((side) => {
+      let hit = null;
+      if (placement === "belly") {
+        const origin = new THREE.Vector3(x0, center.y - reach, center.z + side * 0.05);
+        hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, 1, 0), raycaster);
+      } else if (placement === "wings") {
+        const origin = new THREE.Vector3(
+          x0,
+          center.y + reach * 0.55,
+          center.z + side * size.z * 0.28
+        );
+        hit = raycastBestHit(meshList, origin, new THREE.Vector3(0, -1, 0), raycaster);
+      } else {
+        const zDist = fusR * 2.4;
+        const origin = new THREE.Vector3(x0, y0, center.z + side * zDist);
+        const dir = new THREE.Vector3(0, 0, -side);
+        hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y0, {
+          maxNy: 0.55,
+          preferSideZones: placement === "fuselage",
+        });
+        if (!hit) {
+          origin.z = center.z + side * (fusR * 3.6);
+          hit = raycastFuselageHit(meshList, origin, dir, raycaster, center, maxFusAbsZ, y0, {
+            maxNy: 0.55,
+            preferSideZones: false,
+          });
+        }
+      }
+      if (!hit) return;
+      const flipU = placement === "fuselage" ? resolveFlipU(hit, side, false, false) : false;
+      const mat = sideMaterialFromTex(tex, flipU, matOpts);
+      projectDecal(group, hit, decalSize, mat, 4 + idx);
+    });
+  });
+}
+
+/**
  * Mesh-projected text/sticker decals on BOTH sides of the fuselage (or belly/tail/wing).
  * Never places free-floating PlaneGeometry in empty space.
  */
@@ -1843,20 +1956,14 @@ function addTextDecals(craft, state) {
   craft.add(group);
   craft.updateMatrixWorld(true);
 
-  const st = state.stickers || {};
   const flagCodes = (state.flags && state.flags.codes) || [];
-  // Identity airline/registration must project without requiring Stickers→Text.
   const hasIdentityText = !!(
     (state.airline && String(state.airline).trim()) ||
+    (state.slogan && String(state.slogan).trim()) ||
     (state.registration && String(state.registration).trim())
   );
-  const anyVisual =
-    st.text || st.stripe || st.heart || st.star || st.lightning ||
-    st.bird || st.roundel || st.chevron || st.checkered ||
-    st.smile || st.crown || st.diamond || st.sun || st.moon ||
-    st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge ||
-    flagCodes.length > 0 ||
-    hasIdentityText;
+  const hasCustom = (state.customTextures || []).some((t) => t && t.dataUrl);
+  const anyVisual = flagCodes.length > 0 || hasIdentityText || hasCustom;
   if (!anyVisual) {
     return { tex: null, mat: null, group, regTex: null };
   }
@@ -1933,25 +2040,21 @@ function addTextDecals(craft, state) {
   // Nose is +X on hangar-fit craft (longest axis forward); wing LE = forward-most root wing AABB X.
   const scored = targets.scored || [];
   const wbScored = scored.filter((s) => s.paintZone === "windowband");
-  const accentScored = scored.filter((s) => s.paintZone === "accent");
   const fuselageScored = scored.filter((s) => s.paintZone === "fuselage");
   let sideBeltScored;
   if (wbScored.length) {
-    // Prefer windowband/accent; allow fuselage side hits at cabin height
-    sideBeltScored = wbScored.concat(accentScored).concat(fuselageScored);
+    sideBeltScored = wbScored.concat(fuselageScored);
   } else {
     sideBeltScored = fuselageScored.length
       ? fuselageScored
       : scored.filter((s) => s.paintZone === "fuselage");
   }
   const sideBeltMeshes = sideBeltScored.map((s) => s.mesh);
-  // Fuselage side skins for aft reg when windowband ends (still no belly/crown/fairings)
   const fuselageSideMeshes = scored
     .filter(
       (s) =>
         s.paintZone === "fuselage" ||
-        s.paintZone === "windowband" ||
-        s.paintZone === "accent"
+        s.paintZone === "windowband"
     )
     .map((s) => s.mesh);
 
@@ -2063,16 +2166,14 @@ function addTextDecals(craft, state) {
   ];
   const yWindow = yAim;
 
-  // v0.6.15: titlePanelH ~0.62*bandH (slightly larger; stay inside band)
+  // v0.7.0: larger writing area — titlePanelH ~0.78*bandH (stay inside band)
   const titlePanelH =
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
     place === "belly" || place === "tail" ? Math.max(0.32, Math.min(size.y * 0.28, 0.72)) :
-    Math.max(bandH * 0.50, Math.min(bandH * 0.68, bandH * 0.62));
+    Math.max(bandH * 0.62, Math.min(bandH * 0.88, bandH * 0.78));
   const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
 
-  const stickerBoost = flagCodes.length || (st.stripe || st.heart || st.star || st.lightning || st.bird || st.roundel || st.chevron || st.checkered || st.smile || st.crown || st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge)
-    ? (0.85 + 0.2 * stickerSizeMul(state))
-    : 1;
+  const stickerBoost = 1; // stickers removed in v0.7.0; title size from textScale / titlePanelH
   const flipLeft = !!state.textFlipLeft;
   const flipRight = !!state.textFlipRight;
   const decalSize = new THREE.Vector3(
@@ -2277,7 +2378,7 @@ function addTextDecals(craft, state) {
         const h = trySideHit(side, tx, yCands, meshListTitle, titleCastOpts);
         if (!h) continue;
         const zone = hitPaintZone(h);
-        if (zone === "windowband" || zone === "accent" || zone === "fuselage" || zone == null) {
+        if (zone === "windowband" || zone === "fuselage" || zone == null) {
           hit = h;
           usedX = tx;
           break;
@@ -2363,6 +2464,13 @@ function addTextDecals(craft, state) {
     });
   }
 
+  // Custom texture uploads (after title/reg so they layer above paint, below/near text)
+  try {
+    addCustomTextureDecals(craft, state, group, targets, box, size, center, raycaster);
+  } catch (err) {
+    console.warn("custom texture decals failed", err);
+  }
+
   return { tex, mat: null, group, regTex };
 }
 
@@ -2398,9 +2506,7 @@ function paintFuselageCanvas(canvas, state, family) {
   const tail = state.colors.tail || fus;
   const nose = state.colors.nose || fus;
   const bellyCol = state.colors.belly || fus;
-  const accent = state.colors.accent || fus;
   const windowBand = state.colors.windowband || fus;
-  const doorsCol = state.colors.doors || fus;
   const textColor = state.textColor || "#FFFFFF";
 
   ctx.clearRect(0, 0, W, H);
@@ -2444,8 +2550,9 @@ function paintFuselageCanvas(canvas, state, family) {
     ctx.globalAlpha = 0.88;
     ctx.fillRect(0, winY - H * 0.01, W, winH + H * 0.02);
     ctx.globalAlpha = 1;
-    // Door / outline accents (forward + aft each side)
-    ctx.strokeStyle = doorsCol;
+    // Soft door outlines (same as body — no separate doors zone in v0.7.0)
+    ctx.strokeStyle = fus;
+    ctx.globalAlpha = 0.35;
     ctx.lineWidth = 3;
     for (const hx of [0, W / 2]) {
       for (const dx of [W * 0.12, W * 0.38]) {
@@ -2453,6 +2560,7 @@ function paintFuselageCanvas(canvas, state, family) {
         ctx.strokeRect(dx0, H * 0.34, W * 0.035, H * 0.28);
       }
     }
+    ctx.globalAlpha = 1;
     // Window panes
     ctx.fillStyle = "#152030";
     const cols = family === "widebody" || family === "747" ? 28 : 18;
@@ -2466,129 +2574,39 @@ function paintFuselageCanvas(canvas, state, family) {
     }
   }
 
-  // Stickers (both UV halves)
-  const st = state.stickers || {};
-  const sm = stickerSizeMul(state);
-  if (st.stripe) {
-    const sy = H * 0.58;
-    ctx.fillStyle = accent;
-    ctx.fillRect(0, sy, W, 10);
-    ctx.fillStyle = tail;
-    ctx.fillRect(0, sy + 10, W, 8);
-  }
-  if (st.checkered) {
-    drawCheckered2d(ctx, 0, H * 0.04, W, 16, 24, "#111111", "#f5f5f5");
-  }
-  if (st.heart) {
-    drawHeart2d(ctx, W * 0.18, H * 0.26, 26 * sm, "#dc2840");
-    drawHeart2d(ctx, W * 0.68, H * 0.26, 26 * sm, "#dc2840");
-  }
-  if (st.star) {
-    drawStar2d(ctx, W * 0.32, H * 0.26, 22 * sm, "#ffd24a");
-    drawStar2d(ctx, W * 0.82, H * 0.26, 22 * sm, "#ffd24a");
-  }
-  if (st.lightning) {
-    drawLightning2d(ctx, W * 0.12, H * 0.7, 26 * sm, "#ffe566");
-    drawLightning2d(ctx, W * 0.62, H * 0.7, 26 * sm, "#ffe566");
-  }
-  if (st.bird) {
-    drawBird2d(ctx, W * 0.25, H * 0.78, 32 * sm, textColor);
-    drawBird2d(ctx, W * 0.75, H * 0.78, 32 * sm, textColor);
-  }
-  if (st.roundel) {
-    drawRoundel2d(ctx, W * 0.1, H * 0.7, 24 * sm);
-    drawRoundel2d(ctx, W * 0.6, H * 0.7, 24 * sm);
-  }
-  if (st.chevron) {
-    drawChevron2d(ctx, W * 0.38, H * 0.7, 22 * sm, "#ffffff");
-    drawChevron2d(ctx, W * 0.88, H * 0.7, 22 * sm, "#ffffff");
-  }
-  if (st.smile) {
-    drawSmile2d(ctx, W * 0.2, H * 0.35, 18 * sm, "#ffd24a");
-    drawSmile2d(ctx, W * 0.7, H * 0.35, 18 * sm, "#ffd24a");
-  }
-  if (st.crown) {
-    drawCrown2d(ctx, W * 0.3, H * 0.2, 16 * sm, "#ffd24a");
-    drawCrown2d(ctx, W * 0.8, H * 0.2, 16 * sm, "#ffd24a");
-  }
-  if (st.diamond) {
-    drawDiamond2d(ctx, W * 0.22, H * 0.62, 14 * sm, "#7ec8ff");
-    drawDiamond2d(ctx, W * 0.72, H * 0.62, 14 * sm, "#7ec8ff");
-  }
-  if (st.sun) {
-    drawSun2d(ctx, W * 0.14, H * 0.28, 16 * sm, "#ffb020");
-    drawSun2d(ctx, W * 0.64, H * 0.28, 16 * sm, "#ffb020");
-  }
-  if (st.moon) {
-    drawMoon2d(ctx, W * 0.36, H * 0.28, 14 * sm, "#d0d8ff");
-    drawMoon2d(ctx, W * 0.86, H * 0.28, 14 * sm, "#d0d8ff");
-  }
-  if (st.flag) {
-    drawFlag2d(ctx, W * 0.16, H * 0.68, 16 * sm, accent);
-    drawFlag2d(ctx, W * 0.66, H * 0.68, 16 * sm, accent);
-  }
-  if (st.shield) {
-    drawShield2d(ctx, W * 0.28, H * 0.55, 16 * sm, "#3d7cff");
-    drawShield2d(ctx, W * 0.78, H * 0.55, 16 * sm, "#3d7cff");
-  }
-  if (st.arrow) {
-    drawArrow2d(ctx, W * 0.4, H * 0.72, 18 * sm, "#ffffff");
-    drawArrow2d(ctx, W * 0.9, H * 0.72, 18 * sm, "#ffffff");
-  }
-  if (st.sparkle) {
-    drawSparkle2d(ctx, W * 0.34, H * 0.4, 14 * sm, "#fff6a8");
-    drawSparkle2d(ctx, W * 0.84, H * 0.4, 14 * sm, "#fff6a8");
-  }
-  if (st.wingbadge) {
-    drawWingBadge2d(ctx, W * 0.25, H * 0.8, 22 * sm, textColor);
-    drawWingBadge2d(ctx, W * 0.75, H * 0.8, 22 * sm, textColor);
-  }
-
-  // Country flags — respect Left / Both / Right / Free
+  // v0.7.0: no decorative stickers on procedural fuselage — flags + identity text only
   const flagCodes = (state.flags && state.flags.codes) || [];
   if (flagCodes.length) {
-    const fPlace = (state.flags && state.flags.placement) || "both";
-    const drawHalf = (xMid) => {
-      drawCountryFlagsOnCanvas(ctx, W / 2, H, state, { xMid, scale: sm * 0.85, dual: false });
-    };
-    if (fPlace === "left" || fPlace === "both" || fPlace === "free") {
-      drawHalf(W * 0.25);
-    }
-    if (fPlace === "right" || fPlace === "both") {
-      ctx.save();
-      ctx.translate(W / 2, 0);
-      drawHalf(W * 0.25);
-      ctx.restore();
-    }
+    drawCountryFlagsOnCanvas(ctx, W, H, state, { xMid: W * 0.25, scale: stickerSizeMul(state), dual: true });
   }
 
-  // Text / airline / registration — wide halves + auto-shrink + font/style
-  // Identity airline paints even when Stickers→Text is off (same as mesh decals).
-  if (st.text || (state.airline && String(state.airline).trim())) {
+  // Title (airline) + Slogan on both UV halves; Registration when placed on tail/wing
+  const place = state.textPlacement || "fuselage";
+  const hasAirline = !!(state.airline && String(state.airline).trim());
+  const hasSlogan = !!(state.slogan && String(state.slogan).trim());
+  if (hasAirline || hasSlogan || (state.registration && (place === "tail" || place === "wing"))) {
     const sizeKey = state.textSize || "M";
-    const basePx = sizeKey === "S" ? 72 : sizeKey === "L" ? 140 : 104;
-    const place = state.textPlacement || "fuselage";
-    // Each side gets ~42% of full width (was tighter); leave margin
-    const maxW = W * 0.42;
-
+    const basePx = sizeKey === "S" ? 54 : sizeKey === "L" ? 110 : 84;
+    const maxW = W * 0.38;
     ctx.fillStyle = textColor;
+    ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.shadowColor = "rgba(0,0,0,0.45)";
     ctx.shadowBlur = 6;
 
     const drawSideText = (xCenter) => {
-      ctx.textAlign = "center";
-      let y = H * 0.3;
-      if (place === "belly") y = H * 0.72;
-      if (place === "tail") y = H * 0.26;
-      if (place === "wing") y = H * 0.48;
-
-      const airline = state.airline || "SkinMyBird";
-      const airPx = fitFontPx(ctx, airline, maxW, basePx, state, 12);
-      ctx.font = resolveFontFace(state, airPx);
-      ctx.fillText(airline, xCenter, y);
-
-      if (state.slogan) {
+      let y = H * 0.42;
+      let airPx = 0;
+      if (hasAirline) {
+        airPx = fitFontPx(ctx, state.airline, maxW, basePx, state, 16);
+        ctx.font = resolveFontFace(state, airPx);
+        ctx.strokeStyle = "rgba(0,0,0,0.55)";
+        ctx.lineWidth = Math.max(2, airPx * 0.08);
+        ctx.lineJoin = "round";
+        ctx.strokeText(state.airline, xCenter, y);
+        ctx.fillText(state.airline, xCenter, y);
+      }
+      if (hasSlogan) {
         const style = String(state.textStyle || "").toLowerCase();
         const sloganStyle = style.includes("italic")
           ? (style.includes("bold") ? "bold-italic" : "italic")
@@ -2596,13 +2614,8 @@ function paintFuselageCanvas(canvas, state, family) {
         const sState = { ...state, textStyle: sloganStyle };
         const sPx = fitFontPx(ctx, state.slogan, maxW, Math.round(basePx * 0.5), sState, 10);
         ctx.font = resolveFontFace(sState, sPx);
-        ctx.globalAlpha = 0.92;
-        ctx.fillText(state.slogan, xCenter, y + airPx * 0.58);
-        ctx.globalAlpha = 1;
+        ctx.fillText(state.slogan, xCenter, y + Math.max(airPx, basePx * 0.4) * 0.58);
       }
-
-      // Registration: UV paint only for tail/wing. Fuselage/belly use one aft decal instead
-      // (avoids stacked double marks with addTextDecals / makeRegTexture).
       if (state.registration && (place === "tail" || place === "wing")) {
         const rState = { ...state, textStyle: "bold" };
         const regPx = fitFontPx(
@@ -2619,7 +2632,6 @@ function paintFuselageCanvas(canvas, state, family) {
       }
     };
 
-    // Wider centers on each cylinder UV half
     drawSideText(W * 0.25);
     drawSideText(W * 0.75);
     ctx.shadowBlur = 0;
@@ -3471,9 +3483,11 @@ export class Preview3D {
       tsc: state.textScale,
       tfl: state.textFlipLeft,
       tfr: state.textFlipRight,
-      st: state.stickers,
-      ss: state.stickerSize,
       fl: state.flags,
+      ct: (state.customTextures || []).map((t) => ({
+        d: t.dataUrl ? t.dataUrl.slice(0, 64) : null,
+        o: t.opacity, s: t.scale, x: t.posX, y: t.posY, p: t.placement, n: t.name,
+      })),
       photo: state.soacraName || null,
       fam: family,
       mode: this.modelMode,
@@ -3490,14 +3504,7 @@ export class Preview3D {
         winglet: hexToThree(state.colors.winglet || state.colors.wings || "#1b2430"),
         engines: hexToThree(state.colors.engines || "#1b2430"),
         tail: hexToThree(state.colors.tail || state.colors.fuselage || "#f2f4f7"),
-        stabilizer: hexToThree(state.colors.stabilizer || state.colors.tail || "#f2f4f7"),
-        doors: hexToThree(state.colors.doors || state.colors.fuselage || "#f2f4f7"),
         windowband: hexToThree(state.colors.windowband || state.colors.fuselage || "#f2f4f7"),
-        accent: hexToThree(state.colors.accent || state.colors.fuselage || "#f2f4f7"),
-        crown: hexToThree(state.colors.crown || state.colors.fuselage || "#f2f4f7"),
-        cockpit: hexToThree(state.colors.cockpit || state.colors.fuselage || "#f2f4f7"),
-        pylons: hexToThree(state.colors.pylons || state.colors.engines || "#1b2430"),
-        fairings: hexToThree(state.colors.fairings || state.colors.fuselage || "#f2f4f7"),
       };
       const craft = this.root.getObjectByName("aircraft");
       // Face-solid zone materials (preferred). Rebuild splits only on mount.
@@ -3555,7 +3562,7 @@ export class Preview3D {
       if (mats.tail) mats.tail.color.copy(hexToThree(state.colors.tail));
       if (mats.stabilizer)
         mats.stabilizer.color.copy(
-          hexToThree(state.colors.stabilizer || state.colors.tail)
+          hexToThree(state.colors.tail || state.colors.fuselage)
         );
     }
 
