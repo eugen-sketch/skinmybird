@@ -15,6 +15,17 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 ---
 
 
+### v0.6.14 notes
+- **QA fix FAIL_TITLE_CLIPPED (left S missing on white)**: shared title X hit both sides blindly; left band steps earlier into nose taper / off-band white.
+- Fit title in solid interval (nose=+X): `gap=max(0.06·fusLen,0.22)`, `xAftMin=wingLeX+gap`, `xFwdMax=center.x+size.x·0.14`, `panelLen≈fusLen·0.17` clamped to `0.88·span`; `xMain` mid-interval with aft/fwd edge guarantees.
+- **Per-side title X**: independent candidate ladder (`xMain±…`, `center.x+size.x·{0.12,0.10,0.08}`); prefer hit with `userData.paintZone==='windowband'`; fallback accent/fuselage at band Y.
+- Vertical: keep band-mid `yAim`; `titlePanelH` ≤ **0.60×bandH**. Long airline names (>10 chars): `panelLen×0.92`.
+- Keep wing-relative windowband height + zone paint `tWing` ranges. Cache-bust `?v=0.6.14`
+
+### v0.6.13 notes
+- Title mid-cabin on solid windowband (clear of nose taper); shorter panel; wing-LE safe clamps.
+- Cache-bust `?v=0.6.13`
+
 ### v0.6.12 notes
 - **QA fix FAIL_TITLE_CLIPPED + band too low**: raising `vTube` alone still put the cyan belt near the wing root because band height is relative to craft `min.y` (gear/belly), not the wing plane.
 - Root fix: `classifyPoint` windowband / accent / crown use **wing-relative** `tWing = (y − wingY) / (fuseTop − wingY)` — windowband **tWing 0.28–0.55**, accent **0.18–0.28**, crown **tWing > 0.62**; doors **tWing 0.02–0.18** (below accent); belly keeps `vTube < 0.22`; band only for **u 0.18–0.88** (avoid nose-taper jag).
@@ -144,7 +155,7 @@ The **3D hangar preview is approximate / for orientation only**. Materials, UVs,
 - Text + stickers + flags use the same decal pipeline on all families (A320, 737, 787, 747, A330, Cessna, helo, balloon)
 - 747 hangar: FetchCFD Boeing 747-3B5 GLB (hump + 4 engines); procedural fallback improved
 
-## Models v0.6.12 (selector)
+## Models v0.6.14 (selector)
 
 | # | Profile | Paint | Hangar GLB |
 |---|---------|-------|------------|
@@ -198,8 +209,8 @@ One codebase — two launchers. Do **not** fork the repo.
    `C:\Users\eugen\Downloads\texconv.exe`
 3. Double-click **`SkinMyBird.bat`** (commercial / sale) or **`SkinMyBird-Personal.bat`** (private extras).
 4. Browser opens with cache-bust:
-   - Commercial → `http://127.0.0.1:5173/?v=0.6.12`
-   - Personal → `http://127.0.0.1:5174/?v=0.6.12`
+   - Commercial → `http://127.0.0.1:5173/?v=0.6.14`
+   - Personal → `http://127.0.0.1:5174/?v=0.6.14`
 
 Optional env vars:
 - `SKINMYBIRD_EDITION` — `commercial` (default) or `personal`
@@ -283,4 +294,4 @@ skinmybird/
 
 Remote: https://github.com/eugen-sketch/skinmybird
 
-© SkinMyBird v0.6.12 — commercial + personal editions · GLB hangar · Two-Tone
+© SkinMyBird v0.6.14 — commercial + personal editions · GLB hangar · Two-Tone
