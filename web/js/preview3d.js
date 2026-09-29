@@ -1,5 +1,5 @@
 /**
- * SkinMyBird 3D hangar preview v0.6.14 — per-side title X on solid windowband (fix left S, clear wing LE).
+ * SkinMyBird 3D hangar preview v0.6.15 — push title forward of wing LE (bias wingLeX + forward interval).
  * ES module; Three.js via local vendor importmap (no CDN).
  */
 import * as THREE from "three";
@@ -1920,8 +1920,14 @@ function addTextDecals(craft, state) {
       }
     }
   }
+  // v0.6.15: AABB often sits aft of visual LE at fuselage; bias nose-ward + floor
+  if (wingLeX != null) {
+    wingLeX += Math.max(0.04 * fusLen, 0.15);
+  }
+  const wingLeFloor = center.x + size.x * 0.02; // LE shouldn't be aft of near-center
+  if (wingLeX != null) wingLeX = Math.max(wingLeX, wingLeFloor);
 
-  // --- v0.6.14 window-band belt (per-side title X on solid band; clear wing LE + nose taper) ---
+  // --- v0.6.15 window-band belt (per-side title X on solid band; clear wing LE + nose taper) ---
   // sideBeltMeshes: windowband + accent + fuselage sides (title may hit fuselage at band Y).
   // Fallback fuselage ONLY if no windowband. Never belly / crown / cockpit / fairings / wings.
   // Nose is +X on hangar-fit craft (longest axis forward); wing LE = forward-most root wing AABB X.
@@ -1957,7 +1963,7 @@ function addTextDecals(craft, state) {
   let panelLen =
     place === "tail" ? fusLen * 0.32 :
     place === "wing" ? Math.min(size.z * 0.28, fusLen * 0.35) :
-    fusLen * 0.17; // v0.6.14 shorter so full word fits in solid LE→taper interval
+    fusLen * 0.18; // v0.6.15 panel length in solid LE→taper interval
 
   // Solid-interval clamps (nose = +X). Used for fuselage title X and per-side candidates.
   let xAftMin = center.x + size.x * 0.08;
@@ -1970,27 +1976,36 @@ function addTextDecals(craft, state) {
   } else if (place === "wing") {
     xMain = center.x - size.x * 0.02;
   } else {
-    // v0.6.14: solid interval — forward of wing LE (gap), aft of nose taper/streaks
-    const gap = Math.max(0.06 * fusLen, 0.22);
-    xAftMin = (wingLeX != null) ? wingLeX + gap : center.x + size.x * 0.08;
-    // Left band steps earlier — keep clear of nose taper/streaks
-    xFwdMax = center.x + size.x * 0.14;
-    panelLen = fusLen * 0.17;
-    const span = xFwdMax - xAftMin;
-    if (span > 0.05) panelLen = Math.min(panelLen, span * 0.88);
-    else panelLen = Math.min(panelLen, fusLen * 0.14);
+    // v0.6.15: solid interval more nose-ward — forward of wing LE (gap), clear of nose taper
+    const gap = Math.max(0.05 * fusLen, 0.18);
+    xAftMin = (wingLeX != null) ? wingLeX + gap : center.x + size.x * 0.12;
+    // Allow further forward than 0.14; per-side wb hit avoids taper clip
+    xFwdMax = center.x + size.x * 0.22;
+    panelLen = fusLen * 0.18;
     // Optional tiny default floor for long airline names
     const airlineLen = String(state.airline || "").trim().length;
     if (airlineLen > 10) panelLen *= 0.92;
-    xMain = (xAftMin + xFwdMax) * 0.5;
-    if (span > 0) {
+    const span = xFwdMax - xAftMin;
+    // if span inverted / too tight: fall back to proven forward cabin
+    if (span < panelLen * 0.6) {
+      xMain = center.x + size.x * 0.20;
+      panelLen = fusLen * 0.18;
+      if (airlineLen > 10) panelLen *= 0.92;
+      xAftMin = xMain - panelLen * 0.5;
+      xFwdMax = xMain + panelLen * 0.5;
+    } else {
+      // prefer FORWARD half of interval (closer to nose, clear of wing)
+      xMain = xAftMin + span * 0.65;
       xMain = Math.min(xFwdMax - panelLen * 0.5, Math.max(xAftMin + panelLen * 0.5, xMain));
     }
     // Guarantees: aft edge >= xAftMin (forward of LE), fwd edge <= xFwdMax (clear of taper)
     // User posX nudge within clamps (posX>0 shifts aft / −X)
     xMain -= size.x * posX * 0.35;
-    if (span > 0) {
-      xMain = Math.min(xFwdMax - panelLen * 0.5, Math.max(xAftMin + panelLen * 0.5, xMain));
+    {
+      const span2 = xFwdMax - xAftMin;
+      if (span2 > 0) {
+        xMain = Math.min(xFwdMax - panelLen * 0.5, Math.max(xAftMin + panelLen * 0.5, xMain));
+      }
     }
   }
 
@@ -2048,11 +2063,11 @@ function addTextDecals(craft, state) {
   ];
   const yWindow = yAim;
 
-  // v0.6.14: titlePanelH ≤ 0.60*bandH so glyphs don't hug top edge
+  // v0.6.15: titlePanelH ~0.62*bandH (slightly larger; stay inside band)
   const titlePanelH =
     place === "wing" ? Math.max(0.35, panelLen * 0.35) :
     place === "belly" || place === "tail" ? Math.max(0.32, Math.min(size.y * 0.28, 0.72)) :
-    Math.max(bandH * 0.45, Math.min(bandH * 0.60, bandH * 0.55));
+    Math.max(bandH * 0.50, Math.min(bandH * 0.68, bandH * 0.62));
   const panelDepth = Math.max(0.35, Math.min(size.y * 0.35, 0.55));
 
   const stickerBoost = flagCodes.length || (st.stripe || st.heart || st.star || st.lightning || st.bird || st.roundel || st.chevron || st.checkered || st.smile || st.crown || st.diamond || st.sun || st.moon || st.flag || st.shield || st.arrow || st.sparkle || st.wingbadge)
@@ -2160,36 +2175,46 @@ function addTextDecals(craft, state) {
     return hit.object.userData.paintZone || hit.object.userData.zoneName || null;
   }
 
-  // v0.6.14: build per-side title X candidates (independent; left band steps earlier)
+  // v0.6.15: build per-side title X candidates — prefer more forward first
   function buildSideTitleXs() {
     const preferred = [];
     const lastResort = [];
     const fwdLimit = xFwdMax + 0.01 * fusLen;
     const aftSoft = xAftMin - 0.02 * fusLen;
+    // Cap last-resort aft so title centroid stays forward of wing LE
+    const aftHard = (wingLeX != null)
+      ? wingLeX + 0.02 * fusLen
+      : aftSoft;
     function pushCand(x, into) {
       if (!Number.isFinite(x)) return;
       if (x > fwdLimit) return;
       if (!into.includes(x)) into.push(x);
     }
+    // Prefer forward candidates first (nose-ward), then slightly aft
     const raw = [
       xMain,
-      xMain - 0.02 * fusLen,
       xMain + 0.02 * fusLen,
-      xMain - 0.04 * fusLen,
+      center.x + size.x * 0.20,
+      center.x + size.x * 0.18,
+      center.x + size.x * 0.16,
+      center.x + size.x * 0.14,
+      xMain - 0.02 * fusLen,
       center.x + size.x * 0.12,
-      center.x + size.x * 0.10,
-      center.x + size.x * 0.08,
+      xMain - 0.04 * fusLen,
     ];
     for (const x of raw) {
       if (x < aftSoft) pushCand(x, lastResort);
       else pushCand(x, preferred);
     }
-    // Last resort: allow slightly aft of soft floor if preferred empty
+    // Last resort: allow slightly aft of soft floor if preferred empty,
+    // but never aft of wingLeX + 0.02*fusLen when wing LE known
     if (!preferred.length) {
-      for (const x of raw) pushCand(x, lastResort);
+      for (const x of raw) {
+        if (x >= aftHard) pushCand(x, lastResort);
+      }
     } else {
-      // one step closer to LE as last resort
-      const closer = Math.min(xMain, xAftMin) - 0.02 * fusLen;
+      // one step closer to LE as last resort (still above aftHard)
+      const closer = Math.max(aftHard, Math.min(xMain, xAftMin) - 0.02 * fusLen);
       pushCand(closer, lastResort);
     }
     return { preferred, lastResort };
