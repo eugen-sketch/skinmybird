@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import messages as msg
 import notify
 import ta
 from etoro import EToroDemo, EToroError
@@ -46,6 +47,7 @@ def compute_signal(df: pd.DataFrame, p: dict) -> dict:
         df = df.iloc[:-1]
     r = ta.rsi(df["close"], p["rsi_period"])
     a = ta.atr(df)
+    votes: list[int] = []
     if p.get("signals"):                       # combinatie de semnale (aceleasi definitii ca in research_fx2.py)
         import strategies
         S = strategies.all_signals(df)
@@ -56,8 +58,11 @@ def compute_signal(df: pd.DataFrame, p: dict) -> dict:
     else:
         ext = p["rsi_extreme"]
         side = 1 if r.iloc[-1] < ext else -1 if r.iloc[-1] > 100 - ext else 0
+    reasons = [n for n, v in zip(p.get("signals") or [], votes) if v == side] if p.get("signals") and side else []
+    if side and not reasons:
+        reasons = ["london_breakout"] if p.get("strategy") == "london_breakout" else ["rsi_rev"]
     return {"side": side, "rsi": float(r.iloc[-1]), "atr": float(a.iloc[-1]), "price": float(df["close"].iloc[-1]),
-            "bar": df.index[-1].isoformat()}
+            "bar": df.index[-1].isoformat(), "reasons": reasons}
 
 
 def size_slots(equity: float, price: float, p: dict, lev_cap: int) -> dict | None:
@@ -146,7 +151,7 @@ class EToroBroker:
             if lev <= 20:
                 raise
             lev2, amount2 = 20, math.ceil(amount * lev / 20 * 100) / 100   # aceeasi expunere, levier 20
-            notify.send(f"ℹ️ {inst['name']}: levier {lev} refuzat ({str(e)[:120]}), reîncerc cu 20.")
+            notify.send(f"ℹ️ {msg.pair(inst['name'])}: eToro n-a primit levierul {lev}, reîncerc cu 20.")
             pid = self._open(inst, side, amount2, lev2, sl, tp)
             self.last = {"amount": amount2, "leverage": lev2}
             return pid
@@ -235,10 +240,10 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
             if tr["id"] in live and age_h >= p["max_hours"]:
                 try:
                     broker.close(tr["id"], inst)
-                    notify.send(f"⏱ {name}: au trecut {p['max_hours']}h fără Stop Loss sau Take Profit, închid poziția la piață.")
+                    pass  # mesajul vine la confirmarea inchiderii, mai jos
                     time.sleep(2)
                 except EToroError as e:
-                    notify.send(f"⚠️ Nu am putut închide {name}: {e}")
+                    notify.send(f"⚠️ N-am reușit să închid {msg.pair(name)} acum ({str(e)[:150]}). Încerc din nou la următoarea verificare.")
                 live = {x["id"] for x in broker.positions()}
             if tr["id"] not in live:
                 kind, px = hit if hit else ("MANUAL/TIMP", float(df["close"].iloc[-1]))
@@ -246,9 +251,7 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
                 eq += res
                 state["day_pnl"] += res
                 state.setdefault("history", []).append({"name": name, "kind": kind, "pnl": round(res, 2), "time": now.isoformat()})
-                why = {"TP": "Take Profit atins", "SL": "Stop Loss lovit", "MANUAL/TIMP": "închis la piață / după timp"}.get(kind, kind)
-                notify.send(f"{'✅' if res > 0 else '❌'} Am închis {name} — {why}: {'+' if res > 0 else ''}{usd(res)}\n"
-                            f"• Echitate virtuală {usd(eq)} (start {usd(cfg['virtual_equity'])})")
+                notify.send(msg.closed(name, kind, res, eq, cfg["virtual_equity"], p["max_hours"]))
                 opened.pop(name)
             continue
 
@@ -264,7 +267,7 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         if len(opened) >= p["max_open"]:
             continue
         if state["day_pnl"] <= -eq * p["daily_loss_stop_pct"] / 100 or eq < cfg["virtual_equity"] * p["kill_equity_frac"]:
-            notify.send(f"🛑 Oprit pentru azi (limită de pierdere). Echitate virtuală {usd(eq)}.")
+            notify.send(f"🛑 Mă opresc, contul virtual a scăzut prea mult ({usd(eq)}).")
             continue
         try:
             px = broker.price(inst)
@@ -275,8 +278,7 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         if not sz:
             continue
         if used + sz["amount"] > eq * p["max_total_margin_pct"] / 100:
-            notify.send(f"⏭ {name}: semnal {'BUY' if sig['side'] == 1 else 'SELL'}, dar nu mai am marjă liberă "
-                        f"({usd(used)} din {usd(eq * p['max_total_margin_pct'] / 100)} folosit), sar peste.")
+            notify.send(msg.skipped(name, sig["side"], used, eq * p["max_total_margin_pct"] / 100))
             state.setdefault("last_bar", {})[name] = sig["bar"]
             continue
         side = sig["side"]
@@ -285,12 +287,11 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         else:
             sl, tp = px - side * p["sl_atr"] * sig["atr"], px + side * p["tp_atr"] * sig["atr"]
         digits = 5 if px < 20 else 3 if px < 1000 else 2
-        notify.send(f"📤 {name}: semnal {'BUY' if side == 1 else 'SELL'}, trimit ordinul pe eToro DEMO "
-                    f"({usd(sz['amount'])} × levier {sz['leverage']}) cu SL {sl:.{digits}f} și TP {tp:.{digits}f}…")
+        notify.send(msg.sending(name, side, msg.why_signal(sig.get("reasons", []), side, sig["rsi"])))
         try:
             pid = broker.open(inst, side, sz["amount"], sz["leverage"], round(sl, digits), round(tp, digits), px)
         except EToroError as e:
-            notify.send(f"⚠️ DEMO: ordinul pentru {name} a eșuat: {e}")
+            notify.send(f"⚠️ Ordinul pe {msg.pair(name)} n-a mers: {str(e)[:200]}. Nu am deschis nimic.")
             state.setdefault("last_bar", {})[name] = sig["bar"]
             continue
         state.setdefault("last_bar", {})[name] = sig["bar"]
@@ -301,23 +302,15 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         opened[name] = {"id": pid, "side": side, "entry": px, "sl": sl, "tp": tp, "time": now.isoformat(),
                         "notional": sz["notional"], "amount": sz["amount"]}
         gain = abs(tp - px) / px * sz["notional"]
-        fill_note = ""
-        verb = "Am cumpărat (LONG)" if side == 1 else "Am făcut short (vânzare)"
-        notify.send(
-            f"{'🟢 BUY' if side == 1 else '🔴 SELL'} — {verb} {name} la {px:.{digits}f}\n"
-            f"• Investit {usd(sz['amount'])} × levier {sz['leverage']} = expunere {usd(sz['notional'])}\n"
-            f"• Am pus Stop Loss la {sl:.{digits}f} (dacă pierde, ≈ -{usd(sz['risk_usd'])})\n"
-            f"• Am pus Take Profit la {tp:.{digits}f} (dacă câștigă, ≈ +{usd(gain)})\n"
-            f"• Ies oricum după {p['max_hours']}h dacă nu se atinge nimic\n"
-            f"• Echitate virtuală {usd(eq)}{' | MOD HÂRTIE' if broker.paper else ''}")
+        notify.send(msg.opened(name, side, px, digits, sz["amount"], sz["leverage"], sz["notional"], sl, tp,
+                               sz["risk_usd"], gain, p["max_hours"], eq, broker.paper))
     state["equity"] = eq
     if now.hour >= 20 and state.get("summary_day") != day and state.get("history") is not None:
         h = state["history"]
         wins = [x["pnl"] for x in h if x["pnl"] > 0]
         loss = -sum(x["pnl"] for x in h if x["pnl"] < 0)
         pf = (sum(wins) / loss) if loss else float("inf")
-        notify.send(f"📊 Rezumat DEMO: {len(h)} tranzacții, {len(wins)} câștigătoare, profit factor "
-                    f"{pf:.2f}, echitate virtuală {usd(eq)} (start {usd(cfg['virtual_equity'])}).")
+        notify.send(msg.summary(len(h), len(wins), pf, eq, cfg["virtual_equity"]))
         state["summary_day"] = day
 
 
@@ -333,7 +326,7 @@ def build_broker(cfg: dict, state: dict):
                 try:
                     ids[inst["name"]] = api.find_instrument_id(inst["etoro"])
                 except EToroError as e:
-                    notify.send(f"⚠️ Nu găsesc {inst['name']} ({inst['etoro']}) pe eToro, îl sar: {str(e)[:200]}")
+                    notify.send(f"ℹ️ Nu găsesc {msg.pair(inst['name'])} pe eToro, îl las deoparte.")
                     missing.append(inst["name"])
                     cfg["instruments"].remove(inst)
         return EToroBroker(api, ids)
@@ -351,12 +344,12 @@ def main() -> int:
         run_once(cfg, state, broker)
         state.pop("last_err", None)
     except Exception as e:  # noqa: BLE001 - nu lasam jobul sa "pice" (GitHub trimite mail la fiecare esec)
-        msg = f"{type(e).__name__}: {e}"[:300]
+        err_txt = f"{type(e).__name__}: {e}"[:300]
         last = state.get("last_err") or {}
-        if last.get("msg") != msg or time.time() - last.get("ts", 0) > 6 * 3600:   # aceeasi eroare: cel mult o data la 6h
-            notify.send(f"⚠️ Autotrader: {msg}")
-            state["last_err"] = {"msg": msg, "ts": time.time()}
-        print(f"[!] {msg}")
+        if last.get("msg") != err_txt or time.time() - last.get("ts", 0) > 6 * 3600:   # aceeasi eroare: cel mult o data la 6h
+            notify.send(msg.error(err_txt))
+            state["last_err"] = {"msg": err_txt, "ts": time.time()}
+        print(f"[!] {err_txt}")
     finally:
         STATE_FILE.write_text(json.dumps(state))
     return 0
