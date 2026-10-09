@@ -45,10 +45,18 @@ def test_london_breakout_only_first_breakout_of_day():
     assert trader.london_breakout(df) == 0
 
 
-def test_sizing_uses_max_leverage_and_etoro_minimum():
-    z = trader.size_position(140, 1.10, 0.0008, P, 30)
-    assert z["leverage"] == 30 and z["notional"] >= 1000 and z["amount"] <= 140 * 0.4
-    assert trader.size_position(140, 80.0, 0.4, {**P, "max_margin_pct": 10}, 10) is None
+def test_three_equal_slots_with_dollar_targets():
+    z = trader.size_slots(140, 1.10, P, 30)
+    assert z["leverage"] == 30 and abs(z["amount"] * 3 - 140) < 0.05 and z["notional"] >= 1000
+    gain = z["tp_dist"] / 1.10 * z["notional"]
+    assert abs(gain - P["tp_usd"]) < 0.01
+    assert trader.size_slots(140, 1.10, P, 20) is None          # 3 x 46.66 x 20 = 933$ < minim eToro 1000$
+
+
+def test_union_signals_conflict_gives_no_trade():
+    df = breakout_day(+1)        # London: BUY, dar RSI foarte mare -> rsi25 zice SELL => conflict => nimic
+    assert trader.compute_signal(df, {**P, "signals": ["london_breakout", "rsi_rev25"]})["side"] == 0
+    assert trader.compute_signal(df, {**P, "signals": ["london_breakout"]})["side"] == 1
 
 
 def test_rsi_strategy_still_works():
@@ -60,6 +68,7 @@ def test_rsi_strategy_still_works():
 def _cfg(names):
     cfg = json.loads(json.dumps(CFG))
     cfg["instruments"] = [i for i in cfg["instruments"] if i["name"] in names]
+    cfg["params"]["signals"] = ["london_breakout"]       # testele de flux folosesc doar spargerea Londrei
     return cfg
 
 
@@ -92,7 +101,7 @@ def test_margin_budget_limits_parallel_positions(monkeypatch):
     now = datetime(2026, 10, 7, 8, 5, tzinfo=timezone.utc)
     trader.run_once(cfg, state, broker, {n: breakout_day(+1) for n in names}, now)
     used = sum(o["amount"] for o in state["open"].values())
-    assert 1 <= len(state["open"]) < len(names) and used <= 140 * 0.9 + 0.01
+    assert 1 <= len(state["open"]) < len(names) and len(state["open"]) == 3 and used <= 140.0
 
 
 def test_no_trading_on_weekend(monkeypatch):
