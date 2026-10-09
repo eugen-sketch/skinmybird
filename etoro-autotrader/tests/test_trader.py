@@ -13,56 +13,95 @@ CFG = json.loads((Path(__file__).parent.parent / "config.json").read_text())
 P = CFG["params"]
 
 
-def frame(prices, end="2026-10-07 12:00"):
+def frame(prices, end="2026-10-07 12:00", noise=0.0004):
     p = np.asarray(prices, dtype=float)
     idx = pd.date_range(end=pd.Timestamp(end, tz="UTC") - pd.Timedelta(hours=1), periods=len(p), freq="h")
-    return pd.DataFrame({"open": p, "high": p + 0.2, "low": p - 0.2, "close": p}, index=idx)
+    return pd.DataFrame({"open": p, "high": p + noise, "low": p - noise, "close": p}, index=idx)
+
+
+def breakout_day(direction=1):
+    """~3 zile plate, apoi azi: interval asiatic 1.1000±, spargere la 08:00 UTC."""
+    base = np.full(24 * 3, 1.1000) + np.sin(np.arange(24 * 3)) * 0.0002
+    today = np.full(8, 1.1000)                      # 00:00-07:00
+    today[-1] = 1.1000 + direction * 0.0030         # bara 07:00 sparge... (ultima bara completa = 07:00)
+    prices = np.concatenate([base, today])
+    return frame(prices, end="2026-10-07 08:00")
 
 
 def crash(n=200):
     x = np.concatenate([np.full(n - 30, 80.0) + np.sin(np.arange(n - 30)) * 0.3, np.linspace(80, 72, 30)])
-    return frame(x)
+    return frame(x, noise=0.2)
 
 
-def test_sizing_respects_etoro_minimum_exposure_and_margin_cap():
-    z = trader.size_position(140, 80.0, 0.4, P, 10)
-    assert z["notional"] >= 1000 and z["leverage"] <= 10 and z["amount"] <= 140 * 0.75 + 0.01
-    assert z["risk_usd"] > 0
-    assert trader.size_position(140, 80.0, 0.4, P, 5) is None   # 1000$ la lev 5 = 200$ marja > 105$
+def test_london_breakout_buy_and_sell():
+    assert trader.london_breakout(breakout_day(+1)) == 1
+    assert trader.london_breakout(breakout_day(-1)) == -1
 
 
-def test_signal_buy_after_crash():
-    s = trader.compute_signal(crash(), P)
+def test_london_breakout_only_first_breakout_of_day():
+    df = breakout_day(+1)
+    ts = df.index[-1] + pd.Timedelta(hours=1)
+    df.loc[ts] = [1.103, 1.1035, 1.1025, 1.1032]   # a doua bara peste interval: nu mai e semnal
+    assert trader.london_breakout(df) == 0
+
+
+def test_sizing_uses_max_leverage_and_etoro_minimum():
+    z = trader.size_position(140, 1.10, 0.0008, P, 30)
+    assert z["leverage"] == 30 and z["notional"] >= 1000 and z["amount"] <= 140 * 0.4
+    assert trader.size_position(140, 80.0, 0.4, {**P, "max_margin_pct": 10}, 10) is None
+
+
+def test_rsi_strategy_still_works():
+    p = {**P, "strategy": "rsi_reversion"}
+    s = trader.compute_signal(crash(), p)
     assert s["side"] == 1 and s["rsi"] < 20
 
 
-def test_paper_open_then_tp_close_updates_equity(monkeypatch):
+def _cfg(names):
+    cfg = json.loads(json.dumps(CFG))
+    cfg["instruments"] = [i for i in cfg["instruments"] if i["name"] in names]
+    return cfg
+
+
+def test_paper_buy_then_tp_updates_equity(monkeypatch):
     notes = []
     monkeypatch.setattr(trader.notify, "send", lambda t: notes.append(t))
     state = {}
     broker = trader.PaperBroker(state)
-    monkeypatch.setattr(broker, "price", lambda inst: 72.0)
-    cfg = json.loads(json.dumps(CFG))
-    cfg["instruments"] = cfg["instruments"][:1]
-    now = datetime(2026, 10, 7, 12, 5, tzinfo=timezone.utc)
-    df = crash()
-    trader.run_once(cfg, state, broker, {"WTI": df}, now)
-    assert "WTI" in state["open"] and any("BUY" in n for n in notes)
-    tr = state["open"]["WTI"]
-    # pretul sare peste TP dupa deschidere
-    up = pd.DataFrame({"open": [tr["tp"] + 1], "high": [tr["tp"] + 2], "low": [tr["tp"]], "close": [tr["tp"] + 1]},
-                      index=[pd.Timestamp(now) + pd.Timedelta(hours=1)])
-    trader.run_once(cfg, state, broker, {"WTI": pd.concat([df, up])}, now + pd.Timedelta(hours=2))
-    assert "WTI" not in state["open"] and state["equity"] > 140
+    monkeypatch.setattr(broker, "price", lambda inst: 1.1030)
+    cfg = _cfg(["EURUSD"])
+    now = datetime(2026, 10, 7, 8, 5, tzinfo=timezone.utc)
+    df = breakout_day(+1)
+    trader.run_once(cfg, state, broker, {"EURUSD": df}, now)
+    assert "EURUSD" in state["open"] and any("BUY" in n for n in notes)
+    tr = state["open"]["EURUSD"]
+    up = pd.DataFrame({"open": [tr["tp"]], "high": [tr["tp"] + 0.001], "low": [tr["tp"] - 0.0001], "close": [tr["tp"]]},
+                      index=[df.index[-1] + pd.Timedelta(hours=2)])
+    trader.run_once(cfg, state, broker, {"EURUSD": pd.concat([df, up])}, now + pd.Timedelta(hours=2))
+    assert "EURUSD" not in state["open"] and state["equity"] > 140
     assert any("închis" in n for n in notes)
+
+
+def test_margin_budget_limits_parallel_positions(monkeypatch):
+    monkeypatch.setattr(trader.notify, "send", lambda t: None)
+    state = {}
+    broker = trader.PaperBroker(state)
+    monkeypatch.setattr(broker, "price", lambda inst: 1.1030)
+    names = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF"]
+    cfg = _cfg(names)
+    now = datetime(2026, 10, 7, 8, 5, tzinfo=timezone.utc)
+    trader.run_once(cfg, state, broker, {n: breakout_day(+1) for n in names}, now)
+    used = sum(o["amount"] for o in state["open"].values())
+    assert 1 <= len(state["open"]) < len(names) and used <= 140 * 0.9 + 0.01
 
 
 def test_no_trading_on_weekend(monkeypatch):
     monkeypatch.setattr(trader.notify, "send", lambda t: None)
-    state, cfg = {}, json.loads(json.dumps(CFG))
-    cfg["instruments"] = cfg["instruments"][:1]
+    state = {}
     broker = trader.PaperBroker(state)
-    trader.run_once(cfg, state, broker, {"WTI": crash()}, datetime(2026, 10, 10, 12, 5, tzinfo=timezone.utc))
+    monkeypatch.setattr(broker, "price", lambda inst: 1.1030)
+    trader.run_once(_cfg(["EURUSD"]), state, broker, {"EURUSD": breakout_day(+1)},
+                    datetime(2026, 10, 10, 8, 5, tzinfo=timezone.utc))
     assert not state.get("open")
 
 

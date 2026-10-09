@@ -25,31 +25,48 @@ STATE_FILE = Path(os.getenv("STATE_FILE", HERE / "state.json"))
 
 
 # ------------------------------------------------------------------ semnal
+def london_breakout(df: pd.DataFrame) -> int:
+    """+1/-1 daca ULTIMA bara completa este PRIMA bara (07-10 UTC) care inchide peste/sub intervalul asiatic (00-07 UTC) al zilei."""
+    day = df.index[-1].normalize()
+    today = df[df.index >= day]
+    asia = today.between_time("00:00", "06:59")
+    if len(asia) < 5:
+        return 0
+    hi, lo = asia["high"].max(), asia["low"].min()
+    for ts, row in today.between_time("07:00", "10:59").iterrows():
+        side = 1 if row["close"] > hi else -1 if row["close"] < lo else 0
+        if side:
+            return side if ts == df.index[-1] else 0
+    return 0
+
+
 def compute_signal(df: pd.DataFrame, p: dict) -> dict:
     """Semnal pe ultima bara COMPLETA: +1 BUY / -1 SELL / 0, plus ATR si RSI."""
     if df.index[-1] + timedelta(hours=1) > pd.Timestamp.now(tz="UTC"):
         df = df.iloc[:-1]
     r = ta.rsi(df["close"], p["rsi_period"])
     a = ta.atr(df)
-    ext = p["rsi_extreme"]
-    side = 1 if r.iloc[-1] < ext else -1 if r.iloc[-1] > 100 - ext else 0
+    if p.get("strategy") == "london_breakout":
+        side = london_breakout(df)
+    else:
+        ext = p["rsi_extreme"]
+        side = 1 if r.iloc[-1] < ext else -1 if r.iloc[-1] > 100 - ext else 0
     return {"side": side, "rsi": float(r.iloc[-1]), "atr": float(a.iloc[-1]), "price": float(df["close"].iloc[-1]),
             "bar": df.index[-1].isoformat()}
 
 
 def size_position(equity: float, price: float, atr_v: float, p: dict, lev_cap: int) -> dict | None:
-    """Marja si levier. eToro cere expunere (marja x levier) >= min_notional (1000$), deci e minimul real al riscului."""
+    """Marja si levier. eToro cere expunere (marja x levier) >= min_notional (1000$). Folosim levierul maxim permis
+    (marja mai mica => mai multe pozitii in paralel); plafon de marja per pozitie = max_margin_pct din cont."""
     sl_frac = p["sl_atr"] * atr_v / price
     if sl_frac <= 0:
         return None
-    notional = max(equity * p["risk_pct"] / 100 / sl_frac, p["min_notional"] * 1.01)
-    max_margin = equity * p["max_margin_pct"] / 100
-    cap = min(lev_cap, p["max_leverage"])
-    for lev in (1, 2, 5, 10, 20, 30):
-        if lev > cap:
-            return None                       # nici cu levierul maxim nu incape in marja permisa
-        if notional / lev <= max_margin:
-            break
+    lev = min(lev_cap, p["max_leverage"])
+    floor = p["min_notional"] * 1.01
+    notional = max(equity * p["risk_pct"] / 100 / sl_frac, floor)
+    notional = min(notional, equity * p["max_margin_pct"] / 100 * lev)
+    if notional < floor:
+        return None
     margin = math.ceil(notional / lev * 100) / 100
     notional = margin * lev
     return {"amount": margin, "leverage": lev, "notional": notional, "risk_usd": notional * sl_frac}
@@ -105,6 +122,20 @@ class EToroBroker:
         return out
 
     def open(self, inst, side, amount, lev, sl, tp, price) -> str:
+        try:
+            pid = self._open(inst, side, amount, lev, sl, tp)
+            self.last = {"amount": amount, "leverage": lev}
+            return pid
+        except EToroError as e:
+            if lev <= 20:
+                raise
+            lev2, amount2 = 20, math.ceil(amount * lev / 20 * 100) / 100   # aceeasi expunere, levier 20
+            notify.send(f"ℹ️ {inst['name']}: levier {lev} refuzat ({str(e)[:120]}), reîncerc cu 20.")
+            pid = self._open(inst, side, amount2, lev2, sl, tp)
+            self.last = {"amount": amount2, "leverage": lev2}
+            return pid
+
+    def _open(self, inst, side, amount, lev, sl, tp) -> str:
         before = {p["id"] for p in self.positions()}
         r = self.api.open_market(self.ids[inst["name"]], side == 1, amount, lev, sl, tp)
         oid = r.get("orderId") if isinstance(r, dict) else None
@@ -171,7 +202,7 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
             df = (dfs or {}).get(name)
             if df is None:
                 df = ta.fetch_ohlc(inst["yahoo"], "1h", "30d")
-            if len(df) < 120:
+            if len(df) < 40:
                 raise ValueError("prea putine date")
         except Exception as e:  # noqa: BLE001
             print(f"[!] {name}: date indisponibile: {e}")
@@ -209,6 +240,7 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         print(f"{name}: semnal={sig['side']:+d} rsi={sig['rsi']:.1f} pret={sig['price']:.4f}")
         if sig["side"] == 0 or state.get("last_bar", {}).get(name) == sig["bar"]:
             continue
+        used = sum(o.get("amount", 0) for o in opened.values())
         if len(opened) >= p["max_open"] or not can_open_now(now, p):
             continue
         if state["day_pnl"] <= -eq * p["daily_loss_stop_pct"] / 100 or eq < cfg["virtual_equity"] * p["kill_equity_frac"]:
@@ -222,10 +254,13 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         sz = size_position(eq, px, sig["atr"], p, inst["lev_cap"])
         if not sz:
             continue
+        if used + sz["amount"] > eq * p["max_total_margin_pct"] / 100:
+            print(f"{name}: buget de marja epuizat ({usd(used)} folosit)")
+            continue
         side = sig["side"]
         sl = px - side * p["sl_atr"] * sig["atr"]
         tp = px + side * p["tp_atr"] * sig["atr"]
-        digits = 2 if px > 20 else 5
+        digits = 5 if px < 20 else 3 if px < 1000 else 2
         try:
             pid = broker.open(inst, side, sz["amount"], sz["leverage"], round(sl, digits), round(tp, digits), px)
         except EToroError as e:
@@ -233,8 +268,12 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
             state.setdefault("last_bar", {})[name] = sig["bar"]
             continue
         state.setdefault("last_bar", {})[name] = sig["bar"]
+        fill = getattr(broker, "last", None)
+        if fill:
+            sz["amount"], sz["leverage"] = fill["amount"], fill["leverage"]
+            sz["notional"] = fill["amount"] * fill["leverage"]
         opened[name] = {"id": pid, "side": side, "entry": px, "sl": sl, "tp": tp, "time": now.isoformat(),
-                        "notional": sz["notional"]}
+                        "notional": sz["notional"], "amount": sz["amount"]}
         gain = abs(tp - px) / px * sz["notional"]
         notify.send(
             f"{'🟢 BUY' if side == 1 else '🔴 SELL'} DEMO {name} @ {px:.{digits}f}\n"
@@ -256,12 +295,16 @@ def build_broker(cfg: dict, state: dict):
     if os.getenv("ETORO_API_KEY") and os.getenv("ETORO_USER_KEY") and os.getenv("PAPER") != "1":
         api = EToroDemo()
         ids = state.setdefault("ids", {})
+        missing = state.setdefault("missing", [])
         for inst in list(cfg["instruments"]):
-            if inst["name"] not in ids:
+            if inst["name"] in missing:
+                cfg["instruments"].remove(inst)
+            elif inst["name"] not in ids:
                 try:
                     ids[inst["name"]] = api.find_instrument_id(inst["etoro"])
                 except EToroError as e:
-                    notify.send(f"⚠️ Nu găsesc {inst['name']} ({inst['etoro']}) pe eToro, îl sar: {e}")
+                    notify.send(f"⚠️ Nu găsesc {inst['name']} ({inst['etoro']}) pe eToro, îl sar: {str(e)[:200]}")
+                    missing.append(inst["name"])
                     cfg["instruments"].remove(inst)
         return EToroBroker(api, ids)
     return PaperBroker(state)
