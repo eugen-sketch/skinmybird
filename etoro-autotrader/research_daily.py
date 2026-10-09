@@ -18,6 +18,19 @@ CARRY = 0.02          # % din expunere pe noapte (taxa de tinere peste noapte eT
 OOS_START = "2016-01-01"
 
 
+def fetch_daily(sym: str) -> pd.DataFrame:
+    import time
+    import requests
+    r = requests.get(ta.YAHOO.format(sym=sym),
+                     params={"interval": "1d", "period1": 1041379200, "period2": int(time.time()), "events": "history"},
+                     headers={"User-Agent": "Mozilla/5.0"}, timeout=60)
+    r.raise_for_status()
+    res = r.json()["chart"]["result"][0]
+    q = res["indicators"]["quote"][0]
+    return pd.DataFrame({k: q[k] for k in ("open", "high", "low", "close")},
+                        index=pd.to_datetime(res["timestamp"], unit="s", utc=True)).dropna()
+
+
 def executor(o, h, l, c, atr, target, k, cost, max_hold=None):
     """target[t] = pozitia dorita (+1/-1/0) decisa la inchiderea zilei t, executata la deschiderea zilei t+1. Stop = k*ATR."""
     n = len(c)
@@ -122,12 +135,14 @@ def main():
     data = {}
     for name, (sym, cost, grp) in INSTR.items():
         try:
-            df = ta.fetch_ohlc(sym, "1d", "max").dropna()
-            df = df[df.index >= "2003-01-01"]
+            df = fetch_daily(sym)
+            print(f"{name}: {len(df)} zile")
             if len(df) > 1500:
                 data[name] = (df, cost, grp)
         except Exception as e:  # noqa: BLE001
-            print(f"[!] {name}: {e}")
+            print(f"[!] {name}: {type(e).__name__} {e}")
+    if not data:
+        sys.exit("Nu am putut incarca nicio serie zilnica")
     print({k: (len(v[0]), str(v[0].index[0].date())) for k, v in data.items()})
     res = {}   # (fam, p, k) -> {instrument: Series zilnic}
     for fam, plist in GRID.items():
