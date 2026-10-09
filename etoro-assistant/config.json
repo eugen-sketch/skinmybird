@@ -98,5 +98,7 @@
         "rsi_rev20"
       ]
     }
-  ]
+  ],
+  "remind_every_min": 3,
+  "max_reminders": 6
 }
