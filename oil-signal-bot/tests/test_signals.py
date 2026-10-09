@@ -7,7 +7,8 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import oilbot  # noqa: E402
 
-CFG = {**oilbot.DEFAULTS, "symbols": {}}
+CFG = {**oilbot.DEFAULTS, "symbols": {}, "strategy": "score"}
+REV = {**oilbot.DEFAULTS, "symbols": {}}
 
 
 def make(prices, noise=0.3):
@@ -53,3 +54,17 @@ def test_trade_hits_tp_on_clean_trend():
 def test_messages():
     m = oilbot.entry_msg("WTI", 1, 80.0, 1.0, 5, 55, 25, CFG)
     assert "Stop Loss: $78.50" in m and "Take Profit: $83.00" in m
+
+
+def test_reversion_buys_oversold_sells_overbought():
+    down = oilbot.build(make(np.linspace(140, 60, 400) + np.sin(np.arange(400)) * 0.2))
+    assert oilbot.signals(down, REV).iloc[-1] == 1
+    up = oilbot.build(make(np.linspace(60, 140, 400) + np.sin(np.arange(400)) * 0.2))
+    assert oilbot.signals(up, REV).iloc[-1] == -1
+
+
+def test_reversion_levels_in_percent():
+    sl, tp = oilbot.levels(1, 100.0, 1.0, REV)
+    assert round(sl, 2) == 98.0 and round(tp, 2) == 101.5
+    sl, tp = oilbot.levels(-1, 100.0, 1.0, REV)
+    assert round(sl, 2) == 102.0 and round(tp, 2) == 98.5

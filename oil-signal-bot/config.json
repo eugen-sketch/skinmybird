@@ -4,11 +4,10 @@
     "Brent (UK Oil)": "BZ=F"
   },
   "check_every_minutes": 15,
-  "min_score": 4,
-  "adx_min": 18,
-  "trend_filter": true,
-  "atr_sl_mult": 1.5,
-  "atr_tp_mult": 3.0,
-  "max_bars": 72,
-  "position_usd": 1000
+  "max_bars": 48,
+  "position_usd": 400,
+  "strategy": "rsi_reversion",
+  "rsi_extreme": 20,
+  "sl_pct": 2.0,
+  "tp_pct": 1.5
 }
