@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 
+INDEX_NAMES = {"SPX500": "S&P 500 📈", "NSDQ100": "Nasdaq 100 📈", "DJ30": "Dow Jones 📈", "GER40": "DAX Germania 📈"}
+
+
 def pair(name: str) -> str:
     if name == "OIL":
         return "Petrol (WTI) 🛢️"
+    if name in INDEX_NAMES:
+        return INDEX_NAMES[name]
     return f"{name[:3]}/{name[3:]}" if len(name) == 6 and name.isalpha() else name
 
 
@@ -152,7 +157,7 @@ def scan_report(rows: list[dict]) -> str:
     """rows: name, rsi, thr (prag RSI), asia (poz. fata de intervalul de noapte sau None), bar (ora ultimei bare), note."""
     lines = []
     for r in rows:
-        extra = f" · fața de intervalul de noapte: {r['asia']}" if r.get("asia") and r["name"] != "OIL" else ""
+        extra = f" · fața de intervalul de noapte: {r['asia']}" if r.get("asia") and len(r["name"]) == 6 and r["name"].isalpha() else ""
         note = f" ({r['note']})" if r.get("note") else ""
         lines.append(f"• {pair(r['name']).split(' ')[0]}: RSI {r['rsi']:.0f}{extra}{note}")
     bar = rows[0]["bar"] if rows else "?"
