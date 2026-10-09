@@ -46,13 +46,29 @@ def compute_signal(df: pd.DataFrame, p: dict) -> dict:
         df = df.iloc[:-1]
     r = ta.rsi(df["close"], p["rsi_period"])
     a = ta.atr(df)
-    if p.get("strategy") == "london_breakout":
+    if p.get("signals"):                       # combinatie de semnale (aceleasi definitii ca in research_fx2.py)
+        import strategies
+        S = strategies.all_signals(df)
+        votes = [int(S[n].iloc[-1]) for n in p["signals"]]
+        side = 1 if (1 in votes and -1 not in votes) else -1 if (-1 in votes and 1 not in votes) else 0
+    elif p.get("strategy") == "london_breakout":
         side = london_breakout(df)
     else:
         ext = p["rsi_extreme"]
         side = 1 if r.iloc[-1] < ext else -1 if r.iloc[-1] > 100 - ext else 0
     return {"side": side, "rsi": float(r.iloc[-1]), "atr": float(a.iloc[-1]), "price": float(df["close"].iloc[-1]),
             "bar": df.index[-1].isoformat()}
+
+
+def size_slots(equity: float, price: float, p: dict, lev_cap: int) -> dict | None:
+    """Imparte contul in `slots` ordine egale; TP/SL in dolari -> procent din pret. None daca expunerea < minimul eToro."""
+    lev = min(lev_cap, p["max_leverage"])
+    margin = math.floor(equity / p["slots"] * 100) / 100
+    notional = margin * lev
+    if notional < p["min_notional"] * 1.005:
+        return None
+    return {"amount": margin, "leverage": lev, "notional": notional, "risk_usd": p["sl_usd"],
+            "tp_dist": p["tp_usd"] / notional * price, "sl_dist": p["sl_usd"] / notional * price}
 
 
 def size_position(equity: float, price: float, atr_v: float, p: dict, lev_cap: int) -> dict | None:
@@ -255,7 +271,7 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         except Exception as e:  # noqa: BLE001
             print(f"[!] {name}: nu pot lua pretul eToro: {e}")
             continue
-        sz = size_position(eq, px, sig["atr"], p, inst["lev_cap"])
+        sz = size_slots(eq, px, p, inst["lev_cap"]) if p.get("slots") else size_position(eq, px, sig["atr"], p, inst["lev_cap"])
         if not sz:
             continue
         if used + sz["amount"] > eq * p["max_total_margin_pct"] / 100:
@@ -264,8 +280,10 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
             state.setdefault("last_bar", {})[name] = sig["bar"]
             continue
         side = sig["side"]
-        sl = px - side * p["sl_atr"] * sig["atr"]
-        tp = px + side * p["tp_atr"] * sig["atr"]
+        if "tp_dist" in sz:
+            sl, tp = px - side * sz["sl_dist"], px + side * sz["tp_dist"]
+        else:
+            sl, tp = px - side * p["sl_atr"] * sig["atr"], px + side * p["tp_atr"] * sig["atr"]
         digits = 5 if px < 20 else 3 if px < 1000 else 2
         notify.send(f"📤 {name}: semnal {'BUY' if side == 1 else 'SELL'}, trimit ordinul pe eToro DEMO "
                     f"({usd(sz['amount'])} × levier {sz['leverage']}) cu SL {sl:.{digits}f} și TP {tp:.{digits}f}…")
@@ -283,6 +301,7 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         opened[name] = {"id": pid, "side": side, "entry": px, "sl": sl, "tp": tp, "time": now.isoformat(),
                         "notional": sz["notional"], "amount": sz["amount"]}
         gain = abs(tp - px) / px * sz["notional"]
+        fill_note = ""
         verb = "Am cumpărat (LONG)" if side == 1 else "Am făcut short (vânzare)"
         notify.send(
             f"{'🟢 BUY' if side == 1 else '🔴 SELL'} — {verb} {name} la {px:.{digits}f}\n"
