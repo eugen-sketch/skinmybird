@@ -25,13 +25,6 @@
       "etoro": "OIL",
       "cost": 0.06,
       "lev_cap": 10
-    },
-    {
-      "name": "BRENT",
-      "yahoo": "BZ=F",
-      "etoro": "UKOIL",
-      "cost": 0.06,
-      "lev_cap": 10
     }
   ]
 }
