@@ -79,7 +79,7 @@ class Assistant:
             if manual:
                 self.tg.send("😴 Piața e închisă sau prea aproape de închidere, nu caut semnale acum.")
             return
-        found, overflow = 0, []
+        found, overflow, report = 0, [], []
         open_names = {p["name"] for p in self.known.values()}
         for name, inst in self.inst.items():
             if name in open_names or any(p["name"] == name for p in self.pending.values()):
@@ -91,6 +91,8 @@ class Assistant:
                 continue
             if os.getenv("QUIET_LOGS") != "1":                   # in repo public nu afisam semnalele/pozitiile in loguri
                 print(f"{name}: semnal={s['side']:+d} rsi={s['rsi']:.0f}")
+            thr = next((int(n[7:]) for n in inst["signals"] if n.startswith("rsi_rev")), 25)
+            report.append({"name": name, "rsi": s["rsi"], "thr": thr, "asia": s.get("asia_pos"), "bar": s["bar"][11:16] + " UTC"})
             if s["side"] == 0 or self.seen_bar.get(name) == s["bar"]:
                 continue
             self.seen_bar[name] = s["bar"]
@@ -105,7 +107,9 @@ class Assistant:
             for n in overflow:
                 self.seen_bar.pop(n, None)               # le re-evaluam la urmatoarea scanare
         if manual and not found:
-            self.tg.send("🔎 Am scanat acum: niciun semnal nou.")
+            for n in sorted(open_names | {p["name"] for p in self.pending.values()}):
+                report.append({"name": n, "rsi": 50.0, "thr": 25, "bar": report[0]["bar"] if report else "?", "note": "ai deja poziție/semnal"})
+            self.tg.send(msg.scan_report(report) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.")
 
     def propose(self, name: str, s: dict) -> bool:
         inst = self.inst[name]

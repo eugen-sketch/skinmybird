@@ -22,5 +22,10 @@ def scan(df: pd.DataFrame, names: list[str]) -> dict:
     votes = {n: int(S[n].iloc[-1]) for n in names}
     side = 1 if (1 in votes.values() and -1 not in votes.values()) else -1 if (-1 in votes.values() and 1 not in votes.values()) else 0
     why = [REASONS["london_breakout" if n == "london_breakout" else "rsi_rev"] for n, v in votes.items() if v == side and side]
+    price = float(df["close"].iloc[-1])
+    today = df[df.index >= df.index[-1].normalize()]
+    asia = today.between_time("00:00", "06:59")
+    hi, lo = (float(asia["high"].max()), float(asia["low"].min())) if len(asia) >= 5 else (None, None)
+    pos = None if hi is None else ("deasupra" if price > hi else "sub" if price < lo else "în interior")
     return {"side": side, "why": "; ".join(dict.fromkeys(why)), "rsi": float(ta.rsi(df["close"], 14).iloc[-1]),
-            "price": float(df["close"].iloc[-1]), "bar": df.index[-1].isoformat()}
+            "price": price, "bar": df.index[-1].isoformat(), "asia_pos": pos, "n_bars": len(df)}
