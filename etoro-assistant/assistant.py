@@ -22,9 +22,10 @@ import ta
 from etoro import EToroError
 
 HERE = Path(__file__).parent
-USD_QUOTE_FACTOR_ONE = {"EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "OIL"}   # P&L deja in USD; la USDJPY/USDCAD/USDCHF se imparte la pret
+USD_QUOTE_FACTOR_ONE = {"EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "OIL", "SPX500", "NSDQ100", "DJ30", "GER40"}   # P&L deja in USD; la USDJPY/USDCAD/USDCHF se imparte la pret
 
 
+INDICES = {"SPX500", "NSDQ100", "DJ30", "GER40"}
 MAX_RUN_HOURS = 5.5          # GitHub opreste orice job dupa 6 ore: sesiunile lungi se inlantuie
 
 
@@ -35,7 +36,7 @@ def plan_session(hours: float) -> tuple[float, float]:
 
 
 def digits_for(name: str, px: float) -> int:
-    return 2 if name == "OIL" else 5 if px < 20 else 3
+    return 1 if name in INDICES else 2 if name == "OIL" else 5 if px < 20 else 3
 
 
 class Assistant:

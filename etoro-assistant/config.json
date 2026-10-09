@@ -97,6 +97,46 @@
       "signals": [
         "rsi_rev20"
       ]
+    },
+    {
+      "name": "SPX500",
+      "yahoo": "ES=F",
+      "etoro": "SPX500",
+      "cost": 0.04,
+      "lev_cap": 20,
+      "signals": [
+        "rsi_rev25"
+      ]
+    },
+    {
+      "name": "NSDQ100",
+      "yahoo": "NQ=F",
+      "etoro": "NSDQ100",
+      "cost": 0.05,
+      "lev_cap": 20,
+      "signals": [
+        "rsi_rev25"
+      ]
+    },
+    {
+      "name": "DJ30",
+      "yahoo": "YM=F",
+      "etoro": "DJ30",
+      "cost": 0.05,
+      "lev_cap": 20,
+      "signals": [
+        "rsi_rev25"
+      ]
+    },
+    {
+      "name": "GER40",
+      "yahoo": "^GDAXI",
+      "etoro": "GER40",
+      "cost": 0.05,
+      "lev_cap": 20,
+      "signals": [
+        "rsi_rev25"
+      ]
     }
   ],
   "remind_every_min": 3,
