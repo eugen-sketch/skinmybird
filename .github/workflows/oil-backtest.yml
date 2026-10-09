@@ -28,4 +28,5 @@ jobs:
           ETORO_API_KEY: ${{ secrets.ETORO_API_KEY }}
           ETORO_USER_KEY: ${{ secrets.ETORO_USER_KEY }}
           TEST_TRADE: ${{ inputs.test_trade || '0' }}
+          QUIET_LOGS: "1"
         run: python ${{ inputs.script || 'research_fx.py' }}

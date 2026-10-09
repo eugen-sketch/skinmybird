@@ -20,12 +20,13 @@ class EToroError(RuntimeError):
 
 
 class EToroDemo:
-    def __init__(self, api_key: str | None = None, user_key: str | None = None, verbose: bool = True):
+    def __init__(self, api_key: str | None = None, user_key: str | None = None, verbose: bool | None = None):
         self.api_key = api_key or os.getenv("ETORO_API_KEY", "")
         self.user_key = user_key or os.getenv("ETORO_USER_KEY", "")
         if not (self.api_key and self.user_key):
             raise EToroError("Lipsesc ETORO_API_KEY / ETORO_USER_KEY")
-        self.verbose = verbose
+        # logurile rularilor din repo-ul public sunt vizibile oricui: raspunsurile eToro se afiseaza doar la cerere
+        self.verbose = os.getenv("ETORO_VERBOSE") == "1" if verbose is None else verbose
 
     # ---------------------------------------------------------------- baza
     def _req(self, method: str, path: str, *, params=None, body=None, trading: bool = False) -> dict | list:
@@ -46,7 +47,7 @@ class EToroDemo:
         if self.verbose:
             print(f"[eToro] {method} {path} {params or ''} {json.dumps(body) if body else ''} -> {r.status_code} {r.text[:2500] if 'portfolio' in path else r.text[:600]}")
         if r.status_code >= 400:
-            raise EToroError(f"{method} {path} -> {r.status_code}: {r.text[:500]}")
+            raise EToroError(f"{method} {path} -> {r.status_code}: {r.text[:200]}")
         try:
             return r.json()
         except ValueError:

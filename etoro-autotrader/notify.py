@@ -5,7 +5,8 @@ import requests
 
 
 def send(text: str) -> None:
-    print(text, "\n" + "-" * 50)
+    if os.getenv("QUIET_LOGS") != "1":      # in repo public nu afisam tranzactiile in loguri
+        print(text, "\n" + "-" * 50)
     token, chat = os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
     if not (token and chat):
         return
