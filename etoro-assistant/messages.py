@@ -8,6 +8,8 @@ INDEX_NAMES = {"SPX500": "S&P 500 📈", "NSDQ100": "Nasdaq 100 📈", "DJ30": "
 def pair(name: str) -> str:
     if name == "OIL":
         return "Petrol (WTI) 🛢️"
+    if name == "GOLD":
+        return "Aur (Gold) 🥇"
     if name in INDEX_NAMES:
         return INDEX_NAMES[name]
     return f"{name[:3]}/{name[3:]}" if len(name) == 6 and name.isalpha() else name
