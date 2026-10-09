@@ -44,7 +44,7 @@ class EToroDemo:
                     raise EToroError(f"{method} {path}: {type(e).__name__}") from e
                 headers["x-request-id"] = str(uuid.uuid4())
         if self.verbose:
-            print(f"[eToro] {method} {path} {params or ''} {json.dumps(body) if body else ''} -> {r.status_code} {r.text[:600]}")
+            print(f"[eToro] {method} {path} {params or ''} {json.dumps(body) if body else ''} -> {r.status_code} {r.text[:2500] if 'portfolio' in path else r.text[:600]}")
         if r.status_code >= 400:
             raise EToroError(f"{method} {path} -> {r.status_code}: {r.text[:500]}")
         try:
@@ -118,3 +118,7 @@ class EToroDemo:
             candles = candles[0]["candles"]
         c = candles[0]
         return float(c.get("close") or c.get("Close"))
+
+    def order_status(self, order_id: int) -> dict:
+        """Starea unui ordin: statusID 3 = executat, 4 = respins (cu errorMessage)."""
+        return self._req("GET", f"/api/v1/trading/info/demo/orders/{order_id}", trading=True)

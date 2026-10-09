@@ -7,16 +7,17 @@
     "tp_atr": 2.5,
     "max_hours": 48,
     "risk_pct": 4,
-    "max_margin_pct": 40,
+    "max_margin_pct": 75,
     "max_leverage": 10,
     "min_amount": 50,
-    "max_open": 2,
+    "max_open": 1,
     "daily_loss_stop_pct": 8,
     "kill_equity_frac": 0.6,
     "blackout_hours_utc": [
       21,
       22
-    ]
+    ],
+    "min_notional": 1000
   },
   "instruments": [
     {

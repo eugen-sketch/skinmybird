@@ -6,6 +6,7 @@ Rulat periodic (GitHub Actions, la ~10 min). Starea (pozitii urmarite, echitate 
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import time
@@ -37,29 +38,21 @@ def compute_signal(df: pd.DataFrame, p: dict) -> dict:
 
 
 def size_position(equity: float, price: float, atr_v: float, p: dict, lev_cap: int) -> dict | None:
-    """Marja (suma investita) si levier, astfel incat pierderea la SL <= risk_pct din echitate, marja <= max_margin_pct."""
+    """Marja si levier. eToro cere expunere (marja x levier) >= min_notional (1000$), deci e minimul real al riscului."""
     sl_frac = p["sl_atr"] * atr_v / price
     if sl_frac <= 0:
         return None
-    risk_usd = equity * p["risk_pct"] / 100
-    notional = risk_usd / sl_frac
+    notional = max(equity * p["risk_pct"] / 100 / sl_frac, p["min_notional"] * 1.01)
     max_margin = equity * p["max_margin_pct"] / 100
+    cap = min(lev_cap, p["max_leverage"])
     for lev in (1, 2, 5, 10, 20, 30):
-        if lev > min(lev_cap, p["max_leverage"]):
+        if lev > cap:
+            return None                       # nici cu levierul maxim nu incape in marja permisa
+        if notional / lev <= max_margin:
             break
-        margin = notional / lev
-        if margin <= max_margin:
-            break
-    else:
-        lev = 1
-    lev = min(lev, lev_cap, p["max_leverage"])
-    margin = min(notional / lev, max_margin)
-    if margin < p["min_amount"]:
-        margin = p["min_amount"]          # minimul eToro; riscul real e calculat mai jos
-        if margin > max_margin * 1.5:
-            return None
+    margin = math.ceil(notional / lev * 100) / 100
     notional = margin * lev
-    return {"amount": round(margin, 2), "leverage": lev, "notional": notional, "risk_usd": notional * sl_frac}
+    return {"amount": margin, "leverage": lev, "notional": notional, "risk_usd": notional * sl_frac}
 
 
 # ------------------------------------------------------------------ brokeri
@@ -113,13 +106,18 @@ class EToroBroker:
 
     def open(self, inst, side, amount, lev, sl, tp, price) -> str:
         before = {p["id"] for p in self.positions()}
-        self.api.open_market(self.ids[inst["name"]], side == 1, amount, lev, sl, tp)
-        for _ in range(6):
+        r = self.api.open_market(self.ids[inst["name"]], side == 1, amount, lev, sl, tp)
+        oid = r.get("orderId") if isinstance(r, dict) else None
+        for _ in range(8):
             time.sleep(3)
+            if oid:
+                st = self.api.order_status(oid)
+                if st.get("statusID") == 4:
+                    raise EToroError(f"Ordin respins: {st.get('errorMessage')}")
             new = [p for p in self.positions() if p["id"] not in before and p["instrument"] == inst["name"]]
             if new:
                 return new[0]["id"]
-        raise EToroError("Ordinul trimis, dar pozitia nu apare in portofoliu (verifica manual pe eToro).")
+        raise EToroError("Ordinul trimis, dar pozitia nu apare in portofoliu dupa 24s (verifica manual pe eToro).")
 
     def close(self, pid, inst) -> None:
         self.api.close_position(int(pid), self.ids[inst["name"]])

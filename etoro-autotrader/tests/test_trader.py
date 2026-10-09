@@ -24,10 +24,11 @@ def crash(n=200):
     return frame(x)
 
 
-def test_sizing_respects_margin_and_leverage_caps():
-    z = trader.size_position(140, 80.0, 0.5, P, 10)
-    assert z["leverage"] <= 10 and z["amount"] <= 140 * 0.4 * 1.5
+def test_sizing_respects_etoro_minimum_exposure_and_margin_cap():
+    z = trader.size_position(140, 80.0, 0.4, P, 10)
+    assert z["notional"] >= 1000 and z["leverage"] <= 10 and z["amount"] <= 140 * 0.75 + 0.01
     assert z["risk_usd"] > 0
+    assert trader.size_position(140, 80.0, 0.4, P, 5) is None   # 1000$ la lev 5 = 200$ marja > 105$
 
 
 def test_signal_buy_after_crash():

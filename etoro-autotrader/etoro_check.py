@@ -45,13 +45,22 @@ def main() -> int:
         ok = False
     if os.getenv("TEST_TRADE") == "1" and "EURUSD" in ids:
         try:
-            r = api.open_market(ids["EURUSD"], True, 50, 1, stop_loss=0.5, take_profit=5.0)
-            print("Ordin test deschis:", r)
-            time.sleep(5)
-            mine = [p for p in api.positions() if int(p.get("instrumentID") or p.get("InstrumentID") or 0) == ids["EURUSD"]]
-            for p in mine:
-                pid = p.get("positionID") or p.get("PositionID")
-                print("Inchid", pid, api.close_position(int(pid), ids["EURUSD"]))
+            px = api.last_price(ids["EURUSD"])
+            r = api.open_market(ids["EURUSD"], True, 52, 20, stop_loss=round(px * 0.99, 5), take_profit=round(px * 1.02, 5))
+            oid = r.get("orderId")
+            pid = None
+            for _ in range(10):
+                time.sleep(3)
+                print("Stare ordin:", api.order_status(oid))
+                mine = [p for p in api.positions() if int(p.get("instrumentID") or p.get("InstrumentID") or 0) == ids["EURUSD"]]
+                if mine:
+                    pid = mine[0].get("positionID") or mine[0].get("PositionID")
+                    break
+            print("Pozitie deschisa, id:", pid)
+            if pid:
+                print("Inchid:", api.close_position(int(pid), ids["EURUSD"]))
+                time.sleep(6)
+                print("Pozitii ramase:", len(api.positions()))
         except EToroError as e:
             print(f"[!] ordin test: {e}")
             ok = False
