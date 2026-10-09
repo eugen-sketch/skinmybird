@@ -15,7 +15,7 @@ class FakeTG:
     def __init__(self):
         self.sent, self.cleared, self.events, self._mid = [], [], [], 100
 
-    def send(self, text, buttons=None, menu=None):
+    def send(self, text, buttons=None, menu=None, silent=False):
         self._mid += 1
         self.sent.append((text, buttons, self._mid))
         return self._mid
@@ -231,3 +231,15 @@ def test_manual_scan_explains_what_it_checked(monkeypatch):
     a.scan(manual=True)
     text = tg.texts[-1]
     assert "Am scanat acum 8 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "07:00 UTC" in text
+
+
+def test_scan_counter_and_heartbeat_text(monkeypatch):
+    a, tg, br = make()
+    fake_scan(monkeypatch, {})
+    a.scan()
+    a.scan()
+    assert a.scans == 2 and a.last_scan == "08:15"
+    import messages
+    t = messages.heartbeat("09:15", a.scans, a.last_scan, 1, True)
+    assert "sunt activ" in t and "2 scanări" in t and "08:15" in t and "1 poziții" in t
+    assert "piața e închisă" in messages.heartbeat("22:00", 5, "21:45", 0, False)

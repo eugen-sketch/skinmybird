@@ -40,6 +40,7 @@ class Assistant:
         self.known: dict[str, dict] = {}        # pozitii urmarite: pid -> {..., last_pnl}
         self.expecting: dict[str, str] = {}      # pid -> motiv (YOU / BASKET) cand inchid eu
         self.sid = 0
+        self.scans, self.last_scan = 0, "-"
         self.realized, self.n_closed = 0.0, 0
         self.stop_reason: str | None = None
         self.last_err: tuple[str, float] = ("", 0.0)
@@ -75,6 +76,8 @@ class Assistant:
     # ------------------------------------------------------------------ scanare
     def scan(self, manual: bool = False) -> None:
         now = self.now_fn()
+        self.scans += 1
+        self.last_scan = now.strftime("%H:%M")
         if not self.market_open(now):
             if manual:
                 self.tg.send("😴 Piața e închisă sau prea aproape de închidere, nu caut semnale acum.")
@@ -319,6 +322,7 @@ class Assistant:
         start = time.time()
         end = start + hours * 3600
         t_scan = t_mon = t_upd = 0.0
+        t_hb = time.time()
         warned = False
         sig_mod.signal(sig_mod.SIGTERM, lambda *a: setattr(self, "stop_reason", "GitHub a oprit sesiunea"))
         sig_mod.signal(sig_mod.SIGINT, lambda *a: setattr(self, "stop_reason", "GitHub a oprit sesiunea"))
@@ -337,6 +341,10 @@ class Assistant:
                     t_upd = now
                     self.tg.send(msg.update([{"name": p["name"], "pnl": p["last_pnl"]} for p in self.known.values()],
                                             sum(p["last_pnl"] for p in self.known.values())))
+                if now - t_hb >= 3600:
+                    t_hb = now
+                    n = self.now_fn()
+                    self.tg.send(msg.heartbeat(n.strftime("%H:%M"), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
                 self.expire_pending()
                 if not warned and end - now < 20 * 60:
                     warned = True
