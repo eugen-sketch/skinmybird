@@ -35,7 +35,8 @@ def executor(o, h, l, c, atr, target, k, cost, max_hold=None, with_active=False)
     """target[t] = pozitia dorita (+1/-1/0) decisa la inchiderea zilei t, executata la deschiderea zilei t+1. Stop = k*ATR."""
     n = len(c)
     ret = np.zeros(n)
-    act = np.zeros(n, dtype=int)     # +1/-1 daca ai avut pozitie deschisa in ziua t
+    act = np.zeros(n, dtype=int)     # id-ul tranzactiei active in ziua t (0 = nimic)
+    tid = 0
     pos, entry, stop, held = 0, 0.0, 0.0, 0
     for t in range(1, n):
         want = int(target[t - 1])
@@ -49,6 +50,7 @@ def executor(o, h, l, c, atr, target, k, cost, max_hold=None, with_active=False)
             prev, pos, held = o[t], 0, 0
         if pos == 0 and want != 0 and np.isfinite(atr[t - 1]):
             pos, entry, held = want, o[t], 0
+            tid += 1
             stop = entry - pos * k * atr[t - 1]
             day -= cost / 2 / 100
             prev = o[t]
@@ -59,12 +61,12 @@ def executor(o, h, l, c, atr, target, k, cost, max_hold=None, with_active=False)
                 day += pos * (px / prev - 1) - cost / 2 / 100 - CARRY / 100
                 pos, held = 0, 0
                 ret[t] = day
-                act[t] = pos_day if False else (pos_start or want)
+                act[t] = tid
                 continue
             day += pos * (c[t] / prev - 1) - CARRY / 100
             held += 1
         ret[t] = day
-        act[t] = pos_start if pos_start else pos
+        act[t] = tid if (pos_start or pos) else 0
     return (ret, act) if with_active else ret
 
 

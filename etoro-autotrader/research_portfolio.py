@@ -25,7 +25,7 @@ SETS = {
 
 
 def trades_of(ret, act, idx):
-    out, i, n = [], 0, len(act)
+    out, n, i = [], len(act), 0
     while i < n:
         if act[i] != 0:
             j = i
@@ -39,20 +39,20 @@ def trades_of(ret, act, idx):
 
 
 def simulate(all_trades, start, end, eq0=EQ0):
-    """all_trades: list (instrument, t0, t1, rets). Intrari in ordinea datei; sar peste daca marja nu ajunge."""
-    tr = sorted((t for t in all_trades if start <= t[1] <= end), key=lambda x: x[1])
+    """Intrari in ordinea datei; marja ocupata pana la iesire; sar peste daca marja nu ajunge. PnL in dolari."""
+    tr = sorted((t for t in all_trades if start <= t[1] and t[2] is not None and t[1] <= end and t[1] >= start), key=lambda x: x[1])
+    ev = sorted(((t[1], t[2], t[3], t[0]) for t in tr), key=lambda x: x[0])
     eq, peak, mdd, taken, wins = eq0, eq0, 0.0, [], 0
-    open_pos = []   # (t_end, margin)
-    daily = {}
-    for inst, t0, t1, rets in tr:
-        open_pos = [(te, m) for te, m in open_pos if te >= t0]
-        used = sum(m for _, m in open_pos)
+    open_pos = []
+    for t0, t1, rets, inst in ev:
+        open_pos = [(te, m, pnl_) for te, m, pnl_ in open_pos if te >= t0]
+        used = sum(m for _, m, _ in open_pos)
         margin = EXPO / LEV[inst]
         if eq < margin + 1 or used + margin > eq:
             continue
-        pnl = (rets * EXPO).sum()
+        pnl = float((rets * EXPO).sum())
         eq += pnl
-        open_pos.append((t1, margin))
+        open_pos.append((t1, margin, pnl))
         taken.append(pnl)
         wins += pnl > 0
         peak = max(peak, eq)
@@ -61,7 +61,9 @@ def simulate(all_trades, start, end, eq0=EQ0):
             eq = 0
             break
     n = len(taken)
-    return {"final": eq, "n": n, "win": wins / n * 100 if n else 0, "mdd": mdd * 100, "pnl": taken}
+    arr = np.array(taken) if taken else np.array([0.0])
+    return {"final": eq, "n": n, "win": wins / n * 100 if n else 0, "mdd": mdd * 100, "avg_win": arr[arr > 0].mean() if (arr > 0).any() else 0,
+            "avg_loss": arr[arr < 0].mean() if (arr < 0).any() else 0}
 
 
 def main():
@@ -89,7 +91,7 @@ def main():
             res.append(simulate(trades, st, st + pd.DateOffset(years=1))["final"] - EQ0)
         res = np.array(res)
         print(f"\n== {label} ==")
-        print(f"  Tot istoricul: {full['n']} tranz, {full['win']:.0f}% castig, cont final {full['final']:.0f}$, cadere max {full['mdd']:.0f}%")
+        print(f"  Tot istoricul: {full['n']} tranz, {full['win']:.0f}% castig (medie +{full['avg_win']:.0f}$ / {full['avg_loss']:.0f}$), cont final {full['final']:.0f}$, cadere max {full['mdd']:.0f}%")
         print(f"  Din 2016 (nevazut): {oos['n']} tranz ({oos['n']/10:.1f}/an), {oos['win']:.0f}% castig, cont final {oos['final']:.0f}$, cadere max {oos['mdd']:.0f}%")
         print(f"  Ferestre de 1 an cu 140$: pe minus in {np.mean(res < 0)*100:.0f}% din {len(res)} ferestre; "
               f"mediana {np.median(res):+.0f}$, 10% cele mai rele <= {np.percentile(res, 10):+.0f}$, 10% cele mai bune >= {np.percentile(res, 90):+.0f}$, "
