@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pune logo-ul ca poza de profil a botului Telegram: mai intai varianta animata, apoi cea fixa."""
+"""Pune logo-ul ca poza de profil a botului Telegram: imaginea fixa din assets/logo.jpg."""
 import json
 import os
 import sys
@@ -26,11 +26,8 @@ def call(photo: dict, fname: str, kind: str):
     return bool(body.get("ok"))
 
 
-ok = call({"type": "animated", "animation": "attach://anim"}, "logo_anim.mp4", "anim")
-how = "animată"
-if not ok:
-    ok = call({"type": "static", "photo": "attach://img"}, "logo.jpg", "img")
-    how = "fixă"
+ok = call({"type": "static", "photo": "attach://img"}, "logo.jpg", "img")
+how = "fixă"
 if chat:
     text = f"✅ Am pus logo-ul tău ca poză de profil ({how})." if ok else \
         "⚠️ Telegram n-a acceptat poza prin API. O poți pune din @BotFather: /mybots → botul tău → Edit Bot → Edit Botpic."
