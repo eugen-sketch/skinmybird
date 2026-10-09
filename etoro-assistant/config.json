@@ -137,6 +137,16 @@
       "signals": [
         "rsi_rev25"
       ]
+    },
+    {
+      "name": "GOLD",
+      "yahoo": "GC=F",
+      "etoro": "GOLD",
+      "cost": 0.05,
+      "lev_cap": 20,
+      "signals": [
+        "rsi_rev25"
+      ]
     }
   ],
   "remind_every_min": 3,

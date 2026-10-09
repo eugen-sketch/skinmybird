@@ -230,7 +230,7 @@ def test_manual_scan_explains_what_it_checked(monkeypatch):
                                                            "asia_pos": "în interior", "n_bars": 700})
     a.scan(manual=True)
     text = tg.texts[-1]
-    assert "Am scanat acum 12 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "07:00–08:00 UTC" in text
+    assert "Am scanat acum 13 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "07:00–08:00 UTC" in text
 
 
 def test_scan_counter_and_heartbeat_text(monkeypatch):
