@@ -1,0 +1,42 @@
+name: eToro autotrader (demo)
+
+on:
+  schedule:
+    - cron: "*/10 * * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: autotrader
+  cancel-in-progress: false
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests pandas numpy
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: etoro-autotrader/state.json
+          key: trader-state-${{ github.run_id }}
+          restore-keys: trader-state-
+      - name: Run autotrader
+        working-directory: etoro-autotrader
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ETORO_API_KEY: ${{ secrets.ETORO_API_KEY }}
+          ETORO_USER_KEY: ${{ secrets.ETORO_USER_KEY }}
+        run: python trader.py
+        continue-on-error: true
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: etoro-autotrader/state.json
+          key: trader-state-${{ github.run_id }}

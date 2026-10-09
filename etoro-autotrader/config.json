@@ -1,0 +1,96 @@
+{
+  "virtual_equity": 140,
+  "params": {
+    "strategy": "london_breakout",
+    "rsi_period": 14,
+    "rsi_extreme": 20,
+    "sl_atr": 2.0,
+    "tp_atr": 2.5,
+    "max_hours": 24,
+    "risk_pct": 3,
+    "max_margin_pct": 40,
+    "max_total_margin_pct": 90,
+    "max_leverage": 30,
+    "min_notional": 1000,
+    "min_amount": 0,
+    "max_open": 10,
+    "daily_loss_stop_pct": 100,
+    "kill_equity_frac": 0.1,
+    "blackout_hours_utc": [
+      21,
+      22
+    ]
+  },
+  "instruments": [
+    {
+      "name": "EURUSD",
+      "yahoo": "EURUSD=X",
+      "etoro": "EURUSD",
+      "cost": 0.012,
+      "lev_cap": 30
+    },
+    {
+      "name": "GBPUSD",
+      "yahoo": "GBPUSD=X",
+      "etoro": "GBPUSD",
+      "cost": 0.018,
+      "lev_cap": 30
+    },
+    {
+      "name": "USDJPY",
+      "yahoo": "USDJPY=X",
+      "etoro": "USDJPY",
+      "cost": 0.018,
+      "lev_cap": 30
+    },
+    {
+      "name": "AUDUSD",
+      "yahoo": "AUDUSD=X",
+      "etoro": "AUDUSD",
+      "cost": 0.022,
+      "lev_cap": 30
+    },
+    {
+      "name": "USDCAD",
+      "yahoo": "USDCAD=X",
+      "etoro": "USDCAD",
+      "cost": 0.022,
+      "lev_cap": 30
+    },
+    {
+      "name": "USDCHF",
+      "yahoo": "USDCHF=X",
+      "etoro": "USDCHF",
+      "cost": 0.025,
+      "lev_cap": 30
+    },
+    {
+      "name": "NZDUSD",
+      "yahoo": "NZDUSD=X",
+      "etoro": "NZDUSD",
+      "cost": 0.03,
+      "lev_cap": 30
+    },
+    {
+      "name": "EURGBP",
+      "yahoo": "EURGBP=X",
+      "etoro": "EURGBP",
+      "cost": 0.025,
+      "lev_cap": 20
+    },
+    {
+      "name": "EURJPY",
+      "yahoo": "EURJPY=X",
+      "etoro": "EURJPY",
+      "cost": 0.03,
+      "lev_cap": 20
+    },
+    {
+      "name": "GBPJPY",
+      "yahoo": "GBPJPY=X",
+      "etoro": "GBPJPY",
+      "cost": 0.04,
+      "lev_cap": 20
+    }
+  ]
+}

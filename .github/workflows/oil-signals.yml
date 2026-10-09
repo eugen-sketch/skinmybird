@@ -1,8 +1,6 @@
 name: Oil signals
 
 on:
-  schedule:
-    - cron: "*/15 * * * 0-5"
   workflow_dispatch:
     inputs:
       test_message:

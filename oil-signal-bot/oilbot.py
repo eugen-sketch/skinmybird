@@ -25,13 +25,17 @@ YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
 DEFAULTS = {
     "interval": "1h",
     "range": "60d",
+    "strategy": "rsi_reversion",  # sau "score" (strategia veche, pe scor)
+    "rsi_extreme": 20,      # BUY sub 20, SELL peste 80
+    "sl_pct": 2.0,          # Stop Loss in % din pret (None = foloseste ATR)
+    "tp_pct": 1.5,          # Take Profit in % din pret
     "min_score": 4,
     "adx_min": 18,
     "trend_filter": True,   # BUY doar peste EMA200, SELL doar sub EMA200
     "atr_sl_mult": 1.5,
     "atr_tp_mult": 3.0,
-    "max_bars": 72,         # iesire fortata dupa N ore daca nu atinge nici SL nici TP
-    "position_usd": 1000,   # pentru estimarea castigului/pierderii in $
+    "max_bars": 48,         # iesire fortata dupa N ore daca nu atinge nici SL nici TP
+    "position_usd": 400,    # pentru estimarea castigului/pierderii in $
 }
 
 
@@ -61,7 +65,7 @@ def rsi(close: pd.Series, n: int = 14) -> pd.Series:
     d = close.diff()
     up = d.clip(lower=0).ewm(alpha=1 / n, adjust=False).mean()
     dn = (-d.clip(upper=0)).ewm(alpha=1 / n, adjust=False).mean()
-    return 100 - 100 / (1 + up / dn.replace(0, np.nan))
+    return (100 - 100 / (1 + up / dn)).fillna(50)  # dn=0 -> RSI 100; 0/0 -> neutru
 
 
 def true_range(df: pd.DataFrame) -> pd.Series:
@@ -116,9 +120,12 @@ def build(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def signals(ind: pd.DataFrame, cfg: dict) -> pd.Series:
-    """+1 BUY, -1 SELL, 0 nimic - dupa filtrele de trend si ADX."""
-    buy = ind["score"] >= cfg["min_score"]
-    sell = ind["score"] <= -cfg["min_score"]
+    """+1 BUY, -1 SELL, 0 nimic."""
+    if cfg.get("strategy") == "rsi_reversion":
+        ext = cfg["rsi_extreme"]
+        return pd.Series(np.where(ind["rsi"] < ext, 1, np.where(ind["rsi"] > 100 - ext, -1, 0)), index=ind.index)
+    buy = ind["score"] >= cfg.get("min_score")
+    sell = ind["score"] <= -cfg.get("min_score")
     ok = ind["adx"] >= cfg["adx_min"]
     if cfg["trend_filter"]:
         buy &= ind["close"] > ind["ema200"]
@@ -127,6 +134,8 @@ def signals(ind: pd.DataFrame, cfg: dict) -> pd.Series:
 
 
 def levels(side: int, price: float, atr_v: float, cfg: dict) -> tuple[float, float]:
+    if cfg.get("strategy") == "rsi_reversion":
+        return price * (1 - side * cfg["sl_pct"] / 100), price * (1 + side * cfg["tp_pct"] / 100)
     return price - side * cfg["atr_sl_mult"] * atr_v, price + side * cfg["atr_tp_mult"] * atr_v
 
 
@@ -152,7 +161,7 @@ def simulate(ind: pd.DataFrame, cfg: dict) -> list[dict]:
             if hit_tp:
                 exit_px, j = tp, k
                 break
-        trades.append({"side": side, "pnl": side * (exit_px - entry), "pct": side * (exit_px / entry - 1) * 100,
+        trades.append({"side": side, "pnl": side * (exit_px - entry), "pct": side * (exit_px / entry - 1) * 100 - 0.06,  # minus cost estimat (spread)
                        "time": ind.index[i]})
         i = j + 1
     return trades
@@ -169,7 +178,7 @@ def stats(trades: list[dict]) -> dict:
 
 
 def fmt_stats(name: str, s: dict, cfg: dict | None = None) -> str:
-    tag = f" [scor>={cfg['min_score']} SL{cfg['atr_sl_mult']}x TP{cfg['atr_tp_mult']}x ADX>={cfg['adx_min']}]" if cfg else ""
+    tag = f" [RSI<{cfg['rsi_extreme']} SL{cfg['sl_pct']}% TP{cfg['tp_pct']}%]" if cfg and "rsi_extreme" in cfg else ""
     return (f"{name}{tag}: {s['n']} tranzactii | câștigătoare {s['win']:.0f}% | profit factor {s['pf']:.2f} | "
             f"medie {s['avg_pct']:+.2f}%/tranz. | total {s['total_pct']:+.1f}% | cădere max {s['max_dd_pct']:.1f}%")
 
@@ -182,11 +191,11 @@ def run_backtest(cfg: dict) -> None:
         lines.append(f"\n{name}: {len(df)} bare")
         lines.append("Setări curente → " + fmt_stats("", stats(simulate(ind, cfg)))[2:])
         grid = []
-        for ms, adxm, sl, tp in itertools.product([3, 4, 5], [15, 20, 25], [1.0, 1.5, 2.0], [2.0, 3.0, 4.0]):
-            c = {**cfg, "min_score": ms, "adx_min": adxm, "atr_sl_mult": sl, "atr_tp_mult": tp}
-            s = stats(simulate(ind, c))
-            if s["n"] >= 40:
-                grid.append((s["pf"], s, c))
+        for ext, sl, tp in itertools.product([15, 20, 25], [1.2, 2.0, 3.0], [1.0, 1.5, 2.2]):
+            c = {**cfg, "rsi_extreme": ext, "sl_pct": sl, "tp_pct": tp}
+            s_ = stats(simulate(ind, c))
+            if s_["n"] >= 30:
+                grid.append((s_["pf"], s_, c))
         grid.sort(key=lambda x: -x[0])
         lines.append("Cele mai bune 3 combinații (atenție: pot fi potrivite pe trecut):")
         lines += ["  " + fmt_stats("", s, c)[2:] for _, s, c in grid[:3]]
@@ -209,7 +218,7 @@ def entry_msg(name: str, side: int, price: float, atr_v: float, score: int, rsi_
         f"Stop Loss: {usd(sl)}  (−{usd(risk)} / baril, −{risk / price * 100:.1f}%)\n"
         f"Take Profit: {usd(tp)}  (+{usd(gain)} / baril, +{gain / price * 100:.1f}%)\n"
         f"La ${pos:,.0f} investiți: risc ≈ {usd(pos * risk / price)}, câștig țintă ≈ {usd(pos * gain / price)}\n"
-        f"Forță semnal: {abs(score)}/6 | RSI {rsi_v:.0f} | ADX {adx_v:.0f}\n"
+        f"RSI {rsi_v:.0f} ({'supravândut' if side == 1 else 'supracumpărat'}) — așteptăm revenirea prețului\n"
         f"Ieși automat dacă nu se atinge nimic în {cfg['max_bars']}h."
     )
 
