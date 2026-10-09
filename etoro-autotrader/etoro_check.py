@@ -8,7 +8,7 @@ import time
 import notify
 from etoro import EToroDemo, EToroError
 
-SYMBOLS = ["OIL", "UKOIL", "XAUUSD", "GOLD", "EURUSD"]
+SYMBOLS = ["OIL", "GOLD", "EURUSD"]
 
 
 def main() -> int:
@@ -26,9 +26,10 @@ def main() -> int:
             print(f"[!] {s}: {e}")
             ok = False
     print("INSTRUMENT IDs:", ids)
-    for q in ("OIL", "BRENT", "XAUUSD"):   # descoperire: ce nume are petrolul/aurul pe eToro
+    for q in ("OIL", "BRENT", "GOLD", "NGAS", "SILVER"):   # descoperire: numele exacte pe eToro
         try:
-            api._req("GET", "/api/v1/market-data/search", params={"searchText": q, "fields": "instrumentId,internalSymbolFull,displayname"})
+            names = [(i["internalSymbolFull"], i["instrumentId"]) for i in api.search_symbols(q)]
+            print(f"CANDIDATI {q}: {names[:60]}")
         except EToroError as e:
             print(f"[!] cautare {q}: {e}")
     if "EURUSD" in ids:

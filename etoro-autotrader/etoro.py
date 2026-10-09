@@ -53,25 +53,28 @@ class EToroDemo:
             return {"raw": r.text}
 
     # ---------------------------------------------------------- instrumente
+    def search_symbols(self, symbol: str, pages: int = 4) -> list[dict]:
+        """Toate instrumentele al caror simbol incepe cu 'symbol' (pagini de cate 100)."""
+        out = []
+        for page in range(1, pages + 1):
+            data = self._req("GET", "/api/v1/market-data/search",
+                             params={"internalSymbolFull": symbol, "fields": "instrumentId,internalSymbolFull,displayname",
+                                     "pageSize": 100, "pageNumber": page, "page": page})
+            items = data.get("items") if isinstance(data, dict) else data
+            items = [i for i in (items or []) if i.get("internalSymbolFull")]
+            out += items
+            if not items or len(out) >= int(data.get("totalItems", 0) if isinstance(data, dict) else 0):
+                break
+        return out
+
     def find_instrument_id(self, symbol: str) -> int:
-        """Cauta ID-ul numeric al instrumentului dupa simbol (ex: EURUSD, GOLD)."""
-        last = None
-        for path, params in (
-            ("/api/v1/market-data/search", {"internalSymbolFull": symbol, "fields": "instrumentId,internalSymbolFull,displayname"}),
-            ("/api/v1/market-data/search", {"searchText": symbol, "fields": "instrumentId,internalSymbolFull,displayname"}),
-        ):
-            try:
-                data = self._req("GET", path, params=params)
-            except EToroError as e:
-                last = e
-                continue
-            items = data.get("items") or data.get("instruments") or data.get("Items") if isinstance(data, dict) else data
-            for it in items or []:
-                sym = str(it.get("internalSymbolFull") or it.get("symbolFull") or it.get("symbol") or "").upper()
-                iid = it.get("instrumentId") or it.get("InstrumentID") or it.get("instrumentID")
-                if iid and sym == symbol.upper():
-                    return int(iid)
-        raise EToroError(f"Nu am gasit instrumentul {symbol}: {last}")
+        """ID-ul numeric al instrumentului dupa simbolul exact eToro (ex: EURUSD, OIL)."""
+        items = self.search_symbols(symbol)
+        for it in items:
+            if str(it.get("internalSymbolFull", "")).upper() == symbol.upper():
+                return int(it["instrumentId"])
+        names = [it["internalSymbolFull"] for it in items][:30]
+        raise EToroError(f"Nu am gasit exact {symbol}; candidati: {names}")
 
     # --------------------------------------------------------------- cont
     def portfolio(self) -> dict:
