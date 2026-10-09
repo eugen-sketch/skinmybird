@@ -222,3 +222,12 @@ def test_menu_buttons_work_and_close_all_asks_for_confirmation():
     assert "Ce pot face" in tg.texts[-1]
     press(a, "stopnow")
     assert a.stop_reason == "la cererea ta"
+
+
+def test_manual_scan_explains_what_it_checked(monkeypatch):
+    a, tg, br = make()
+    monkeypatch.setattr(signals, "scan", lambda df, names: {"side": 0, "why": "", "rsi": 61.0, "price": 1.1, "bar": "2026-10-09T07:00:00+00:00",
+                                                           "asia_pos": "în interior", "n_bars": 700})
+    a.scan(manual=True)
+    text = tg.texts[-1]
+    assert "Am scanat acum 8 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "07:00 UTC" in text

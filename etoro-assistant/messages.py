@@ -138,3 +138,18 @@ def confirm_stop(open_n: int) -> str:
 
 def cancelled() -> str:
     return "👌 Bine, las totul cum era."
+
+
+def scan_report(rows: list[dict]) -> str:
+    """rows: name, rsi, thr (prag RSI), asia (poz. fata de intervalul de noapte sau None), bar (ora ultimei bare), note."""
+    lines = []
+    for r in rows:
+        extra = f" · fața de intervalul de noapte: {r['asia']}" if r.get("asia") and r["name"] != "OIL" else ""
+        note = f" ({r['note']})" if r.get("note") else ""
+        lines.append(f"• {pair(r['name']).split(' ')[0]}: RSI {r['rsi']:.0f}{extra}{note}")
+    bar = rows[0]["bar"] if rows else "?"
+    near = sorted((r for r in rows if "rsi" in r), key=lambda r: min(abs(r["rsi"] - r["thr"]), abs(r["rsi"] - (100 - r["thr"]))))
+    n = near[0] if near else None
+    close = f"\n\n🎯 Cel mai aproape de semnal: {pair(n['name']).split(' ')[0]} (RSI {n['rsi']:.0f}, pragul e sub {n['thr']} sau peste {100 - n['thr']})." if n else ""
+    return (f"🔎 Am scanat acum {len(rows)} instrumente (ultima oră încheiată: {bar}).\n" + "\n".join(lines) +
+            f"\n\nNiciun semnal nou. Cumpăr/vând doar la RSI extrem sau la spargerea intervalului de noapte (07–11 UTC).{close}")
