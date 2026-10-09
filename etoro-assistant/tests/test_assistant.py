@@ -262,3 +262,21 @@ def test_long_sessions_are_chained_in_two_runs():
     assert A.plan_session(5) == (5, 0)
     this, rest = A.plan_session(10)
     assert this == 5.5 and abs(rest - 4.5) < 1e-9
+
+
+def test_unanswered_signal_is_repeated_until_answered(monkeypatch):
+    a, tg, br = make()
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    a.scan()
+    sid = next(iter(a.pending))
+    n0 = len(tg.texts)
+    a.now_fn = lambda: T0 + timedelta(minutes=2)
+    a.remind_pending()
+    assert len(tg.texts) == n0                       # prea devreme
+    for m in (4, 8, 12, 16, 20, 24, 27):
+        a.now_fn = lambda m=m: T0 + timedelta(minutes=m)
+        a.remind_pending()
+    reminders = [t for t in tg.texts if "Aștept încă" in t and "EUR/USD" in t]
+    assert len(reminders) == 6                       # maxim 6, apoi se opresc
+    press(a, f"open:{sid}")
+    assert br.pos                                    # raspunsul OK deschide in continuare

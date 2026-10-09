@@ -143,7 +143,8 @@ class Assistant:
         self.sid += 1
         sid = self.sid
         mid = self.tg.send(text, [[("✅ OK, deschide", f"open:{sid}"), ("❌ NU", f"skip:{sid}")]])
-        self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": mid, "amount": amount}
+        self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": mid, "amount": amount,
+                             "last_msg": self.now_fn(), "reminders": 0}
         ok = [k for k, v in self.pending.items()]
         if len(ok) >= 2:
             ids = ",".join(str(k) for k in ok)
@@ -302,6 +303,22 @@ class Assistant:
         elif t.startswith("/ajutor") or t.startswith("/help") or t.startswith("/start") or "ajutor" in t:
             self.tg.send(msg.HELP)
 
+    def remind_pending(self) -> None:
+        """Cat timp nu ai raspuns la un semnal, il repet (cu sunet) la cateva minute, ca sa nu pierzi ocazia."""
+        now = self.now_fn()
+        every = self.cfg.get("remind_every_min", 3)
+        for sid, p in list(self.pending.items()):
+            if p.get("reminders", 0) >= self.cfg.get("max_reminders", 6) or (now - p.get("last_msg", p["created"])).total_seconds() / 60 < every:
+                continue
+            left = int(self.cfg["signal_valid_min"] - (now - p["created"]).total_seconds() / 60)
+            if left <= 0:
+                continue
+            self.tg.clear_buttons(p["msg_id"])
+            p["msg_id"] = self.tg.send(msg.reminder(p["name"], p["side"], p.get("reminders", 0) + 1, left),
+                                       [[("✅ OK, deschide", f"open:{sid}"), ("❌ NU", f"skip:{sid}")]])
+            p["last_msg"] = now
+            p["reminders"] = p.get("reminders", 0) + 1
+
     def expire_pending(self) -> None:
         now = self.now_fn()
         for sid in [k for k, p in self.pending.items() if (now - p["created"]).total_seconds() / 60 > self.cfg["signal_valid_min"]]:
@@ -358,6 +375,7 @@ class Assistant:
                     t_hb = now
                     n = self.now_fn()
                     self.tg.send(msg.heartbeat(n.strftime("%H:%M"), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
+                self.remind_pending()
                 self.expire_pending()
                 if not warned and remaining <= 0 and end - now < 20 * 60:
                     warned = True

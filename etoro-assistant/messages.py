@@ -103,6 +103,12 @@ def basket(n: int, total: float) -> str:
     return f"🎯💵 Țintă comună atinsă! Cele {n} poziții împreună fac ≈ {signed(total)}. Le închid acum."
 
 
+def reminder(name: str, side: int, n: int, left_min: int) -> str:
+    act = "BUY (cumpără)" if side == 1 else "SELL (vinde, short)"
+    return (f"⏰ Aștept încă răspunsul tău ({n}): {'🟢' if side == 1 else '🔴'} {pair(name)} → {act}.\n"
+            f"Semnalul mai e valabil ≈ {left_min} min. Zici OK sau NU?")
+
+
 def expired() -> str:
     return "⌛ Semnalul ăsta a expirat (prețul s-a mișcat între timp). Dacă mai e valabil, îl găsesc la următoarea scanare."
 
