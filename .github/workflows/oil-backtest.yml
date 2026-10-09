@@ -6,6 +6,15 @@ on:
       script:
         description: "Script de rulat din etoro-autotrader (ex: research_fx.py)"
         default: "research_fx.py"
+      verbose:
+        description: "Afiseaza raspunsurile eToro (doar pentru depanare)"
+        default: "0"
+      check_symbols:
+        description: "Simboluri eToro de cautat (etoro_check.py)"
+        default: "OIL,GOLD,EURUSD"
+      check_search:
+        description: "Prefixe de afisat candidati (etoro_check.py)"
+        default: "OIL,GOLD"
       test_trade:
         description: "Deschide si inchide o pozitie minima de test pe DEMO (doar etoro_check.py)"
         default: "0"
@@ -29,4 +38,7 @@ jobs:
           ETORO_USER_KEY: ${{ secrets.ETORO_USER_KEY }}
           TEST_TRADE: ${{ inputs.test_trade || '0' }}
           QUIET_LOGS: "1"
+          ETORO_VERBOSE: ${{ inputs.verbose || '0' }}
+          CHECK_SYMBOLS: ${{ inputs.check_symbols || 'OIL,GOLD,EURUSD' }}
+          CHECK_SEARCH: ${{ inputs.check_search || 'OIL,GOLD' }}
         run: python ${{ inputs.script || 'research_fx.py' }}
