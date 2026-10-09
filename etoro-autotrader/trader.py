@@ -314,6 +314,116 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         state["summary_day"] = day
 
 
+# ------------------------------------------------------------------ mod zilnic (indici, RSI2)
+def daily_signal(df: pd.DataFrame, p: dict, now: datetime) -> dict:
+    """Semnal pe ultima bara zilnica COMPLETA (bara de azi e inca in formare si se ignora)."""
+    if df.index[-1].date() >= now.date():
+        df = df.iloc[:-1]
+    c = df["close"]
+    r2 = ta.rsi(c, 2)
+    sma = c.rolling(p["sma"]).mean()
+    a = ta.atr(df)
+    r, m, px = float(r2.iloc[-1]), float(sma.iloc[-1]), float(c.iloc[-1])
+    side = 0
+    if np.isfinite(m):
+        if r < p["rsi2_entry"] and px > m:
+            side = 1
+        elif p.get("shorts") and r > 100 - p["rsi2_entry"] and px < m:
+            side = -1
+    return {"side": side, "rsi2": r, "atr": float(a.iloc[-1]), "price": px, "bar": df.index[-1].isoformat(),
+            "exit_long": r > p["rsi2_exit"], "exit_short": r < 100 - p["rsi2_exit"]}
+
+
+def run_daily(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datetime | None = None) -> None:
+    now = now or datetime.now(timezone.utc)
+    p = cfg["params"]
+    eq = state.setdefault("equity", cfg["virtual_equity"])
+    opened = state.setdefault("open", {})
+    if now.weekday() >= 5 or now.hour * 60 + now.minute < p.get("act_after_min_utc", 450):
+        return                                    # indicii: actionam dupa deschiderea europeana, in zilele lucratoare
+    digits_of = lambda px: 2 if px >= 100 else 4
+    sigs, candidates = {}, []
+    for inst in cfg["instruments"]:
+        name = inst["name"]
+        try:
+            df = (dfs or {}).get(name)
+            if df is None:
+                df = ta.fetch_ohlc(inst["yahoo"], "1d", "2y")
+            if len(df) < p["sma"] + 20:
+                raise ValueError("prea putine date")
+            sigs[name] = daily_signal(df, p, now)
+        except Exception as e:  # noqa: BLE001
+            print(f"[!] {name}: date indisponibile: {e}")
+            continue
+        sig = sigs[name]
+        print(f"{name}: RSI2={sig['rsi2']:.1f} semnal={sig['side']:+d} pret={sig['price']:.2f}")
+        tr = opened.get(name)
+        if tr:
+            if broker.paper:                       # simulare: oprirea (SL) se verifica pe barele zilnice de dupa intrare
+                after = df[df.index.normalize() > pd.Timestamp(tr["time"]).normalize()]
+                if len(after) and ((after["low"].min() <= tr["sl"]) if tr["side"] == 1 else (after["high"].max() >= tr["sl"])):
+                    broker.remove(tr["id"], inst)
+            live = {x["id"] for x in broker.positions()}
+            days = (now - pd.Timestamp(tr["time"]).to_pydatetime()).total_seconds() / 86400
+            should_exit = (sig["exit_long"] if tr["side"] == 1 else sig["exit_short"]) or days >= p["max_days"]
+            if tr["id"] in live and should_exit and days >= 0.5:
+                try:
+                    broker.close(tr["id"], inst)
+                    time.sleep(3)
+                    live = {x["id"] for x in broker.positions()}
+                except EToroError as e:
+                    notify.send(f"⚠️ N-am reușit să închid {msg.idx(name)} acum ({str(e)[:150]}). Încerc din nou mai târziu.")
+            if tr["id"] not in live:
+                low_hit = (df["low"].iloc[-3:].min() <= tr["sl"]) if tr["side"] == 1 else (df["high"].iloc[-3:].max() >= tr["sl"])
+                kind = "SL" if low_hit and not should_exit else ("RECOVERED" if sig["exit_long"] or sig["exit_short"] else "TIME")
+                try:
+                    px_out = tr["sl"] if kind == "SL" else broker.price(inst)
+                except Exception:  # noqa: BLE001
+                    px_out = sig["price"]
+                res = pnl_usd(tr, px_out, inst["cost"] + p.get("carry_pct_per_day", 0.025) * max(days, 1))
+                eq += res
+                state.setdefault("history", []).append({"name": name, "kind": kind, "pnl": round(res, 2), "time": now.isoformat()})
+                notify.send(msg.daily_closed(name, kind, res, eq, cfg["virtual_equity"], days))
+                opened.pop(name)
+            continue
+        if sig["side"] != 0 and state.get("last_bar", {}).get(name) != sig["bar"]:
+            candidates.append((sig["rsi2"] if sig["side"] == 1 else 100 - sig["rsi2"], inst, sig))
+    # cele mai "supravandute" primele; ocupam locurile libere
+    for _, inst, sig in sorted(candidates, key=lambda x: x[0]):
+        name, side = inst["name"], sig["side"]
+        state.setdefault("last_bar", {})[name] = sig["bar"]
+        used = sum(o.get("amount", 0) for o in opened.values())
+        lev = min(inst["lev_cap"], p["max_leverage"])
+        margin = math.ceil(p["min_notional"] * 1.01 / lev * 100) / 100
+        if len(opened) >= p["max_open"] or used + margin > eq * p["max_total_margin_pct"] / 100:
+            notify.send(msg.skipped(name, side, used, eq * p["max_total_margin_pct"] / 100).replace(msg.pair(name), msg.idx(name)))
+            continue
+        try:
+            px = broker.price(inst)
+        except Exception as e:  # noqa: BLE001
+            print(f"[!] {name}: nu pot lua pretul eToro: {e}")
+            continue
+        notional = margin * lev
+        sl, tp = px - side * p["stop_atr"] * sig["atr"], px * (1 + side * 0.25)
+        d = digits_of(px)
+        notify.send(f"👀 Văd ceva pe {msg.idx(name)}: a scăzut brusc (RSI {sig['rsi2']:.0f}) într-o piață în urcare.\n"
+                    f"📤 Trimit acum ordinul de cumpărare pe eToro demo…")
+        try:
+            pid = broker.open(inst, side, margin, lev, round(sl, d), round(tp, d), px)
+        except EToroError as e:
+            notify.send(f"⚠️ Ordinul pe {msg.idx(name)} n-a mers: {str(e)[:200]}. Nu am deschis nimic.")
+            continue
+        fill = getattr(broker, "last", None)
+        if fill:
+            margin, lev = fill["amount"], fill["leverage"]
+            notional = margin * lev
+        opened[name] = {"id": pid, "side": side, "entry": px, "sl": sl, "tp": tp, "time": now.isoformat(),
+                        "notional": notional, "amount": margin}
+        notify.send(msg.daily_opened(name, px, d, margin, lev, notional, sl, abs(px - sl) / px * notional,
+                                     sig["rsi2"], p["rsi2_exit"], p["max_days"], eq, broker.paper))
+    state["equity"] = eq
+
+
 def build_broker(cfg: dict, state: dict):
     if os.getenv("ETORO_API_KEY") and os.getenv("ETORO_USER_KEY") and os.getenv("PAPER") != "1":
         api = EToroDemo()
@@ -341,7 +451,7 @@ def main() -> int:
         state = {}
     try:
         broker = build_broker(cfg, state)
-        run_once(cfg, state, broker)
+        (run_daily if cfg["params"].get("mode") == "daily_rsi2" else run_once)(cfg, state, broker)
         state.pop("last_err", None)
     except Exception as e:  # noqa: BLE001 - nu lasam jobul sa "pice" (GitHub trimite mail la fiecare esec)
         err_txt = f"{type(e).__name__}: {e}"[:300]

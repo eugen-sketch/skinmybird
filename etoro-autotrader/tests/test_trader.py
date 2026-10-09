@@ -9,7 +9,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import trader  # noqa: E402
 
-CFG = json.loads((Path(__file__).parent.parent / "config.json").read_text())
+CFG = json.loads((Path(__file__).parent.parent / "config_forex.json").read_text())
 P = CFG["params"]
 
 

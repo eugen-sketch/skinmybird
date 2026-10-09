@@ -66,3 +66,33 @@ def summary(n: int, wins: int, pf: float, eq: float, start: float) -> str:
 
 def error(msg: str) -> str:
     return f"⚠️🔧 Am o problemă tehnică și nu pot lucra normal acum.\nDetalii: {msg}\nÎncerc din nou automat, nu trebuie să faci nimic."
+
+
+# ------------------------------------------------------------------ mod zilnic (indici)
+INDEX_NAMES = {"SP500": "S&P 500 🇺🇸", "NASDAQ": "Nasdaq 100 🇺🇸", "DOW": "Dow Jones 🇺🇸", "DAX": "DAX 🇩🇪", "FTSE": "FTSE 100 🇬🇧"}
+
+
+def idx(name: str) -> str:
+    return INDEX_NAMES.get(name, name)
+
+
+def daily_opened(name: str, px: float, digits: int, amount: float, lev: int, notional: float, sl: float, risk: float,
+                 rsi2: float, exit_rsi: int, max_days: int, eq: float, paper: bool) -> str:
+    return (f"🟢🛒 Am cumpărat {idx(name)}\n"
+            f"Indicele a scăzut brusc într-o piață care altfel urcă (RSI {rsi2:.0f}), iar de obicei revine în câteva zile. Am intrat la {px:.{digits}f}.\n\n"
+            f"💰 Am băgat {usd(amount)} din cont (levier {lev}, ca și cum aș avea {usd(notional)} în piață)\n"
+            f"🎯 Vând când își revine (RSI peste {exit_rsi}), de obicei în 2–4 zile\n"
+            f"🛡️ Plasă de siguranță la {sl:.{digits}f}: dacă ajunge acolo, pierd ≈ {usd(risk)} și ies automat\n"
+            f"⏳ Dacă nu revine, ies oricum în {max_days} zile\n"
+            f"👛 Cont virtual: {usd(eq)}{'  🧪 (simulare)' if paper else ''}")
+
+
+def daily_closed(name: str, kind: str, res: float, eq: float, start: float, days: float) -> str:
+    bal = f"👛 Cont virtual: {usd(eq)} (am pornit de la {usd(start)})"
+    d = f"{days:.0f}" if days >= 1 else "mai puțin de o zi"
+    if kind == "SL":
+        return f"😕🛡️ Pe {idx(name)} piața a scăzut în continuare și s-a activat plasa de siguranță.\nPierdere: {usd(res)}. Poziția e închisă după {d} zile.\n{bal}"
+    why = "și-a revenit, am vândut ✅" if kind == "RECOVERED" else "n-a revenit în timp, am închis la piață ⏰"
+    icon = "🎉💵" if res > 0 else "🤷"
+    sign = "+" if res >= 0 else ""
+    return f"{icon} {idx(name)} {why}\nRezultat: {sign}{usd(res)} după {d} zile. Poziția e închisă.\n{bal}"
