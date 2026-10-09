@@ -1,0 +1,12 @@
+{
+  "symbols": {
+    "WTI (US Oil)": "CL=F",
+    "Brent (UK Oil)": "BZ=F"
+  },
+  "interval": "1h",
+  "range": "60d",
+  "check_every_minutes": 15,
+  "min_score": 3,
+  "atr_sl_mult": 1.5,
+  "atr_tp_mult": 3.0
+}
