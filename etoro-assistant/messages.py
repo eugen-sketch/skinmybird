@@ -46,7 +46,9 @@ HELP = ("🤖 Ce pot face (butoanele din meniul de jos fac același lucru):\n"
 def signal(name: str, side: int, why: str, px: float, digits: int, amount: float, lev: int, notional: float,
            tp_px: float, tp_usd: float, sl_px: float, sl_usd: float, free: float, can: bool, reason_no: str = "") -> str:
     act = "CUMPĂR" if side == 1 else "VÂND (short)"
-    head = f"{'🟢' if side == 1 else '🔴'} Semnal pe {pair(name)}: aș putea să {act}.\n{why[:1].upper() + why[1:]}.\nPreț acum: {px:.{digits}f}"
+    verdict = "BUY (cumpără)" if side == 1 else "SELL (vinde, short)"
+    head = (f"{'🟢' if side == 1 else '🔴'} Semnal pe {pair(name)}: aș putea să {act}.\n{why[:1].upper() + why[1:]}.\nPreț acum: {px:.{digits}f}"
+            f"\n👉 Recomandare: {verdict}")
     if not can:
         return f"{head}\n\n🚫 Nu pot deschide acum: {reason_no}"
     return (f"{head}\n\n"
@@ -150,9 +152,15 @@ def scan_report(rows: list[dict]) -> str:
     bar = rows[0]["bar"] if rows else "?"
     near = sorted((r for r in rows if "rsi" in r), key=lambda r: min(abs(r["rsi"] - r["thr"]), abs(r["rsi"] - (100 - r["thr"]))))
     n = near[0] if near else None
-    close = f"\n\n🎯 Cel mai aproape de semnal: {pair(n['name']).split(' ')[0]} (RSI {n['rsi']:.0f}, pragul e sub {n['thr']} sau peste {100 - n['thr']})." if n else ""
+    if n:
+        side = "BUY" if n["rsi"] < 50 else "SELL"
+        close = (f"\n\n🎯 Cel mai aproape de semnal: {pair(n['name']).split(' ')[0]} (RSI {n['rsi']:.0f}). "
+                 f"Ar deveni {side} dacă RSI ajunge {'sub ' + str(n['thr']) if side == 'BUY' else 'peste ' + str(100 - n['thr'])}.")
+    else:
+        close = ""
     return (f"🔎 Am scanat acum {len(rows)} instrumente (ultima oră încheiată: {bar}).\n" + "\n".join(lines) +
-            f"\n\nNiciun semnal nou. Cumpăr/vând doar la RSI extrem sau la spargerea intervalului de noapte (07–11 UTC).{close}")
+            f"\n\nNiciun semnal nou. Cumpăr/vând doar la RSI extrem sau la spargerea intervalului de noapte (07–11 UTC).{close}"
+            f"\n\n👉 Recomandare acum: HOLD ⏸️ — nu cumpăra și nu vinde nimic, așteptăm.")
 
 
 def heartbeat(hhmm: str, scans: int, last_scan: str, open_n: int, market_open: bool) -> str:
