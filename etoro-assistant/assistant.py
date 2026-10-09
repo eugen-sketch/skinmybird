@@ -25,6 +25,15 @@ HERE = Path(__file__).parent
 USD_QUOTE_FACTOR_ONE = {"EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "OIL"}   # P&L deja in USD; la USDJPY/USDCAD/USDCHF se imparte la pret
 
 
+MAX_RUN_HOURS = 5.5          # GitHub opreste orice job dupa 6 ore: sesiunile lungi se inlantuie
+
+
+def plan_session(hours: float) -> tuple[float, float]:
+    """(ore de rulat acum, ore ramase pentru sesiunea urmatoare)."""
+    this = min(hours, MAX_RUN_HOURS)
+    return this, max(0.0, hours - this)
+
+
 def digits_for(name: str, px: float) -> int:
     return 2 if name == "OIL" else 5 if px < 20 else 3
 
@@ -309,7 +318,10 @@ class Assistant:
     def run(self, hours: float) -> None:
         c = self.cfg
         self.tg.drain()
-        self.tg.send(msg.started(hours, c["budget_usd"], c["scan_every_min"], c["tp_usd"], c["basket_target_usd"]), menu=msg.MENU)
+        if os.getenv("CONTINUED") == "1":
+            self.tg.send(msg.continued(hours), menu=msg.MENU)
+        else:
+            self.tg.send(msg.started(hours, c["budget_usd"], c["scan_every_min"], c["tp_usd"], c["basket_target_usd"]), menu=msg.MENU)
         try:
             for p in self.broker.positions():
                 if p["name"] in self.inst:
@@ -319,8 +331,9 @@ class Assistant:
         if self.known:
             self.tg.send(f"👀 Am găsit {len(self.known)} poziții deja deschise pe eToro; le urmăresc și pe ele.")
             self.monitor()
+        this_run, remaining = plan_session(hours)
         start = time.time()
-        end = start + hours * 3600
+        end = start + this_run * 3600
         t_scan = t_mon = t_upd = 0.0
         t_hb = time.time()
         warned = False
@@ -346,15 +359,19 @@ class Assistant:
                     n = self.now_fn()
                     self.tg.send(msg.heartbeat(n.strftime("%H:%M"), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
                 self.expire_pending()
-                if not warned and end - now < 20 * 60:
+                if not warned and remaining <= 0 and end - now < 20 * 60:
                     warned = True
                     self.tg.send(msg.ending_soon(int((end - now) / 60)))
                 if now >= end:
-                    self.stop_reason = "s-a terminat sesiunea"
+                    self.stop_reason = "handover" if remaining > 0.01 else "s-a terminat sesiunea"
             except Exception as e:  # noqa: BLE001 - nu lasam asistentul sa cada pentru o eroare trecatoare
                 self.report_error(f"{type(e).__name__}: {str(e)[:150]}")
                 self.sleep(10)
-        self.tg.send(msg.stopped(self.stop_reason, len(self.known)))
+        if self.stop_reason == "handover":
+            (HERE / "handover.txt").write_text(f"{remaining:g}")          # pasul urmator din workflow porneste sesiunea noua
+            self.tg.send(msg.handover(remaining, len(self.known)), silent=True)
+        else:
+            self.tg.send(msg.stopped(self.stop_reason, len(self.known)))
 
 
 def main() -> int:

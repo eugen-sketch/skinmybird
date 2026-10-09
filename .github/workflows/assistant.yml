@@ -4,8 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       hours:
-        description: "Cât timp rămâne pornit, în ore (maxim 5.5)"
-        default: "5"
+        description: "Cât timp rămâne pornit, în ore (peste 5.5 ore se pornește automat o sesiune nouă)"
+        default: "8"
+      continued:
+        description: "Folosit automat la continuare (nu-l atinge)"
+        default: "0"
+
+permissions:
+  contents: read
+  actions: write
 
 concurrency:
   group: assistant
@@ -30,4 +37,13 @@ jobs:
           ETORO_USER_KEY: ${{ secrets.ETORO_USER_KEY }}
           QUIET_LOGS: "1"
           SESSION_HOURS: ${{ inputs.hours }}
+          CONTINUED: ${{ inputs.continued }}
         run: python assistant.py
+      - name: Continue in a new session if hours remain
+        working-directory: etoro-assistant
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f handover.txt ]; then
+            gh workflow run assistant.yml --ref master -f hours="$(cat handover.txt)" -f continued=1
+          fi
