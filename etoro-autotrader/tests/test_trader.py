@@ -82,7 +82,7 @@ def test_paper_buy_then_tp_updates_equity(monkeypatch):
     now = datetime(2026, 10, 7, 8, 5, tzinfo=timezone.utc)
     df = breakout_day(+1)
     trader.run_once(cfg, state, broker, {"EURUSD": df}, now)
-    assert "EURUSD" in state["open"] and any("BUY" in n for n in notes)
+    assert "EURUSD" in state["open"] and any("Am cumpărat" in n for n in notes)
     tr = state["open"]["EURUSD"]
     up = pd.DataFrame({"open": [tr["tp"]], "high": [tr["tp"] + 0.001], "low": [tr["tp"] - 0.0001], "close": [tr["tp"]]},
                       index=[df.index[-1] + pd.Timedelta(hours=2)])
