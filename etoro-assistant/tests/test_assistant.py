@@ -255,3 +255,10 @@ def test_scanner_ignores_forming_hour_and_live_tick_bar():
     assert str(done.index[-1]) == "2026-10-09 07:00:00+00:00"          # ultima ora INCHEIATA e 07:00, nu 08:00
     exactly = sg.completed(df, pd.Timestamp("2026-10-09 09:00:00", tz="UTC"))
     assert str(exactly.index[-1]) == "2026-10-09 08:00:00+00:00"       # la 09:00 fix, ora de 08:00 s-a incheiat
+
+
+def test_long_sessions_are_chained_in_two_runs():
+    assert A.plan_session(8) == (5.5, 2.5)
+    assert A.plan_session(5) == (5, 0)
+    this, rest = A.plan_session(10)
+    assert this == 5.5 and abs(rest - 4.5) < 1e-9

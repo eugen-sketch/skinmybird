@@ -170,3 +170,12 @@ def hour_range(bar_iso: str) -> str:
     except ValueError:
         return str(bar_iso)
     return f"{h:02d}:00–{(h + 1) % 24:02d}:00 UTC"
+
+
+def continued(hours: float) -> str:
+    return (f"🔁 Am trecut într-o sesiune nouă (limita GitHub e ~6 ore pe sesiune). Mai sunt {hours:g} ore. Totul rămâne la fel: "
+            f"scanez la 15 minute și nu deschid nimic fără OK-ul tău. Pozițiile deschise le-am preluat de pe eToro.")
+
+
+def handover(remaining: float, open_n: int) -> str:
+    return f"🔁 Mă mut într-o sesiune nouă, rămân pornit încă {remaining:g} ore. (Poziții deschise: {open_n}, rămân urmărite.)"
