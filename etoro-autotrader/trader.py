@@ -219,7 +219,7 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
             if tr["id"] in live and age_h >= p["max_hours"]:
                 try:
                     broker.close(tr["id"], inst)
-                    notify.send(f"⏱ DEMO: timp expirat, închid {name} la piață.")
+                    notify.send(f"⏱ {name}: au trecut {p['max_hours']}h fără Stop Loss sau Take Profit, închid poziția la piață.")
                     time.sleep(2)
                 except EToroError as e:
                     notify.send(f"⚠️ Nu am putut închide {name}: {e}")
@@ -230,8 +230,9 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
                 eq += res
                 state["day_pnl"] += res
                 state.setdefault("history", []).append({"name": name, "kind": kind, "pnl": round(res, 2), "time": now.isoformat()})
-                icon = "✅" if res > 0 else "❌"
-                notify.send(f"{icon} DEMO închis {name} ({kind}): {usd(res)} | echitate virtuală {usd(eq)}")
+                why = {"TP": "Take Profit atins", "SL": "Stop Loss lovit", "MANUAL/TIMP": "închis la piață / după timp"}.get(kind, kind)
+                notify.send(f"{'✅' if res > 0 else '❌'} Am închis {name} — {why}: {'+' if res > 0 else ''}{usd(res)}\n"
+                            f"• Echitate virtuală {usd(eq)} (start {usd(cfg['virtual_equity'])})")
                 opened.pop(name)
             continue
 
@@ -241,7 +242,10 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         if sig["side"] == 0 or state.get("last_bar", {}).get(name) == sig["bar"]:
             continue
         used = sum(o.get("amount", 0) for o in opened.values())
-        if len(opened) >= p["max_open"] or not can_open_now(now, p):
+        if not can_open_now(now, p):
+            print(f"{name}: semnal {sig['side']:+d}, dar acum nu deschid (weekend / ore fără lichiditate)")
+            continue
+        if len(opened) >= p["max_open"]:
             continue
         if state["day_pnl"] <= -eq * p["daily_loss_stop_pct"] / 100 or eq < cfg["virtual_equity"] * p["kill_equity_frac"]:
             notify.send(f"🛑 Oprit pentru azi (limită de pierdere). Echitate virtuală {usd(eq)}.")
@@ -255,12 +259,16 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         if not sz:
             continue
         if used + sz["amount"] > eq * p["max_total_margin_pct"] / 100:
-            print(f"{name}: buget de marja epuizat ({usd(used)} folosit)")
+            notify.send(f"⏭ {name}: semnal {'BUY' if sig['side'] == 1 else 'SELL'}, dar nu mai am marjă liberă "
+                        f"({usd(used)} din {usd(eq * p['max_total_margin_pct'] / 100)} folosit), sar peste.")
+            state.setdefault("last_bar", {})[name] = sig["bar"]
             continue
         side = sig["side"]
         sl = px - side * p["sl_atr"] * sig["atr"]
         tp = px + side * p["tp_atr"] * sig["atr"]
         digits = 5 if px < 20 else 3 if px < 1000 else 2
+        notify.send(f"📤 {name}: semnal {'BUY' if side == 1 else 'SELL'}, trimit ordinul pe eToro DEMO "
+                    f"({usd(sz['amount'])} × levier {sz['leverage']}) cu SL {sl:.{digits}f} și TP {tp:.{digits}f}…")
         try:
             pid = broker.open(inst, side, sz["amount"], sz["leverage"], round(sl, digits), round(tp, digits), px)
         except EToroError as e:
@@ -275,11 +283,14 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
         opened[name] = {"id": pid, "side": side, "entry": px, "sl": sl, "tp": tp, "time": now.isoformat(),
                         "notional": sz["notional"], "amount": sz["amount"]}
         gain = abs(tp - px) / px * sz["notional"]
+        verb = "Am cumpărat (LONG)" if side == 1 else "Am făcut short (vânzare)"
         notify.send(
-            f"{'🟢 BUY' if side == 1 else '🔴 SELL'} DEMO {name} @ {px:.{digits}f}\n"
-            f"Investit {usd(sz['amount'])} × levier {sz['leverage']} (expunere {usd(sz['notional'])})\n"
-            f"SL {sl:.{digits}f} (risc ≈ {usd(sz['risk_usd'])}) | TP {tp:.{digits}f} (țintă ≈ {usd(gain)})\n"
-            f"RSI {sig['rsi']:.0f} | echitate virtuală {usd(eq)}{' | MOD HÂRTIE' if broker.paper else ''}")
+            f"{'🟢 BUY' if side == 1 else '🔴 SELL'} — {verb} {name} la {px:.{digits}f}\n"
+            f"• Investit {usd(sz['amount'])} × levier {sz['leverage']} = expunere {usd(sz['notional'])}\n"
+            f"• Am pus Stop Loss la {sl:.{digits}f} (dacă pierde, ≈ -{usd(sz['risk_usd'])})\n"
+            f"• Am pus Take Profit la {tp:.{digits}f} (dacă câștigă, ≈ +{usd(gain)})\n"
+            f"• Ies oricum după {p['max_hours']}h dacă nu se atinge nimic\n"
+            f"• Echitate virtuală {usd(eq)}{' | MOD HÂRTIE' if broker.paper else ''}")
     state["equity"] = eq
     if now.hour >= 20 and state.get("summary_day") != day and state.get("history") is not None:
         h = state["history"]
