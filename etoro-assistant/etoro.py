@@ -97,11 +97,12 @@ class EToroDemo:
         body_v2 = {"action": "open", "transaction": "buy" if is_buy else "sell", "instrumentId": instrument_id,
                    "orderType": "mkt", "leverage": leverage, "amount": round(amount, 2), "orderCurrency": "usd",
                    "stopLossRate": stop_loss, "takeProfitRate": take_profit, "stopLossType": "fixed"}
-        try:
-            return self._req("POST", "/api/v2/trading/execution/demo/orders", body=body_v2, trading=True)
-        except EToroError as e:
-            if "404" not in str(e) and "405" not in str(e):
-                raise
+        if is_buy:  # ordinele v2 nu suporta inca vanzarea (short): "Sell and buyToCover transactions are not supported"
+            try:
+                return self._req("POST", "/api/v2/trading/execution/demo/orders", body=body_v2, trading=True)
+            except EToroError as e:
+                if not any(k in str(e) for k in ("404", "405", "not supported")):
+                    raise
         body_v1 = {"InstrumentID": instrument_id, "IsBuy": is_buy, "Leverage": leverage, "Amount": round(amount, 2),
                    "StopLossRate": stop_loss, "TakeProfitRate": take_profit, "IsTslEnabled": False}
         return self._req("POST", "/api/v1/trading/execution/demo/market-open-orders/by-amount", body=body_v1, trading=True)
