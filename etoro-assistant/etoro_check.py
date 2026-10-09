@@ -5,8 +5,18 @@ import os
 import sys
 import time
 
-import notify
 from etoro import EToroDemo, EToroError
+
+
+class notify:  # trimite pe Telegram daca e configurat
+    @staticmethod
+    def send(text):
+        print(text)
+        try:
+            from telegram_bot import Telegram
+            Telegram().send(text)
+        except Exception:  # noqa: BLE001
+            pass
 
 SYMBOLS = os.getenv("CHECK_SYMBOLS", "OIL,GOLD,EURUSD").split(",")
 

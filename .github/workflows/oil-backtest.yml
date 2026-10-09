@@ -1,11 +1,14 @@
-name: Oil backtest
+name: Unelte (teste si verificari)
 
 on:
   workflow_dispatch:
     inputs:
       script:
-        description: "Script de rulat din etoro-autotrader (ex: research_fx.py)"
+        description: "Script de rulat din etoro-assistant (ex: research_fx.py)"
         default: "research_fx.py"
+      hours:
+        description: "Doar pentru assistant.py: cate ore ramane pornit"
+        default: "0.05"
       verbose:
         description: "Afiseaza raspunsurile eToro (doar pentru depanare)"
         default: "0"
@@ -22,7 +25,7 @@ on:
 jobs:
   backtest:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,7 +33,7 @@ jobs:
           python-version: "3.12"
       - run: pip install requests pandas numpy
       - name: Run script
-        working-directory: etoro-autotrader
+        working-directory: etoro-assistant
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -38,6 +41,7 @@ jobs:
           ETORO_USER_KEY: ${{ secrets.ETORO_USER_KEY }}
           TEST_TRADE: ${{ inputs.test_trade || '0' }}
           QUIET_LOGS: "1"
+          SESSION_HOURS: ${{ inputs.hours || '0.05' }}
           ETORO_VERBOSE: ${{ inputs.verbose || '0' }}
           CHECK_SYMBOLS: ${{ inputs.check_symbols || 'OIL,GOLD,EURUSD' }}
           CHECK_SEARCH: ${{ inputs.check_search || 'OIL,GOLD' }}
