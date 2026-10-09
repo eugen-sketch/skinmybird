@@ -20,9 +20,13 @@ class Telegram:
         r.raise_for_status()
         return r.json().get("result")
 
-    def send(self, text: str, buttons: list[list[tuple[str, str]]] | None = None) -> int | None:
+    def send(self, text: str, buttons: list[list[tuple[str, str]]] | None = None, menu: list[list[str]] | None = None) -> int | None:
+        """buttons = butoane sub mesaj (inline); menu = meniul permanent de sub casuta de scris."""
         payload = {"chat_id": self.chat, "text": text[:4000]}
-        if buttons:
+        if menu:
+            payload["reply_markup"] = {"keyboard": [[{"text": t} for t in row] for row in menu], "resize_keyboard": True,
+                                       "is_persistent": True, "input_field_placeholder": "Alege un buton sau scrie /ajutor"}
+        elif buttons:
             payload["reply_markup"] = {"inline_keyboard": [[{"text": t, "callback_data": d} for t, d in row] for row in buttons]}
         try:
             res = self._call("sendMessage", **payload)

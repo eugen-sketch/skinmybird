@@ -15,7 +15,7 @@ class FakeTG:
     def __init__(self):
         self.sent, self.cleared, self.events, self._mid = [], [], [], 100
 
-    def send(self, text, buttons=None):
+    def send(self, text, buttons=None, menu=None):
         self._mid += 1
         self.sent.append((text, buttons, self._mid))
         return self._mid
@@ -200,3 +200,25 @@ def test_demo_only_guard():
         assert False
     except etoro.EToroError as e:
         assert "REFUZ" in str(e)
+
+
+def test_menu_buttons_work_and_close_all_asks_for_confirmation():
+    a, tg, br = make()
+    a.pending[1] = {"name": "EURUSD", "side": 1, "created": T0, "msg_id": 5, "amount": 46.66}
+    a.open_pending(1)
+    a.handle({"kind": "text", "text": "📊 Status"})
+    assert "Pozițiile deschise" in tg.texts[-1]
+    a.handle({"kind": "text", "text": "🔒 Închide tot"})
+    text, buttons, _ = tg.sent[-1]
+    assert "Sigur închid" in text and br.pos                      # inca nimic inchis, doar intrebare
+    press(a, "closeall")
+    assert not br.pos
+    a.handle({"kind": "text", "text": "⛔ Oprește"})
+    assert "Sigur mă opresc" in tg.texts[-1] and a.stop_reason is None
+    press(a, "cancel")
+    assert a.stop_reason is None
+    a.handle({"kind": "text", "text": "🔎 Caută semnale"})
+    a.handle({"kind": "text", "text": "❓ Ajutor"})
+    assert "Ce pot face" in tg.texts[-1]
+    press(a, "stopnow")
+    assert a.stop_reason == "la cererea ta"

@@ -16,6 +16,9 @@ def signed(x: float) -> str:
     return f"{'+' if x >= 0 else '-'}${abs(x):,.2f}"
 
 
+MENU = [["📊 Status", "🔎 Caută semnale"], ["🔒 Închide tot", "⛔ Oprește"], ["❓ Ajutor"]]
+
+
 def started(hours: float, budget: float, scan_min: int, tp: float, basket: float) -> str:
     return (f"🟢 Asistentul a pornit și mă uit pe piață.\n\n"
             f"🔎 Scanez forex și petrol la fiecare {scan_min} minute și îți scriu când văd un semnal.\n"
@@ -23,10 +26,15 @@ def started(hours: float, budget: float, scan_min: int, tp: float, basket: float
             f"🎯 Fiecare poziție deschisă are țintă ≈ {usd(tp)}. Dacă ai mai multe deschise și împreună ajung la ≈ {usd(basket)}, le închid eu automat.\n"
             f"✋ Poți închide oricând, din eToro sau de aici.\n"
             f"👛 Buget: {usd(budget)} · Sesiune: {hours:g} ore (apoi mă opresc singur)\n\n"
-            f"Comenzi: /status · /inchide (sau /inchide EURUSD) · /scan · /stop · /ajutor")
+            f"👇 Folosește butoanele din meniul de sub căsuța de scris: Status, Caută semnale, Închide tot, Oprește, Ajutor.")
 
 
-HELP = ("🤖 Ce pot face:\n"
+HELP = ("🤖 Ce pot face (butoanele din meniul de jos fac același lucru):\n"
+        "• 📊 Status – pozițiile deschise și cât câștigi/pierzi acum\n"
+        "• 🔎 Caută semnale – scanez piața chiar acum\n"
+        "• 🔒 Închide tot – îți cer o confirmare, apoi închid toate pozițiile\n"
+        "• ⛔ Oprește – îți cer o confirmare, apoi mă opresc\n\n"
+        "Cele scrise de mână:\n"
         "• /status – pozițiile deschise și cât câștigi/pierzi acum\n"
         "• /inchide tot – închid toate pozițiile\n"
         "• /inchide EURUSD – închid o singură poziție (poți scrie și OIL)\n"
@@ -117,3 +125,16 @@ def stopped(reason: str, open_n: int) -> str:
 
 def ending_soon(minutes: int) -> str:
     return f"⏰ Mai sunt ≈ {minutes} minute din sesiune. După aceea mă opresc; pornește-mă din nou dacă vrei să continui."
+
+
+def confirm_close_all(n: int) -> str:
+    return f"🔒 Sigur închid toate cele {n} poziții acum?"
+
+
+def confirm_stop(open_n: int) -> str:
+    extra = f" Cele {open_n} poziții deschise rămân pe eToro, cu Stop Loss și Take Profit." if open_n else ""
+    return f"⛔ Sigur mă opresc?{extra}"
+
+
+def cancelled() -> str:
+    return "👌 Bine, las totul cum era."

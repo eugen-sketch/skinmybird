@@ -248,14 +248,28 @@ class Assistant:
             elif d.startswith("close:"):
                 self.close_one(d[6:], "YOU")
             elif d == "closeall":
+                self.tg.clear_buttons(ev["msg_id"])
                 for pid in list(self.known):
                     self.close_one(pid, "YOU")
+            elif d == "stopnow":
+                self.tg.clear_buttons(ev["msg_id"])
+                self.stop_reason = "la cererea ta"
+            elif d == "cancel":
+                self.tg.clear_buttons(ev["msg_id"])
+                self.tg.send(msg.cancelled())
             return
         t = ev["text"].lower().replace("î", "i").replace("â", "a").replace("ă", "a").replace("ș", "s").replace("ț", "t")
-        if t.startswith("/status"):
+        if t.startswith("/status") or "status" in t:
             self.status()
-        elif t.startswith("/scan"):
+        elif t.startswith("/scan") or "cauta semnale" in t:
             self.scan(manual=True)
+        elif not t.startswith("/") and "inchide tot" in t:          # butonul din meniu: cerem confirmare
+            if self.known:
+                self.tg.send(msg.confirm_close_all(len(self.known)), [[("✅ Da, închide tot", "closeall"), ("❌ Nu", "cancel")]])
+            else:
+                self.tg.send("📭 Nu ai nicio poziție deschisă.")
+        elif not t.startswith("/") and "opreste" in t:
+            self.tg.send(msg.confirm_stop(len(self.known)), [[("✅ Da, oprește-te", "stopnow"), ("❌ Nu", "cancel")]])
         elif t.startswith("/stop"):
             self.stop_reason = "la cererea ta"
         elif t.startswith("/inchide") or t.startswith("inchide"):
@@ -268,7 +282,7 @@ class Assistant:
             else:
                 for pid in targets:
                     self.close_one(pid, "YOU")
-        elif t.startswith("/ajutor") or t.startswith("/help") or t.startswith("/start"):
+        elif t.startswith("/ajutor") or t.startswith("/help") or t.startswith("/start") or "ajutor" in t:
             self.tg.send(msg.HELP)
 
     def expire_pending(self) -> None:
@@ -287,7 +301,7 @@ class Assistant:
     def run(self, hours: float) -> None:
         c = self.cfg
         self.tg.drain()
-        self.tg.send(msg.started(hours, c["budget_usd"], c["scan_every_min"], c["tp_usd"], c["basket_target_usd"]))
+        self.tg.send(msg.started(hours, c["budget_usd"], c["scan_every_min"], c["tp_usd"], c["basket_target_usd"]), menu=msg.MENU)
         try:
             for p in self.broker.positions():
                 if p["name"] in self.inst:
