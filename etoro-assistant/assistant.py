@@ -46,6 +46,7 @@ class Assistant:
         self.sleep = sleep
         self.inst = {i["name"]: i for i in cfg["instruments"]}
         self.pending: dict[int, dict] = {}
+        self.report_hour = ""            # ora la care am trimis ultimul raport orar de scanare
         self.seen_bar: dict[str, str] = {}
         self.known: dict[str, dict] = {}        # pozitii urmarite: pid -> {..., last_pnl}
         self.expecting: dict[str, str] = {}      # pid -> motiv (YOU / BASKET) cand inchid eu
@@ -119,10 +120,15 @@ class Assistant:
                          f"{self.cfg['max_positions']} poziții/semnale în așteptare. Dacă te interesează, spune-mi /scan după ce se eliberează un loc.")
             for n in overflow:
                 self.seen_bar.pop(n, None)               # le re-evaluam la urmatoarea scanare
-        if manual and not found:
+        hour_key = now.strftime("%Y%m%d%H")
+        hourly = hour_key != self.report_hour
+        if hourly:
+            self.report_hour = hour_key
+        if (manual or hourly) and not found:
             for n in sorted(open_names | {p["name"] for p in self.pending.values()}):
                 report.append({"name": n, "rsi": 50.0, "thr": 25, "bar": report[0]["bar"] if report else "?", "note": "ai deja poziție/semnal"})
-            self.tg.send(msg.scan_report(report) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.")
+            self.tg.send(msg.scan_report(report) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.",
+                         silent=not manual)
 
     def propose(self, name: str, s: dict) -> bool:
         inst = self.inst[name]
@@ -372,7 +378,7 @@ class Assistant:
                     t_upd = now
                     self.tg.send(msg.update([{"name": p["name"], "pnl": p["last_pnl"]} for p in self.known.values()],
                                             sum(p["last_pnl"] for p in self.known.values())))
-                if now - t_hb >= 3600:
+                if now - t_hb >= 3600 and not self.market_open(self.now_fn()):
                     t_hb = now
                     n = self.now_fn()
                     self.tg.send(msg.heartbeat(n.strftime("%H:%M"), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
