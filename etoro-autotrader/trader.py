@@ -200,6 +200,7 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
                 res = pnl_usd(tr, px, inst["cost"])
                 eq += res
                 state["day_pnl"] += res
+                state.setdefault("history", []).append({"name": name, "kind": kind, "pnl": round(res, 2), "time": now.isoformat()})
                 icon = "✅" if res > 0 else "❌"
                 notify.send(f"{icon} DEMO închis {name} ({kind}): {usd(res)} | echitate virtuală {usd(eq)}")
                 opened.pop(name)
@@ -243,6 +244,14 @@ def run_once(cfg: dict, state: dict, broker, dfs: dict | None = None, now: datet
             f"SL {sl:.{digits}f} (risc ≈ {usd(sz['risk_usd'])}) | TP {tp:.{digits}f} (țintă ≈ {usd(gain)})\n"
             f"RSI {sig['rsi']:.0f} | echitate virtuală {usd(eq)}{' | MOD HÂRTIE' if broker.paper else ''}")
     state["equity"] = eq
+    if now.hour >= 20 and state.get("summary_day") != day and state.get("history") is not None:
+        h = state["history"]
+        wins = [x["pnl"] for x in h if x["pnl"] > 0]
+        loss = -sum(x["pnl"] for x in h if x["pnl"] < 0)
+        pf = (sum(wins) / loss) if loss else float("inf")
+        notify.send(f"📊 Rezumat DEMO: {len(h)} tranzacții, {len(wins)} câștigătoare, profit factor "
+                    f"{pf:.2f}, echitate virtuală {usd(eq)} (start {usd(cfg['virtual_equity'])}).")
+        state["summary_day"] = day
 
 
 def build_broker(cfg: dict, state: dict):
