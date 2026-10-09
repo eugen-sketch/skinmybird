@@ -230,7 +230,7 @@ def test_manual_scan_explains_what_it_checked(monkeypatch):
                                                            "asia_pos": "în interior", "n_bars": 700})
     a.scan(manual=True)
     text = tg.texts[-1]
-    assert "Am scanat acum 8 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "07:00 UTC" in text
+    assert "Am scanat acum 8 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "07:00–08:00 UTC" in text
 
 
 def test_scan_counter_and_heartbeat_text(monkeypatch):
@@ -243,3 +243,15 @@ def test_scan_counter_and_heartbeat_text(monkeypatch):
     t = messages.heartbeat("09:15", a.scans, a.last_scan, 1, True)
     assert "sunt activ" in t and "2 scanări" in t and "08:15" in t and "1 poziții" in t
     assert "piața e închisă" in messages.heartbeat("22:00", 5, "21:45", 0, False)
+
+
+def test_scanner_ignores_forming_hour_and_live_tick_bar():
+    import pandas as pd
+    import signals as sg
+    now = pd.Timestamp("2026-10-09 08:07:51", tz="UTC")
+    idx = list(pd.date_range("2026-10-09 05:00", "2026-10-09 08:00", freq="h", tz="UTC")) + [now]   # ...07:00, 08:00 (in formare), 08:07:51 (live)
+    df = pd.DataFrame({"open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0}, index=idx)
+    done = sg.completed(df, now)
+    assert str(done.index[-1]) == "2026-10-09 07:00:00+00:00"          # ultima ora INCHEIATA e 07:00, nu 08:00
+    exactly = sg.completed(df, pd.Timestamp("2026-10-09 09:00:00", tz="UTC"))
+    assert str(exactly.index[-1]) == "2026-10-09 08:00:00+00:00"       # la 09:00 fix, ora de 08:00 s-a incheiat
