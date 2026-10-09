@@ -33,6 +33,7 @@ jobs:
           ETORO_API_KEY: ${{ secrets.ETORO_API_KEY }}
           ETORO_USER_KEY: ${{ secrets.ETORO_USER_KEY }}
         run: python trader.py
+        continue-on-error: true
       - name: Save state
         if: always()
         uses: actions/cache/save@v4

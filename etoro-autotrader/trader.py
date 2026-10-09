@@ -276,9 +276,14 @@ def main() -> int:
     try:
         broker = build_broker(cfg, state)
         run_once(cfg, state, broker)
-    except EToroError as e:
-        notify.send(f"⚠️ Autotrader: eroare eToro: {e}")
-        return 1
+        state.pop("last_err", None)
+    except Exception as e:  # noqa: BLE001 - nu lasam jobul sa "pice" (GitHub trimite mail la fiecare esec)
+        msg = f"{type(e).__name__}: {e}"[:300]
+        last = state.get("last_err") or {}
+        if last.get("msg") != msg or time.time() - last.get("ts", 0) > 6 * 3600:   # aceeasi eroare: cel mult o data la 6h
+            notify.send(f"⚠️ Autotrader: {msg}")
+            state["last_err"] = {"msg": msg, "ts": time.time()}
+        print(f"[!] {msg}")
     finally:
         STATE_FILE.write_text(json.dumps(state))
     return 0
