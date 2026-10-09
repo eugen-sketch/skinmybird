@@ -1,0 +1,33 @@
+name: Asistent trading (îl pornești tu)
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Cât timp rămâne pornit, în ore (maxim 5.5)"
+        default: "5"
+
+concurrency:
+  group: assistant
+  cancel-in-progress: true
+
+jobs:
+  assistant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests pandas numpy
+      - name: Run assistant
+        working-directory: etoro-assistant
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ETORO_API_KEY: ${{ secrets.ETORO_API_KEY }}
+          ETORO_USER_KEY: ${{ secrets.ETORO_USER_KEY }}
+          QUIET_LOGS: "1"
+          SESSION_HOURS: ${{ inputs.hours }}
+        run: python assistant.py

@@ -1,0 +1,102 @@
+{
+  "budget_usd": 140,
+  "scan_every_min": 15,
+  "pl_check_every_sec": 30,
+  "signal_valid_min": 30,
+  "tp_usd": 2.75,
+  "sl_usd": 6.0,
+  "basket_target_usd": 4.5,
+  "basket_min_positions": 2,
+  "max_positions": 3,
+  "min_notional": 1000,
+  "max_leverage": 30,
+  "instruments": [
+    {
+      "name": "EURUSD",
+      "yahoo": "EURUSD=X",
+      "etoro": "EURUSD",
+      "cost": 0.012,
+      "lev_cap": 30,
+      "signals": [
+        "london_breakout",
+        "rsi_rev25"
+      ]
+    },
+    {
+      "name": "GBPUSD",
+      "yahoo": "GBPUSD=X",
+      "etoro": "GBPUSD",
+      "cost": 0.018,
+      "lev_cap": 30,
+      "signals": [
+        "london_breakout",
+        "rsi_rev25"
+      ]
+    },
+    {
+      "name": "USDJPY",
+      "yahoo": "USDJPY=X",
+      "etoro": "USDJPY",
+      "cost": 0.018,
+      "lev_cap": 30,
+      "signals": [
+        "london_breakout",
+        "rsi_rev25"
+      ]
+    },
+    {
+      "name": "AUDUSD",
+      "yahoo": "AUDUSD=X",
+      "etoro": "AUDUSD",
+      "cost": 0.022,
+      "lev_cap": 30,
+      "signals": [
+        "london_breakout",
+        "rsi_rev25"
+      ]
+    },
+    {
+      "name": "USDCAD",
+      "yahoo": "USDCAD=X",
+      "etoro": "USDCAD",
+      "cost": 0.022,
+      "lev_cap": 30,
+      "signals": [
+        "london_breakout",
+        "rsi_rev25"
+      ]
+    },
+    {
+      "name": "USDCHF",
+      "yahoo": "USDCHF=X",
+      "etoro": "USDCHF",
+      "cost": 0.025,
+      "lev_cap": 30,
+      "signals": [
+        "london_breakout",
+        "rsi_rev25"
+      ]
+    },
+    {
+      "name": "NZDUSD",
+      "yahoo": "NZDUSD=X",
+      "etoro": "NZDUSD",
+      "cost": 0.03,
+      "lev_cap": 30,
+      "signals": [
+        "london_breakout",
+        "rsi_rev25"
+      ]
+    },
+    {
+      "name": "OIL",
+      "yahoo": "CL=F",
+      "etoro": "OIL",
+      "cost": 0.06,
+      "lev_cap": 10,
+      "signals": [
+        "rsi_rev20"
+      ]
+    }
+  ]
+}

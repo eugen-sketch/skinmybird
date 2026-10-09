@@ -5,10 +5,20 @@ import os
 import sys
 import time
 
-import notify
 from etoro import EToroDemo, EToroError
 
-SYMBOLS = ["OIL", "GOLD", "EURUSD"]
+
+class notify:  # trimite pe Telegram daca e configurat
+    @staticmethod
+    def send(text):
+        print(text)
+        try:
+            from telegram_bot import Telegram
+            Telegram().send(text)
+        except Exception:  # noqa: BLE001
+            pass
+
+SYMBOLS = os.getenv("CHECK_SYMBOLS", "OIL,GOLD,EURUSD").split(",")
 
 
 def main() -> int:
@@ -26,10 +36,10 @@ def main() -> int:
             print(f"[!] {s}: {e}")
             ok = False
     print("INSTRUMENT IDs:", ids)
-    for q in ("OIL", "BRENT", "GOLD", "NGAS", "SILVER"):   # descoperire: numele exacte pe eToro
+    for q in os.getenv("CHECK_SEARCH", "OIL,GOLD").split(","):   # descoperire: numele exacte pe eToro
         try:
             names = [(i["internalSymbolFull"], i["instrumentId"]) for i in api.search_symbols(q)]
-            print(f"CANDIDATI {q}: {names[:60]}")
+            print(f"CANDIDATI {q}: {names[:25]}")
         except EToroError as e:
             print(f"[!] cautare {q}: {e}")
     if "EURUSD" in ids:
