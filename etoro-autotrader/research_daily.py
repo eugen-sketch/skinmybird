@@ -31,10 +31,11 @@ def fetch_daily(sym: str) -> pd.DataFrame:
                         index=pd.to_datetime(res["timestamp"], unit="s", utc=True)).dropna()
 
 
-def executor(o, h, l, c, atr, target, k, cost, max_hold=None):
+def executor(o, h, l, c, atr, target, k, cost, max_hold=None, with_active=False):
     """target[t] = pozitia dorita (+1/-1/0) decisa la inchiderea zilei t, executata la deschiderea zilei t+1. Stop = k*ATR."""
     n = len(c)
     ret = np.zeros(n)
+    act = np.zeros(n, dtype=int)     # +1/-1 daca ai avut pozitie deschisa in ziua t
     pos, entry, stop, held = 0, 0.0, 0.0, 0
     for t in range(1, n):
         want = int(target[t - 1])
@@ -42,6 +43,7 @@ def executor(o, h, l, c, atr, target, k, cost, max_hold=None):
             want = 0
         prev = c[t - 1]
         day = 0.0
+        pos_start = pos
         if pos != 0 and want != pos:                     # iesire la deschidere
             day += pos * (o[t] / prev - 1) - cost / 2 / 100
             prev, pos, held = o[t], 0, 0
@@ -57,11 +59,13 @@ def executor(o, h, l, c, atr, target, k, cost, max_hold=None):
                 day += pos * (px / prev - 1) - cost / 2 / 100 - CARRY / 100
                 pos, held = 0, 0
                 ret[t] = day
+                act[t] = pos_day if False else (pos_start or want)
                 continue
             day += pos * (c[t] / prev - 1) - CARRY / 100
             held += 1
         ret[t] = day
-    return ret
+        act[t] = pos_start if pos_start else pos
+    return (ret, act) if with_active else ret
 
 
 def rsi_arr(c, n):
