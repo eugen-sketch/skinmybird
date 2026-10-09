@@ -98,3 +98,12 @@ class EToroDemo:
         body = {"InstrumentId": instrument_id, "UnitsToDeduct": None}
         return self._req("POST", f"/api/v1/trading/execution/demo/market-close-orders/positions/{position_id}",
                          body=body, trading=True)
+
+    def last_price(self, instrument_id: int) -> float:
+        """Ultimul pret eToro (inchiderea ultimei lumanari de 1 ora)."""
+        data = self._req("GET", f"/api/v1/market-data/instruments/{instrument_id}/history/candles/desc/OneHour/2")
+        candles = data.get("candles") if isinstance(data, dict) else data
+        if candles and isinstance(candles[0], dict) and "candles" in candles[0]:
+            candles = candles[0]["candles"]
+        c = candles[0]
+        return float(c.get("close") or c.get("Close"))
