@@ -161,3 +161,12 @@ def heartbeat(hhmm: str, scans: int, last_scan: str, open_n: int, market_open: b
     pos = f" Ai {open_n} poziții deschise." if open_n else ""
     return (f"🟢 {hhmm} UTC: sunt activ. De la pornire am făcut {scans} scanări (la fiecare 15 min), ultima la {last_scan} UTC: "
             f"niciun semnal nou.{pos}")
+
+
+def hour_range(bar_iso: str) -> str:
+    """'2026-10-09T07:00:00+00:00' -> '07:00–08:00 UTC' (bara incepe la 07:00 si se incheie la 08:00)."""
+    try:
+        h = int(bar_iso[11:13])
+    except ValueError:
+        return str(bar_iso)
+    return f"{h:02d}:00–{(h + 1) % 24:02d}:00 UTC"

@@ -14,10 +14,17 @@ REASONS = {
 }
 
 
+def completed(df: pd.DataFrame, now: pd.Timestamp | None = None) -> pd.DataFrame:
+    """Doar orele INCHEIATE. Yahoo trimite la final si bara orei curente (in formare) plus o 'bara live' cu ora exacta
+    de acum (ex. 08:07:51): le scoatem pe amandoua."""
+    now = now or pd.Timestamp.now(tz="UTC")
+    real = df[(df.index.minute == 0) & (df.index.second == 0)]          # bare aliniate la ora fixa
+    return real[real.index + timedelta(hours=1) <= now]                  # ora trebuie sa se fi terminat
+
+
 def scan(df: pd.DataFrame, names: list[str]) -> dict:
-    """+1 BUY / -1 SELL / 0. Semnale contradictorii => 0. Bara in formare se ignora."""
-    if df.index[-1] + timedelta(hours=1) > pd.Timestamp.now(tz="UTC"):
-        df = df.iloc[:-1]
+    """+1 BUY / -1 SELL / 0. Semnale contradictorii => 0. Se folosesc doar orele incheiate."""
+    df = completed(df)
     S = strategies.all_signals(df)
     votes = {n: int(S[n].iloc[-1]) for n in names}
     side = 1 if (1 in votes.values() and -1 not in votes.values()) else -1 if (-1 in votes.values() and 1 not in votes.values()) else 0

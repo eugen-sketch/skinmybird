@@ -95,7 +95,7 @@ class Assistant:
             if os.getenv("QUIET_LOGS") != "1":                   # in repo public nu afisam semnalele/pozitiile in loguri
                 print(f"{name}: semnal={s['side']:+d} rsi={s['rsi']:.0f}")
             thr = next((int(n[7:]) for n in inst["signals"] if n.startswith("rsi_rev")), 25)
-            report.append({"name": name, "rsi": s["rsi"], "thr": thr, "asia": s.get("asia_pos"), "bar": s["bar"][11:16] + " UTC"})
+            report.append({"name": name, "rsi": s["rsi"], "thr": thr, "asia": s.get("asia_pos"), "bar": msg.hour_range(s["bar"])})
             if s["side"] == 0 or self.seen_bar.get(name) == s["bar"]:
                 continue
             self.seen_bar[name] = s["bar"]
