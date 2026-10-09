@@ -280,3 +280,16 @@ def test_unanswered_signal_is_repeated_until_answered(monkeypatch):
     assert len(reminders) == 6                       # maxim 6, apoi se opresc
     press(a, f"open:{sid}")
     assert br.pos                                    # raspunsul OK deschide in continuare
+
+
+def test_hourly_scan_report_sent_once_per_hour_and_silent(monkeypatch):
+    a, tg, br = make()
+    fake_scan(monkeypatch, {})
+    a.scan()
+    assert sum("Am scanat acum" in x for x in tg.texts) == 1     # primul raport al orei
+    a.now_fn = lambda: T0 + timedelta(minutes=15)
+    a.scan()
+    assert sum("Am scanat acum" in x for x in tg.texts) == 1     # aceeasi ora: nu se repeta
+    a.now_fn = lambda: T0 + timedelta(minutes=60)
+    a.scan()
+    assert sum("Am scanat acum" in x for x in tg.texts) == 2     # ora urmatoare: raport nou
