@@ -1,0 +1,37 @@
+{
+  "virtual_equity": 140,
+  "params": {
+    "rsi_period": 14,
+    "rsi_extreme": 20,
+    "sl_atr": 3.5,
+    "tp_atr": 2.5,
+    "max_hours": 48,
+    "risk_pct": 4,
+    "max_margin_pct": 40,
+    "max_leverage": 10,
+    "min_amount": 50,
+    "max_open": 2,
+    "daily_loss_stop_pct": 8,
+    "kill_equity_frac": 0.6,
+    "blackout_hours_utc": [
+      21,
+      22
+    ]
+  },
+  "instruments": [
+    {
+      "name": "WTI",
+      "yahoo": "CL=F",
+      "etoro": "OIL",
+      "cost": 0.06,
+      "lev_cap": 10
+    },
+    {
+      "name": "BRENT",
+      "yahoo": "BZ=F",
+      "etoro": "UKOIL",
+      "cost": 0.06,
+      "lev_cap": 10
+    }
+  ]
+}

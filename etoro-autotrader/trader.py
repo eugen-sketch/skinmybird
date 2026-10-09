@@ -249,9 +249,13 @@ def build_broker(cfg: dict, state: dict):
     if os.getenv("ETORO_API_KEY") and os.getenv("ETORO_USER_KEY") and os.getenv("PAPER") != "1":
         api = EToroDemo()
         ids = state.setdefault("ids", {})
-        for inst in cfg["instruments"]:
+        for inst in list(cfg["instruments"]):
             if inst["name"] not in ids:
-                ids[inst["name"]] = api.find_instrument_id(inst["etoro"])
+                try:
+                    ids[inst["name"]] = api.find_instrument_id(inst["etoro"])
+                except EToroError as e:
+                    notify.send(f"⚠️ Nu găsesc {inst['name']} ({inst['etoro']}) pe eToro, îl sar: {e}")
+                    cfg["instruments"].remove(inst)
         return EToroBroker(api, ids)
     return PaperBroker(state)
 
