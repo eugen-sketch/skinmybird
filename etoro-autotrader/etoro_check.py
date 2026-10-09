@@ -8,7 +8,7 @@ import time
 import notify
 from etoro import EToroDemo, EToroError
 
-SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "GOLD"]
+SYMBOLS = ["OIL", "UKOIL", "XAUUSD", "GOLD", "EURUSD"]
 
 
 def main() -> int:
@@ -26,6 +26,16 @@ def main() -> int:
             print(f"[!] {s}: {e}")
             ok = False
     print("INSTRUMENT IDs:", ids)
+    for q in ("OIL", "BRENT", "XAUUSD"):   # descoperire: ce nume are petrolul/aurul pe eToro
+        try:
+            api._req("GET", "/api/v1/market-data/search", params={"searchText": q, "fields": "instrumentId,internalSymbolFull,displayname"})
+        except EToroError as e:
+            print(f"[!] cautare {q}: {e}")
+    if "EURUSD" in ids:
+        try:
+            print("Pret EURUSD pe eToro:", api.last_price(ids["EURUSD"]))
+        except Exception as e:  # noqa: BLE001
+            print(f"[!] pret: {e}")
     try:
         pos = api.positions()
         print(f"Pozitii deschise pe demo: {len(pos)}")

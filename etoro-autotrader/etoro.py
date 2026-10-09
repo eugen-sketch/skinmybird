@@ -33,8 +33,16 @@ class EToroDemo:
             raise EToroError(f"REFUZ: calea de tranzactionare nu e DEMO: {path}")
         headers = {"x-api-key": self.api_key, "x-user-key": self.user_key,
                    "x-request-id": str(uuid.uuid4()), "Content-Type": "application/json"}
-        r = requests.request(method, BASE + path, headers=headers, params=params,
-                             data=json.dumps(body) if body is not None else None, timeout=30)
+        r = None
+        for attempt in (1, 2):
+            try:
+                r = requests.request(method, BASE + path, headers=headers, params=params,
+                                     data=json.dumps(body) if body is not None else None, timeout=60)
+                break
+            except requests.RequestException as e:
+                if attempt == 2 or method != "GET":   # nu repetam ordinele (risc de dublare)
+                    raise EToroError(f"{method} {path}: {type(e).__name__}") from e
+                headers["x-request-id"] = str(uuid.uuid4())
         if self.verbose:
             print(f"[eToro] {method} {path} {params or ''} {json.dumps(body) if body else ''} -> {r.status_code} {r.text[:600]}")
         if r.status_code >= 400:
