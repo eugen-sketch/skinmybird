@@ -5,7 +5,7 @@ on:
     inputs:
       hours:
         description: "Cât timp rămâne pornit, în ore (peste 5.5 ore se pornește automat o sesiune nouă)"
-        default: "8"
+        default: "5"
       continued:
         description: "Folosit automat la continuare (nu-l atinge)"
         default: "0"
