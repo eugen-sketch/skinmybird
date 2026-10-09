@@ -153,3 +153,11 @@ def scan_report(rows: list[dict]) -> str:
     close = f"\n\n🎯 Cel mai aproape de semnal: {pair(n['name']).split(' ')[0]} (RSI {n['rsi']:.0f}, pragul e sub {n['thr']} sau peste {100 - n['thr']})." if n else ""
     return (f"🔎 Am scanat acum {len(rows)} instrumente (ultima oră încheiată: {bar}).\n" + "\n".join(lines) +
             f"\n\nNiciun semnal nou. Cumpăr/vând doar la RSI extrem sau la spargerea intervalului de noapte (07–11 UTC).{close}")
+
+
+def heartbeat(hhmm: str, scans: int, last_scan: str, open_n: int, market_open: bool) -> str:
+    if not market_open:
+        return f"😴 {hhmm} UTC: sunt activ, dar piața e închisă acum. Reiau scanările când se deschide."
+    pos = f" Ai {open_n} poziții deschise." if open_n else ""
+    return (f"🟢 {hhmm} UTC: sunt activ. De la pornire am făcut {scans} scanări (la fiecare 15 min), ultima la {last_scan} UTC: "
+            f"niciun semnal nou.{pos}")
