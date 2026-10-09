@@ -50,3 +50,36 @@ def pf(p) -> float:
         return 0.0
     g, l = p[p > 0].sum(), -p[p < 0].sum()
     return float(g / l) if l else 9.9
+
+
+def simulate_pct(P: dict, sig: np.ndarray, sl_pct: float, tp_pct: float, max_bars: int, lo: int, hi: int, cost_pct: float):
+    """Ca simulate(), dar SL/TP sunt procente fixe din pretul de intrare (tinte in $ la expunere fixa)."""
+    o, h, l, c = P["open"], P["high"], P["low"], P["close"]
+    out, i = [], max(lo, 250)
+    while i < hi - 2:
+        s = int(sig[i])
+        if s == 0:
+            i += 1
+            continue
+        e = o[i + 1]
+        sl, tp = e * (1 - s * sl_pct / 100), e * (1 + s * tp_pct / 100)
+        end = min(i + 1 + max_bars, hi - 1)
+        px, j = c[end], end
+        for k in range(i + 1, end + 1):
+            if s == 1:
+                if l[k] <= sl:
+                    px, j = min(sl, o[k]) if k > i + 1 else sl, k
+                    break
+                if h[k] >= tp:
+                    px, j = tp, k
+                    break
+            else:
+                if h[k] >= sl:
+                    px, j = max(sl, o[k]) if k > i + 1 else sl, k
+                    break
+                if l[k] <= tp:
+                    px, j = tp, k
+                    break
+        out.append((i, j, s * (px / e - 1) * 100 - cost_pct))
+        i = j + 1
+    return out
