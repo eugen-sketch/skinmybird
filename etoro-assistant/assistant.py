@@ -89,7 +89,8 @@ class Assistant:
             except Exception as e:  # noqa: BLE001
                 self.report_error(f"nu pot citi datele pentru {msg.pair(name)} ({type(e).__name__})")
                 continue
-            print(f"{name}: semnal={s['side']:+d} rsi={s['rsi']:.0f}")
+            if os.getenv("QUIET_LOGS") != "1":                   # in repo public nu afisam semnalele/pozitiile in loguri
+                print(f"{name}: semnal={s['side']:+d} rsi={s['rsi']:.0f}")
             if s["side"] == 0 or self.seen_bar.get(name) == s["bar"]:
                 continue
             self.seen_bar[name] = s["bar"]
