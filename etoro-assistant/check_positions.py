@@ -2,6 +2,7 @@
 """Compara pozitiile deschise pe eToro DEMO cu regulile din config.json. Detaliile merg pe Telegram, in log doar verdictul."""
 import json
 import math
+import signal
 from pathlib import Path
 
 import messages as msg
@@ -9,6 +10,7 @@ from broker import EToroBroker
 from etoro import EToroDemo
 from telegram_bot import Telegram
 
+signal.alarm(150)          # nu lasam scriptul sa atarne
 cfg = json.loads((Path(__file__).parent / "config.json").read_text())
 api = EToroDemo()
 ids = {i["name"]: api.find_instrument_id(i["etoro"]) for i in cfg["instruments"]}
