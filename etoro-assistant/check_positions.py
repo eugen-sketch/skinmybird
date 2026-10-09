@@ -39,4 +39,4 @@ for p in pos:
                  f"  • plasă (SL) ≈ {msg.usd(sl_usd)} (regula {msg.usd(cfg['sl_usd'])}) {'✅' if checks['SL ~ 6$'] else '❌'}")
 text = ("🔎 Verificare poziții deschise pe eToro demo:\n\n" + "\n\n".join(lines)) if pos else "📭 Nu văd nicio poziție deschisă pe eToro demo."
 Telegram().send(text)
-print("Pozitii:", len(pos), "|", ", ".join(verdict) or "-")
+print("Verificare facuta, detaliile sunt pe Telegram.")        # nimic despre pozitii in logul public
