@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/15 * * * 0-5"
   workflow_dispatch:
+    inputs:
+      test_message:
+        description: "Trimite un mesaj de test pe Telegram"
+        type: boolean
+        default: true
 
 jobs:
   check:
@@ -25,4 +30,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python oilbot.py --once
+        run: |
+          if [ "${{ inputs.test_message }}" = "true" ]; then python oilbot.py --test; fi
+          python oilbot.py --once
