@@ -1,0 +1,30 @@
+name: Pornire de pe Telegram
+
+# Ruleaza la 5 minute, dar NU porneste nimic singur: doar daca tu scrii "pornește" in Telegram
+# si asistentul nu ruleaza deja. Fara mesaj de la tine, iese in cateva secunde.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: launcher
+  cancel-in-progress: false
+
+jobs:
+  launcher:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verifica Telegram
+        working-directory: etoro-assistant
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 launcher.py

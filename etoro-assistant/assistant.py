@@ -284,7 +284,9 @@ class Assistant:
                 self.tg.send(msg.cancelled())
             return
         t = ev["text"].lower().replace("î", "i").replace("â", "a").replace("ă", "a").replace("ș", "s").replace("ț", "t")
-        if t.startswith("/status") or "status" in t:
+        if "porne" in t:
+            self.tg.send("✅ Sunt deja pornit și scanez. Spune-mi dacă vrei Status sau Caută semnale.")
+        elif t.startswith("/status") or "status" in t:
             self.status()
         elif t.startswith("/scan") or "cauta semnale" in t:
             self.scan(manual=True)
