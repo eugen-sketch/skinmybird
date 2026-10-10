@@ -23,7 +23,7 @@ def signed(x: float) -> str:
     return f"{'+' if x >= 0 else '-'}${abs(x):,.2f}"
 
 
-MENU = [["📊 Status", "🔎 Caută semnale"], ["🔒 Închide tot", "⛔ Oprește"], ["❓ Ajutor"]]
+MENU = [["📊 Status", "🔎 Caută semnale"], ["🔒 Închide tot", "⛔ Oprește"], ["❓ Ajutor", "▶️ Pornește"]]
 
 
 def started(hours: float, budget: float, scan_min: int, tp: float, basket: float) -> str:
@@ -40,7 +40,8 @@ HELP = ("🤖 Ce pot face (butoanele din meniul de jos fac același lucru):\n"
         "• 📊 Status – pozițiile deschise și cât câștigi/pierzi acum\n"
         "• 🔎 Caută semnale – scanez piața chiar acum\n"
         "• 🔒 Închide tot – îți cer o confirmare, apoi închid toate pozițiile\n"
-        "• ⛔ Oprește – îți cer o confirmare, apoi mă opresc\n\n"
+        "• ⛔ Oprește – îți cer o confirmare, apoi mă opresc\n"
+        "• ▶️ Pornește – când sunt oprit, mă pornești de aici (rulez singur până la 12 ore, apoi repornesc automat)\n\n"
         "Cele scrise de mână:\n"
         "• /status – pozițiile deschise și cât câștigi/pierzi acum\n"
         "• /inchide tot – închid toate pozițiile\n"
