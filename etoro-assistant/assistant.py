@@ -17,12 +17,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import messages as msg
+import pandas as pd
 import signals
 import state as state_mod
 import ta
 from etoro import EToroError
 
 HERE = Path(__file__).parent
+EUR_QUOTE = {"GER40"}          # cotat in EUR: castigul/pierderea in $ = valoarea in EUR x EURUSD
 USD_QUOTE_FACTOR_ONE = {"EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "OIL", "GOLD", "SPX500", "NSDQ100", "DJ30", "GER40"}   # P&L deja in USD; la USDJPY/USDCAD/USDCHF se imparte la pret
 
 
@@ -38,6 +40,15 @@ def plan_session(hours: float) -> tuple[float, float]:
 
 def digits_for(name: str, px: float) -> int:
     return 1 if name in INDICES else 2 if name in ("OIL", "GOLD") else 5 if px < 20 else 3
+
+
+def parse_time(txt) -> datetime | None:
+    """Ora deschiderii de la eToro (ISO, uneori cu fractii de secunda si 'Z'); None daca nu o pot citi."""
+    try:
+        t = datetime.fromisoformat(str(txt).replace("Z", "+00:00")[:32].split(".")[0] + ("+00:00" if "+" not in str(txt) and "Z" not in str(txt) else ""))
+        return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
 
 
 class Assistant:
@@ -57,15 +68,21 @@ class Assistant:
         self.autotrade = False                   # pornit doar de tine, din buton
         self.day, self.day_pnl = "", 0.0
         self.hold_alerted: set[str] = set()
+        self.eurusd = 1.08                       # actualizat din eToro la fiecare verificare a pozitiilor
+        self.last_slot = None                    # ultimul sfert de ora scanat
         self.stop_reason: str | None = None
         self.last_err: tuple[str, float] = ("", 0.0)
 
     # ------------------------------------------------------------------ calcule
     def pnl(self, pos: dict, price: float) -> float:
         raw = pos["side"] * pos["units"] * (price - pos["open_rate"])
-        usd = raw if pos["name"] in USD_QUOTE_FACTOR_ONE else raw / price
+        usd = raw * self.fx(pos["name"]) if pos["name"] in USD_QUOTE_FACTOR_ONE else raw / price
         half_spread = self.inst[pos["name"]]["cost"] / 2 / 100 * pos["amount"] * pos["leverage"]
         return usd - half_spread                    # estimare dupa costul de iesire (spread)
+
+    def fx(self, name: str) -> float:
+        """Cursul pentru a trece in $ valoarea unui instrument cotat in EUR (altfel 1)."""
+        return self.eurusd if name in EUR_QUOTE else 1.0
 
     def used_margin(self) -> float:
         return sum(p["amount"] for p in self.known.values())
@@ -78,7 +95,7 @@ class Assistant:
         return max(c["budget_usd"] * c.get("min_budget_frac", 0.5), c["budget_usd"] + self.realized)
 
     def free_margin(self) -> float:
-        return self.equity() - self.used_margin()
+        return self.equity() * 1.015 - self.used_margin()       # 1.5% toleranta: 3 pozitii minime de ~50.5$ incap in 150$
 
     def sizing(self, inst: dict) -> tuple[float, int, float]:
         c = self.cfg
@@ -114,7 +131,7 @@ class Assistant:
 
     def save_state(self) -> None:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
-                        "day": self.day, "day_pnl": self.day_pnl})
+                        "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar})
 
     def market_open(self, now: datetime) -> bool:
         return not (now.weekday() >= 5 or (now.weekday() == 4 and now.hour >= 20) or now.hour in (21, 22))
@@ -133,19 +150,28 @@ class Assistant:
         for name, inst in self.inst.items():
             if name in open_names or any(p["name"] == name for p in self.pending.values()):
                 continue
+            lo, hi = inst.get("hours_utc", (0, 24))
+            if not lo <= now.hour < hi:                                   # indicii: doar in programul lor
+                report.append({"name": name, "rsi": 50.0, "thr": 25, "bar": "?", "note": "în afara programului de tranzacționare", "skip": True})
+                continue
             try:
-                s = signals.scan(self.fetch(inst["yahoo"], "1h", "30d"), inst["signals"])
+                s = signals.scan(self.fetch(inst["yahoo"], "1h", "90d"), inst["signals"], pd.Timestamp(now))
             except Exception as e:  # noqa: BLE001
                 self.report_error(f"nu pot citi datele pentru {msg.pair(name)} ({type(e).__name__})")
+                continue
+            if s.get("age_min", 0) > self.cfg.get("max_bar_age_min", 100):          # ultima bara e veche: piata lui e inchisa / date blocate
+                report.append({"name": name, "rsi": s["rsi"], "thr": 25, "bar": msg.hour_range(s["bar"]), "note": "date vechi, piața lui pare închisă", "skip": True})
                 continue
             if os.getenv("QUIET_LOGS") != "1":                   # in repo public nu afisam semnalele/pozitiile in loguri
                 print(f"{name}: semnal={s['side']:+d} rsi={s['rsi']:.0f}")
             thr = next((int(n[7:]) for n in inst["signals"] if n.startswith("rsi_rev")), 25)
             report.append({"name": name, "rsi": s["rsi"], "thr": thr, "asia": s.get("asia_pos"), "bar": msg.hour_range(s["bar"]),
-                           "trend": s.get("trend")})
+                           "trend": s.get("trend"),
+                           "rsi_rule": any(n.startswith("rsi_rev") for n in inst["signals"])})
             if s["side"] == 0 or self.seen_bar.get(name) == s["bar"]:
                 continue
             self.seen_bar[name] = s["bar"]
+            self.save_state()
             if len(self.known) + len(self.pending) >= self.cfg["max_positions"]:
                 overflow.append(name)
                 continue
@@ -237,7 +263,7 @@ class Assistant:
         amount, lev = fill.get("amount", amount), fill.get("leverage", lev)
         notional = amount * lev
         sl, tp, tp_usd, sl_usd = self.levels(side, px, notional, p.get("atr_pct"))
-        self.known[pid] = {"id": pid, "name": name, "side": side, "open_rate": px, "units": notional / px if name in USD_QUOTE_FACTOR_ONE else notional,
+        self.known[pid] = {"id": pid, "name": name, "side": side, "open_rate": px, "units": notional / (px * self.fx(name)) if name in USD_QUOTE_FACTOR_ONE else notional,
                            "amount": amount, "leverage": lev, "sl": sl, "tp": tp, "last_pnl": 0.0,
                            "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": self.now_fn()}
         self.tg.send(msg.opened(name, side, px, d, amount, lev, notional, tp, tp_usd, sl, sl_usd))
@@ -247,6 +273,10 @@ class Assistant:
         if not pos:
             return
         self.expecting[pid] = kind
+        try:
+            pos["last_pnl"] = self.pnl(pos, self.broker.price(pos["name"]))         # rezultat proaspat la momentul inchiderii
+        except Exception:  # noqa: BLE001
+            pass
         try:
             self.broker.close(pid, pos["name"])
         except Exception as e:  # noqa: BLE001
@@ -264,6 +294,11 @@ class Assistant:
             self.report_error(f"nu pot citi pozițiile de pe eToro ({type(e).__name__})")
             return
         rows = []
+        if any(p["name"] in EUR_QUOTE for p in current.values()):
+            try:
+                self.eurusd = self.broker.price("EURUSD")
+            except Exception:  # noqa: BLE001
+                pass
         for pid, pos in current.items():
             try:
                 pos["last_pnl"] = self.pnl(pos, self.broker.price(pos["name"]))
@@ -276,13 +311,13 @@ class Assistant:
             kind = self.expecting.pop(pid, None)
             pnl = old.get("last_pnl", 0.0)
             if kind is None:
-                kind = ("TP" if pnl >= 0.6 * old.get("tp_usd", self.cfg["tp_usd"])
-                        else "SL" if pnl <= -0.6 * old.get("sl_usd", self.cfg["sl_usd"]) else "OTHER")
+                kind, pnl = self.classify_vanished(old, pnl)
             self.add_realized(pnl)
             self.tg.send(msg.closed(old["name"], kind, pnl, self.realized, self.equity() if self.cfg.get("progressive") else None))
         for pid, pos in current.items():
             self.known[pid] = {**self.known.get(pid, {}), **pos}          # pastram tinta/plasa in $ si ora deschiderii
-            self.known[pid].setdefault("opened_at", self.now_fn())
+            if not self.known[pid].get("opened_at"):
+                self.known[pid]["opened_at"] = parse_time(pos.get("time")) or self.now_fn()
         self.hold_alert()
         total = sum(r["last_pnl"] for r in rows)
         c = self.cfg
@@ -290,6 +325,24 @@ class Assistant:
             self.tg.send(msg.basket(len(rows), total))
             for pid in list(self.known):
                 self.close_one(pid, "BASKET")
+
+    def classify_vanished(self, old: dict, last_pnl: float) -> tuple[str, float]:
+        """O pozitie a disparut fara sa o fi inchis eu: a atins TP, SL sau a inchis-o altcineva? Rezultatul ultimei verificari
+        poate avea 30 de secunde, deci pentru TP/SL folosesc valorile $ ale nivelurilor, nu ultima citire."""
+        tp_usd, sl_usd = old.get("tp_usd", self.cfg["tp_usd"]), old.get("sl_usd", self.cfg["sl_usd"])
+        try:
+            px = self.broker.price(old["name"])
+            side = old["side"]
+            if old.get("tp") and side * (px - old["tp"]) >= 0 or last_pnl >= 0.6 * tp_usd:
+                return "TP", max(tp_usd, last_pnl) if last_pnl > 0 else tp_usd
+            if old.get("sl") and side * (old["sl"] - px) >= 0 or last_pnl <= -0.6 * sl_usd:
+                return "SL", min(-sl_usd, last_pnl)
+        except Exception:  # noqa: BLE001
+            if last_pnl >= 0.6 * tp_usd:
+                return "TP", last_pnl
+            if last_pnl <= -0.6 * sl_usd:
+                return "SL", last_pnl
+        return "OTHER", last_pnl
 
     def hold_alert(self) -> None:
         """O pozitie care nu si-a atins ținta in ~2 ore: te intreb daca vrei sa o inchizi tu."""
@@ -427,6 +480,7 @@ class Assistant:
         st = state_mod.load()
         self.realized, self.n_closed = st.get("realized", 0.0), st.get("n_closed", 0)
         self.day, self.day_pnl = st.get("day", ""), st.get("day_pnl", 0.0)
+        self.seen_bar = {k: v for k, v in st.get("seen", {}).items() if k in self.inst}      # nu re-propun aceeasi bara dupa o repornire
         self.autotrade = bool(st.get("autotrade")) and os.getenv("CONTINUED") == "1"      # sesiune noua pornita de tine: autotrading oprit
         if os.getenv("CONTINUED") == "1":
             self.tg.send(msg.continued(hours), menu=msg.MENU)
@@ -455,8 +509,10 @@ class Assistant:
                 for ev in self.tg.poll(timeout=15):
                     self.handle(ev)
                 now = time.time()
-                if now - t_scan >= c["scan_every_min"] * 60:
-                    t_scan = now
+                utc = self.now_fn()
+                slot = (utc.date(), utc.hour, utc.minute // 15)
+                if slot != self.last_slot and (self.last_slot is None or utc.second >= 20):   # la :00/:15/:30/:45 (+20s), cand apare ora noua
+                    self.last_slot = slot
                     self.scan()
                 if now - t_mon >= c["pl_check_every_sec"]:
                     t_mon = now

@@ -38,11 +38,20 @@ def completed(df: pd.DataFrame, now: pd.Timestamp | None = None) -> pd.DataFrame
     return real[real.index + timedelta(hours=1) <= now]                  # ora trebuie sa se fi terminat
 
 
-def scan(df: pd.DataFrame, names: list[str]) -> dict:
+def edge(series: pd.Series) -> int:
+    """Votul barei curente, doar daca e NOU (bara de dinainte avea alt vot). O conditie care ramane adevarata ore la rand
+    (RSI extrem, pret peste maximul ultimelor ore) nu mai produce un semnal nou la fiecare ora."""
+    last = int(series.iloc[-1])
+    prev = int(series.iloc[-2]) if len(series) > 1 else 0
+    return last if last != prev else 0
+
+
+def scan(df: pd.DataFrame, names: list[str], now: pd.Timestamp | None = None) -> dict:
     """+1 BUY / -1 SELL / 0. Semnale contradictorii => 0. Se folosesc doar orele incheiate."""
-    df = completed(df)
+    now = now or pd.Timestamp.now(tz="UTC")
+    df = completed(df, now)
     S = strategies.all_signals(df)
-    votes = {n: int(S[n].iloc[-1]) for n in names}
+    votes = {n: edge(S[n]) for n in names}
     side = 1 if (1 in votes.values() and -1 not in votes.values()) else -1 if (-1 in votes.values() and 1 not in votes.values()) else 0
     why = [reason_for(n) for n, v in votes.items() if v == side and side]
     price = float(df["close"].iloc[-1])
@@ -52,4 +61,5 @@ def scan(df: pd.DataFrame, names: list[str]) -> dict:
     pos = None if hi is None else ("deasupra" if price > hi else "sub" if price < lo else "în interior")
     return {"side": side, "why": "; ".join(dict.fromkeys(why)), "rsi": float(ta.rsi(df["close"], 14).iloc[-1]),
             "price": price, "bar": df.index[-1].isoformat(), "asia_pos": pos, "n_bars": len(df),
-            "atr_pct": float(ta.atr(df).iloc[-1]) / price, "trend": trend_of(df)}
+            "atr_pct": float(ta.atr(df).iloc[-1]) / price, "trend": trend_of(df),
+            "age_min": (now - (df.index[-1] + timedelta(hours=1))).total_seconds() / 60}

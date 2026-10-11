@@ -107,6 +107,10 @@
       "signals": [
         "pullback40",
         "donchian24_trend"
+      ],
+      "hours_utc": [
+        13,
+        21
       ]
     },
     {
@@ -118,6 +122,10 @@
       "signals": [
         "pullback40",
         "donchian24_trend"
+      ],
+      "hours_utc": [
+        13,
+        21
       ]
     },
     {
@@ -129,6 +137,10 @@
       "signals": [
         "pullback40",
         "donchian24_trend"
+      ],
+      "hours_utc": [
+        13,
+        21
       ]
     },
     {
@@ -140,6 +152,10 @@
       "signals": [
         "pullback40",
         "donchian24_trend"
+      ],
+      "hours_utc": [
+        7,
+        17
       ]
     },
     {
@@ -165,5 +181,6 @@
   "min_sl_pct": 0.15,
   "max_sl_usd": 20.0,
   "hold_alert_min": 120,
-  "autotrade_daily_loss_usd": 15.0
+  "autotrade_daily_loss_usd": 15.0,
+  "max_bar_age_min": 100
 }
