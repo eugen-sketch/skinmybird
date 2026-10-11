@@ -165,23 +165,32 @@ def cancelled() -> str:
 
 
 def scan_report(rows: list[dict]) -> str:
-    """rows: name, rsi, thr (prag RSI), asia (poz. fata de intervalul de noapte sau None), bar (ora ultimei bare), note."""
+    """rows: name, rsi, thr (prag RSI), asia (poz. fata de intervalul de noapte sau None), bar (ora ultimei bare), note,
+    trend, rsi_rule (are regula de RSI extrem), skip (n-am putut/nu trebuia sa-l scanez acum)."""
     lines = []
     for r in rows:
+        nm = pair(r["name"]).split(" ")[0]
+        note = f" ({r['note']})" if r.get("note") else ""
+        if r.get("skip"):
+            lines.append(f"• {nm}:{note}")
+            continue
         extra = f" · fața de intervalul de noapte: {r['asia']}" if r.get("asia") and len(r["name"]) == 6 and r["name"].isalpha() else ""
         trend = {"sus": " · trend orar: ↗️ sus", "jos": " · trend orar: ↘️ jos", "lateral": " · trend orar: ↔️ lateral"}.get(r.get("trend"), "")
-        note = f" ({r['note']})" if r.get("note") else ""
-        lines.append(f"• {pair(r['name']).split(' ')[0]}: RSI {r['rsi']:.0f}{trend}{extra}{note}")
-    bar = rows[0]["bar"] if rows else "?"
-    near = sorted((r for r in rows if "rsi" in r), key=lambda r: min(abs(r["rsi"] - r["thr"]), abs(r["rsi"] - (100 - r["thr"]))))
+        lines.append(f"• {nm}: RSI {r['rsi']:.0f}{trend}{extra}{note}")
+    scanned = [r for r in rows if not r.get("skip")]
+    bar = next((r["bar"] for r in scanned if r.get("bar") not in (None, "?")), "?")
+    near = sorted((r for r in scanned if r.get("rsi_rule", True) and not r.get("note")),
+                  key=lambda r: min(abs(r["rsi"] - r["thr"]), abs(r["rsi"] - (100 - r["thr"]))))
     n = near[0] if near else None
     if n:
         side = "BUY" if n["rsi"] < 50 else "SELL"
-        close = (f"\n\n🎯 Cel mai aproape de semnal: {pair(n['name']).split(' ')[0]} (RSI {n['rsi']:.0f}). "
+        close = (f"\n\n🎯 Cel mai aproape de semnal (la RSI): {pair(n['name']).split(' ')[0]} (RSI {n['rsi']:.0f}). "
                  f"Ar deveni {side} dacă RSI ajunge {'sub ' + str(n['thr']) if side == 'BUY' else 'peste ' + str(100 - n['thr'])}.")
     else:
         close = ""
-    return (f"🔎 Am scanat acum {len(rows)} instrumente (ultima oră încheiată: {bar}).\n" + "\n".join(lines) +
+    skipped = len(rows) - len(scanned)
+    tail = f", {skipped} în afara programului sau fără date proaspete" if skipped else ""
+    return (f"🔎 Am scanat acum {len(scanned)} instrumente{tail} (ultima oră încheiată: {bar}).\n" + "\n".join(lines) +
             f"\n\nNiciun semnal nou. Cumpăr/vând doar când văd semnal clar (revenire după retragere în trend, spargere de maxim/minim, RSI extrem, spargerea intervalului de noapte pe forex).{close}"
             f"\n\n👉 Recomandare acum: HOLD ⏸️ — nu cumpăra și nu vinde nimic, așteptăm.")
 

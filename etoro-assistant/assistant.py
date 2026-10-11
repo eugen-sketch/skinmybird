@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import messages as msg
+import pandas as pd
 import signals
 import state as state_mod
 import ta
@@ -38,6 +39,15 @@ def plan_session(hours: float) -> tuple[float, float]:
 
 def digits_for(name: str, px: float) -> int:
     return 1 if name in INDICES else 2 if name in ("OIL", "GOLD") else 5 if px < 20 else 3
+
+
+def parse_time(txt) -> datetime | None:
+    """Ora deschiderii de la eToro (ISO, uneori cu fractii de secunda si 'Z'); None daca nu o pot citi."""
+    try:
+        t = datetime.fromisoformat(str(txt).replace("Z", "+00:00")[:32].split(".")[0] + ("+00:00" if "+" not in str(txt) and "Z" not in str(txt) else ""))
+        return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
 
 
 class Assistant:
@@ -133,16 +143,24 @@ class Assistant:
         for name, inst in self.inst.items():
             if name in open_names or any(p["name"] == name for p in self.pending.values()):
                 continue
+            lo, hi = inst.get("hours_utc", (0, 24))
+            if not lo <= now.hour < hi:                                   # indicii: doar in programul lor
+                report.append({"name": name, "rsi": 50.0, "thr": 25, "bar": "?", "note": "în afara programului de tranzacționare", "skip": True})
+                continue
             try:
-                s = signals.scan(self.fetch(inst["yahoo"], "1h", "30d"), inst["signals"])
+                s = signals.scan(self.fetch(inst["yahoo"], "1h", "90d"), inst["signals"], pd.Timestamp(now))
             except Exception as e:  # noqa: BLE001
                 self.report_error(f"nu pot citi datele pentru {msg.pair(name)} ({type(e).__name__})")
+                continue
+            if s.get("age_min", 0) > self.cfg.get("max_bar_age_min", 100):          # ultima bara e veche: piata lui e inchisa / date blocate
+                report.append({"name": name, "rsi": s["rsi"], "thr": 25, "bar": msg.hour_range(s["bar"]), "note": "date vechi, piața lui pare închisă", "skip": True})
                 continue
             if os.getenv("QUIET_LOGS") != "1":                   # in repo public nu afisam semnalele/pozitiile in loguri
                 print(f"{name}: semnal={s['side']:+d} rsi={s['rsi']:.0f}")
             thr = next((int(n[7:]) for n in inst["signals"] if n.startswith("rsi_rev")), 25)
             report.append({"name": name, "rsi": s["rsi"], "thr": thr, "asia": s.get("asia_pos"), "bar": msg.hour_range(s["bar"]),
-                           "trend": s.get("trend")})
+                           "trend": s.get("trend"),
+                           "rsi_rule": any(n.startswith("rsi_rev") for n in inst["signals"])})
             if s["side"] == 0 or self.seen_bar.get(name) == s["bar"]:
                 continue
             self.seen_bar[name] = s["bar"]
@@ -282,7 +300,8 @@ class Assistant:
             self.tg.send(msg.closed(old["name"], kind, pnl, self.realized, self.equity() if self.cfg.get("progressive") else None))
         for pid, pos in current.items():
             self.known[pid] = {**self.known.get(pid, {}), **pos}          # pastram tinta/plasa in $ si ora deschiderii
-            self.known[pid].setdefault("opened_at", self.now_fn())
+            if not self.known[pid].get("opened_at"):
+                self.known[pid]["opened_at"] = parse_time(pos.get("time")) or self.now_fn()
         self.hold_alert()
         total = sum(r["last_pnl"] for r in rows)
         c = self.cfg

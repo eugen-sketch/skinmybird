@@ -71,7 +71,7 @@ def make(now=T0):
 
 
 def fake_scan(monkeypatch, sides):
-    def scan(df, names):
+    def scan(df, names, now=None):
         return {"side": sides.get(tuple(names), 0), "why": "a spart intervalul din noaptea asiatică", "rsi": 50.0, "price": 1.1, "bar": "bar1"}
     monkeypatch.setattr(signals, "scan", scan)
 
@@ -226,11 +226,11 @@ def test_menu_buttons_work_and_close_all_asks_for_confirmation():
 
 def test_manual_scan_explains_what_it_checked(monkeypatch):
     a, tg, br = make()
-    monkeypatch.setattr(signals, "scan", lambda df, names: {"side": 0, "why": "", "rsi": 61.0, "price": 1.1, "bar": "2026-10-09T07:00:00+00:00",
+    monkeypatch.setattr(signals, "scan", lambda df, names, now=None: {"side": 0, "why": "", "rsi": 61.0, "price": 1.1, "bar": "2026-10-09T07:00:00+00:00",
                                                            "asia_pos": "în interior", "n_bars": 700})
     a.scan(manual=True)
     text = tg.texts[-1]
-    assert "Am scanat acum 13 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "07:00–08:00 UTC" in text
+    assert "Am scanat acum 10 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "07:00–08:00 UTC" in text
 
 
 def test_scan_counter_and_heartbeat_text(monkeypatch):
@@ -353,3 +353,38 @@ def test_state_roundtrip(tmp_path):
     state.save({"realized": 12.5, "autotrade": True}, p)
     assert "12.5" not in p.read_text() and state.load(p) == {"realized": 12.5, "autotrade": True}
     assert state.load(tmp_path / "missing") == {}
+
+
+def test_stale_bar_never_becomes_a_signal(monkeypatch):
+    a, tg, br = make()
+    monkeypatch.setattr(signals, "scan", lambda df, names, now=None: {"side": 1, "why": "x", "rsi": 20.0, "price": 1.1, "bar": "2026-10-08T15:00:00+00:00",
+                                                                     "age_min": 900.0, "atr_pct": 0.001, "trend": "sus"})
+    a.scan()
+    assert not a.pending and not br.pos                    # ultima bara are 15 ore: nu se propune nimic
+
+
+def test_index_outside_its_hours_is_skipped(monkeypatch):
+    a, tg, br = make()                                      # 08:15 UTC: indicii americani nu sunt in program
+    calls = []
+
+    def scan(df, names, now=None):
+        calls.append(names)
+        return {"side": 0, "why": "", "rsi": 50.0, "price": 1.1, "bar": "2026-10-09T07:00:00+00:00", "age_min": 15.0}
+    monkeypatch.setattr(signals, "scan", scan)
+    a.scan(manual=True)
+    text = tg.texts[-1]
+    assert "în afara programului" in text and "S&P 500" not in text.split("•")[0]
+    assert len(calls) == 10                                  # 13 instrumente - 3 indici americani
+
+
+def test_real_scan_reports_bar_age_and_atr():
+    import numpy as np
+    import pandas as pd
+    idx = pd.date_range("2026-09-01", periods=800, freq="h", tz="UTC")
+    c = 100 + np.cumsum(np.random.default_rng(5).normal(0, 0.1, 800))
+    df = pd.DataFrame({"open": c, "high": c + 0.1, "low": c - 0.1, "close": c}, index=idx)
+    now = idx[-1] + pd.Timedelta(minutes=70)
+    s = signals.scan(df, ["rsi_rev25"], now)
+    assert s["bar"].startswith(str(idx[-1].date())) and abs(s["age_min"] - 10) < 1 and 0 < s["atr_pct"] < 0.05
+    s2 = signals.scan(df, ["rsi_rev25"], idx[-1] + pd.Timedelta(hours=30))
+    assert s2["age_min"] > 1000
