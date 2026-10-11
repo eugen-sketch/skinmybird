@@ -10,7 +10,7 @@ import time
 
 import requests
 
-DEFAULT_HOURS, MAX_HOURS, FRESH_MIN = 12, 72, 30
+DEFAULT_HOURS, MAX_HOURS, FRESH_MIN = 12, 72, 60
 TG = f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN', '')}"
 GH = f"https://api.github.com/repos/{os.getenv('GITHUB_REPOSITORY', '')}"
 GH_HEAD = {"Authorization": f"Bearer {os.getenv('GH_TOKEN', '')}", "Accept": "application/vnd.github+json"}
@@ -55,7 +55,7 @@ def main() -> None:
         return
     last_start = next((m for m in reversed(mine) if wants_start(m["text"])), None)
     if last_start is None:
-        send(chat, "😴 Asistentul e oprit acum. Apasă ▶️ Pornește (sau scrie «pornește») și îl pornesc în câteva minute. "
+        send(chat, "😴 Asistentul e oprit acum. Apasă ▶️ Pornește (sau scrie «pornește») și îl pornesc în maxim ~15-20 de minute (GitHub rulează verificarea rar). "
                    "Poți scrie și «pornește 24» ca să rămână pornit 24 de ore.")
         return
     hours = hours_from(last_start["text"])
