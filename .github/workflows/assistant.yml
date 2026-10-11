@@ -28,6 +28,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install requests pandas numpy
+      - name: Restore state (castig realizat intre sesiuni)
+        continue-on-error: true
+        working-directory: etoro-assistant
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=assistant-state&per_page=1" --jq '.artifacts[0].id // empty')
+          if [ -n "$id" ]; then
+            gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > state.zip && unzip -o -q state.zip && rm -f state.zip
+          fi
       - name: Run assistant
         working-directory: etoro-assistant
         env:
@@ -39,6 +49,15 @@ jobs:
           SESSION_HOURS: ${{ inputs.hours }}
           CONTINUED: ${{ inputs.continued }}
         run: python assistant.py
+      - name: Save state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assistant-state
+          path: etoro-assistant/state.json
+          overwrite: true
+          retention-days: 30
+          if-no-files-found: ignore
       - name: Continue in a new session if hours remain
         working-directory: etoro-assistant
         env:

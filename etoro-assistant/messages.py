@@ -23,17 +23,19 @@ def signed(x: float) -> str:
     return f"{'+' if x >= 0 else '-'}${abs(x):,.2f}"
 
 
-MENU = [["📊 Status", "🔎 Caută semnale"], ["🔒 Închide tot", "⛔ Oprește"], ["❓ Ajutor", "▶️ Pornește"]]
+MENU = [["📊 Status", "🔎 Caută semnale"], ["🔒 Închide tot", "⛔ Oprește"], ["🤖 Autotrading", "❓ Ajutor"], ["▶️ Pornește"]]
 
 
-def started(hours: float, budget: float, scan_min: int, tp: float, basket: float) -> str:
+def started(hours: float, budget: float, scan_min: int, basket: float) -> str:
     return (f"🟢 Asistentul a pornit și mă uit pe piață.\n\n"
-            f"🔎 Scanez forex și petrol la fiecare {scan_min} minute și îți scriu când văd un semnal.\n"
-            f"🤝 Nu deschid NICIUN ordin fără un „OK” de la tine.\n"
-            f"🎯 Fiecare poziție deschisă are țintă ≈ {usd(tp)}. Dacă ai mai multe deschise și împreună ajung la ≈ {usd(basket)}, le închid eu automat.\n"
+            f"🔎 Scanez forex, petrol, aur și indici la fiecare {scan_min} minute, pe trendul orar, și îți scriu când văd un semnal.\n"
+            f"🤝 Nu deschid NICIUN ordin fără un „OK” de la tine, decât dacă pornești tu 🤖 Autotrading din meniu.\n"
+            f"🎯 Țintă (TP) și plasă de siguranță (SL) le pun eu automat, din volatilitatea orară: țintă mică, atinsă de obicei în 1–2 ore, plasă largă.\n"
+            f"🤝 Dacă ai mai multe poziții și împreună ajung la ≈ {usd(basket)}, le închid eu.\n"
+            f"📈 Sumele cresc cu câștigul realizat (împart bugetul la 3).\n"
             f"✋ Poți închide oricând, din eToro sau de aici.\n"
-            f"👛 Buget: {usd(budget)} · Sesiune: {hours:g} ore (apoi mă opresc singur)\n\n"
-            f"👇 Folosește butoanele din meniul de sub căsuța de scris: Status, Caută semnale, Închide tot, Oprește, Ajutor.")
+            f"👛 Buget de lucru: {usd(budget)} · Sesiune: {hours:g} ore (apoi mă opresc singur)\n\n"
+            f"👇 Folosește butoanele din meniul de sub căsuța de scris.")
 
 
 HELP = ("🤖 Ce pot face (butoanele din meniul de jos fac același lucru):\n"
@@ -41,6 +43,7 @@ HELP = ("🤖 Ce pot face (butoanele din meniul de jos fac același lucru):\n"
         "• 🔎 Caută semnale – scanez piața chiar acum\n"
         "• 🔒 Închide tot – îți cer o confirmare, apoi închid toate pozițiile\n"
         "• ⛔ Oprește – îți cer o confirmare, apoi mă opresc\n"
+        "• 🤖 Autotrading – pornești/oprești deschiderea automată a semnalelor (doar tu o pornești; limită de pierdere pe zi)\n"
         "• ▶️ Pornește – când sunt oprit, mă pornești de aici (rulez singur până la 12 ore, apoi repornesc automat)\n\n"
         "Cele scrise de mână:\n"
         "• /status – pozițiile deschise și cât câștigi/pierzi acum\n"
@@ -79,14 +82,15 @@ def opened(name: str, side: int, px: float, digits: int, amount: float, lev: int
             f"Te țin la curent. Poți închide oricând cu /inchide.")
 
 
-def status(rows: list[dict], total: float, free: float, budget: float, realized: float, n_closed: int) -> str:
+def status(rows: list[dict], total: float, free: float, budget: float, realized: float, n_closed: int, auto: bool = False) -> str:
+    tail = "\n🤖 Autotrading: PORNIT" if auto else ""
     if not rows:
         return (f"📭 Nu ai nicio poziție deschisă.\n👛 Buget liber: {usd(free)} din {usd(budget)}\n"
-                f"📒 În sesiunea asta: {n_closed} închise, rezultat {signed(realized)}")
+                f"📒 Închise: {n_closed}, rezultat {signed(realized)}{tail}")
     lines = [f"{'🟢' if r['pnl'] >= 0 else '🔴'} {pair(r['name'])} ({'cumpărat' if r['side'] == 1 else 'vândut'}): {signed(r['pnl'])}" for r in rows]
     icon = "📈" if total >= 0 else "📉"
     return ("📊 Pozițiile deschise acum:\n" + "\n".join(lines) + f"\n\n{icon} Total acum: {signed(total)}\n"
-            f"👛 Buget liber: {usd(free)} din {usd(budget)}\n📒 În sesiunea asta: {n_closed} închise, rezultat {signed(realized)}")
+            f"👛 Buget liber: {usd(free)} din {usd(budget)}\n📒 Închise: {n_closed}, rezultat {signed(realized)}{tail}")
 
 
 def update(rows: list[dict], total: float) -> str:
@@ -94,7 +98,11 @@ def update(rows: list[dict], total: float) -> str:
     return f"⏱️ Update: {parts} · total {signed(total)}"
 
 
-def closed(name: str, kind: str, pnl: float, total_closed: float) -> str:
+def closed(name: str, kind: str, pnl: float, total_closed: float, equity: float | None = None) -> str:
+    return _closed(name, kind, pnl) + (f"\n💼 Buget de lucru acum: {usd(equity)} (rezultat realizat {signed(total_closed)})" if equity else "")
+
+
+def _closed(name: str, kind: str, pnl: float) -> str:
     p = pair(name)
     if kind == "TP":
         return f"🎉💵 {p}: ținta a fost atinsă! Rezultat {signed(pnl)}. Poziția e închisă."
@@ -161,8 +169,9 @@ def scan_report(rows: list[dict]) -> str:
     lines = []
     for r in rows:
         extra = f" · fața de intervalul de noapte: {r['asia']}" if r.get("asia") and len(r["name"]) == 6 and r["name"].isalpha() else ""
+        trend = {"sus": " · trend orar: ↗️ sus", "jos": " · trend orar: ↘️ jos", "lateral": " · trend orar: ↔️ lateral"}.get(r.get("trend"), "")
         note = f" ({r['note']})" if r.get("note") else ""
-        lines.append(f"• {pair(r['name']).split(' ')[0]}: RSI {r['rsi']:.0f}{extra}{note}")
+        lines.append(f"• {pair(r['name']).split(' ')[0]}: RSI {r['rsi']:.0f}{trend}{extra}{note}")
     bar = rows[0]["bar"] if rows else "?"
     near = sorted((r for r in rows if "rsi" in r), key=lambda r: min(abs(r["rsi"] - r["thr"]), abs(r["rsi"] - (100 - r["thr"]))))
     n = near[0] if near else None
@@ -173,7 +182,7 @@ def scan_report(rows: list[dict]) -> str:
     else:
         close = ""
     return (f"🔎 Am scanat acum {len(rows)} instrumente (ultima oră încheiată: {bar}).\n" + "\n".join(lines) +
-            f"\n\nNiciun semnal nou. Cumpăr/vând doar la RSI extrem sau la spargerea intervalului de noapte (07–11 UTC).{close}"
+            f"\n\nNiciun semnal nou. Cumpăr/vând doar când văd semnal clar (revenire după retragere în trend, spargere de maxim/minim, RSI extrem, spargerea intervalului de noapte pe forex).{close}"
             f"\n\n👉 Recomandare acum: HOLD ⏸️ — nu cumpăra și nu vinde nimic, așteptăm.")
 
 
@@ -201,3 +210,33 @@ def continued(hours: float) -> str:
 
 def handover(remaining: float, open_n: int) -> str:
     return f"🔁 Mă mut într-o sesiune nouă, rămân pornit încă {remaining:g} ore. (Poziții deschise: {open_n}, rămân urmărite.)"
+
+
+def auto_signal(name: str, side: int, why: str, px: float, digits: int) -> str:
+    act = "BUY" if side == 1 else "SELL"
+    return f"🤖 Autotrading: {'🟢' if side == 1 else '🔴'} {act} pe {pair(name)} la {px:.{digits}f}. {why[:1].upper() + why[1:]}. Deschid acum."
+
+
+def confirm_autotrade(max_pos: int, daily_loss: float) -> str:
+    return (f"🤖 Pornesc autotrading?\n\nDeschid singur semnalele noi (fără să te mai întreb), cu țintă și plasă puse automat, "
+            f"maxim {max_pos} poziții odată. Dacă pierderea realizată azi ajunge la {usd(daily_loss)}, mă opresc singur din deschis.\n"
+            f"Tot demo. Îl oprești oricând din același buton.")
+
+
+def autotrade_on(max_pos: int, daily_loss: float) -> str:
+    return (f"🤖✅ Autotrading PORNIT. Deschid singur semnalele (maxim {max_pos} poziții), te anunț la fiecare deschidere și închidere. "
+            f"Mă opresc din deschis la pierdere de {usd(daily_loss)} într-o zi. Oprești cu 🤖 Autotrading.")
+
+
+def autotrade_off() -> str:
+    return "🤖⏸️ Autotrading OPRIT. De acum te întreb din nou la fiecare semnal. Pozițiile deschise rămân urmărite."
+
+
+def autotrade_limit(daily_loss: float) -> str:
+    return (f"🤖🛑 Am oprit autotrading: pierderea realizată azi a ajuns la {usd(daily_loss)}. "
+            f"Nu mai deschid singur nimic azi. Dacă vrei, îl pornești din nou din meniu.")
+
+
+def hold_alert(name: str, hours: int, pnl: float) -> str:
+    return (f"⏱️ {pair(name)} e deschisă de ≈{hours} ore și nu și-a atins încă ținta (acum {signed(pnl)}). "
+            f"Vrei s-o închizi tu, sau o las să-și vadă de țintă?")

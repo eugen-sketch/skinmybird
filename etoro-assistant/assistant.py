@@ -18,6 +18,7 @@ from pathlib import Path
 
 import messages as msg
 import signals
+import state as state_mod
 import ta
 from etoro import EToroError
 
@@ -53,6 +54,9 @@ class Assistant:
         self.sid = 0
         self.scans, self.last_scan = 0, "-"
         self.realized, self.n_closed = 0.0, 0
+        self.autotrade = False                   # pornit doar de tine, din buton
+        self.day, self.day_pnl = "", 0.0
+        self.hold_alerted: set[str] = set()
         self.stop_reason: str | None = None
         self.last_err: tuple[str, float] = ("", 0.0)
 
@@ -66,20 +70,51 @@ class Assistant:
     def used_margin(self) -> float:
         return sum(p["amount"] for p in self.known.values())
 
+    def equity(self) -> float:
+        """Bugetul de lucru: cel de baza plus castigul realizat (cresc pozitiile cand castigi, scad cand pierzi, minim 50%)."""
+        c = self.cfg
+        if not c.get("progressive"):
+            return c["budget_usd"]
+        return max(c["budget_usd"] * c.get("min_budget_frac", 0.5), c["budget_usd"] + self.realized)
+
     def free_margin(self) -> float:
-        return self.cfg["budget_usd"] - self.used_margin()
+        return self.equity() - self.used_margin()
 
     def sizing(self, inst: dict) -> tuple[float, int, float]:
         c = self.cfg
         lev = min(inst["lev_cap"], c["max_leverage"])
-        margin = math.floor(c["budget_usd"] / c["max_positions"] * 100) / 100
+        margin = math.floor(self.equity() / c["max_positions"] * 100) / 100
         if margin * lev < c["min_notional"] * 1.005:
             margin = math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100       # minimul eToro pentru expunere
         return margin, lev, margin * lev
 
-    def levels(self, side: int, px: float, notional: float) -> tuple[float, float]:
+    def pcts(self, notional: float, atr_pct: float | None = None) -> tuple[float, float]:
+        """(distanta TP, distanta SL) ca fractie din pret. TP mic din volatilitatea orara (atins in 1-2 ore),
+        SL larg (de cateva ori volatilitatea orara), ambele limitate in $."""
         c = self.cfg
-        return px - side * c["sl_usd"] / notional * px, px + side * c["tp_usd"] / notional * px
+        if not atr_pct:
+            return c["tp_usd"] / notional, c["sl_usd"] / notional
+        tp = min(max(c["tp_atr"] * atr_pct, c["min_tp_usd"] / notional), c["max_tp_usd"] / notional)
+        sl = min(max(c["sl_atr"] * atr_pct, c["min_sl_pct"] / 100), c["max_sl_usd"] / notional)
+        return tp, sl
+
+    def levels(self, side: int, px: float, notional: float, atr_pct: float | None = None) -> tuple[float, float, float, float]:
+        """(pret SL, pret TP, TP in $, SL in $)"""
+        tp, sl = self.pcts(notional, atr_pct)
+        return px * (1 - side * sl), px * (1 + side * tp), tp * notional, sl * notional
+
+    def add_realized(self, pnl: float) -> None:
+        today = self.now_fn().strftime("%Y-%m-%d")
+        if self.day != today:
+            self.day, self.day_pnl = today, 0.0
+        self.realized += pnl
+        self.day_pnl += pnl
+        self.n_closed += 1
+        self.save_state()
+
+    def save_state(self) -> None:
+        state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
+                        "day": self.day, "day_pnl": self.day_pnl})
 
     def market_open(self, now: datetime) -> bool:
         return not (now.weekday() >= 5 or (now.weekday() == 4 and now.hour >= 20) or now.hour in (21, 22))
@@ -106,7 +141,8 @@ class Assistant:
             if os.getenv("QUIET_LOGS") != "1":                   # in repo public nu afisam semnalele/pozitiile in loguri
                 print(f"{name}: semnal={s['side']:+d} rsi={s['rsi']:.0f}")
             thr = next((int(n[7:]) for n in inst["signals"] if n.startswith("rsi_rev")), 25)
-            report.append({"name": name, "rsi": s["rsi"], "thr": thr, "asia": s.get("asia_pos"), "bar": msg.hour_range(s["bar"])})
+            report.append({"name": name, "rsi": s["rsi"], "thr": thr, "asia": s.get("asia_pos"), "bar": msg.hour_range(s["bar"]),
+                           "trend": s.get("trend")})
             if s["side"] == 0 or self.seen_bar.get(name) == s["bar"]:
                 continue
             self.seen_bar[name] = s["bar"]
@@ -138,26 +174,40 @@ class Assistant:
             px = s["price"]
         side = s["side"]
         amount, lev, notional = self.sizing(inst)
-        sl_px, tp_px = self.levels(side, px, notional)
+        atr_pct = s.get("atr_pct")
+        sl_px, tp_px, tp_usd, sl_usd = self.levels(side, px, notional, atr_pct)
         d = digits_for(name, px)
         free = self.free_margin()
         can = amount <= free + 0.001
         reason = msg.no_free_margin(amount, free)
-        text = msg.signal(name, side, s["why"], px, d, amount, lev, notional, tp_px, self.cfg["tp_usd"], sl_px, self.cfg["sl_usd"], free, can, reason)
+        text = msg.signal(name, side, s["why"], px, d, amount, lev, notional, tp_px, tp_usd, sl_px, sl_usd, free, can, reason)
         if not can:
             self.tg.send(text)
             return False
         self.sid += 1
         sid = self.sid
+        if self.autotrade and self.day_pnl_today() <= -self.cfg["autotrade_daily_loss_usd"]:
+            self.autotrade = False
+            self.save_state()
+            self.tg.send(msg.autotrade_limit(self.cfg["autotrade_daily_loss_usd"]))
+        if self.autotrade:
+            self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": None, "amount": amount,
+                                 "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct}
+            self.tg.send(msg.auto_signal(name, side, s["why"], px, d))
+            self.open_pending(sid)
+            return True
         mid = self.tg.send(text, [[("✅ OK, deschide", f"open:{sid}"), ("❌ NU", f"skip:{sid}")]])
         self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": mid, "amount": amount,
-                             "last_msg": self.now_fn(), "reminders": 0}
+                             "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct}
         ok = [k for k, v in self.pending.items()]
         if len(ok) >= 2:
             ids = ",".join(str(k) for k in ok)
             self.tg.send(f"📦 Ai {len(ok)} semnale în așteptare. Le deschid pe toate dintr-o dată?",
                          [[(f"✅ OK la toate ({len(ok)})", f"openall:{ids}"), ("❌ NU la toate", f"skipall:{ids}")]])
         return True
+
+    def day_pnl_today(self) -> float:
+        return self.day_pnl if self.day == self.now_fn().strftime("%Y-%m-%d") else 0.0
 
     # ------------------------------------------------------------------ executie (doar la OK)
     def open_pending(self, sid: int) -> None:
@@ -177,7 +227,7 @@ class Assistant:
             return
         try:
             px = self.broker.price(name)
-            sl, tp = self.levels(side, px, notional)
+            sl, tp, _, _ = self.levels(side, px, notional, p.get("atr_pct"))
             d = digits_for(name, px)
             pid = self.broker.open(name, side, amount, lev, round(sl, d), round(tp, d))
         except (EToroError, Exception) as e:  # noqa: BLE001
@@ -186,10 +236,11 @@ class Assistant:
         fill = getattr(self.broker, "last", None) or {}
         amount, lev = fill.get("amount", amount), fill.get("leverage", lev)
         notional = amount * lev
-        sl, tp = self.levels(side, px, notional)
+        sl, tp, tp_usd, sl_usd = self.levels(side, px, notional, p.get("atr_pct"))
         self.known[pid] = {"id": pid, "name": name, "side": side, "open_rate": px, "units": notional / px if name in USD_QUOTE_FACTOR_ONE else notional,
-                           "amount": amount, "leverage": lev, "sl": sl, "tp": tp, "last_pnl": 0.0}
-        self.tg.send(msg.opened(name, side, px, d, amount, lev, notional, tp, self.cfg["tp_usd"], sl, self.cfg["sl_usd"]))
+                           "amount": amount, "leverage": lev, "sl": sl, "tp": tp, "last_pnl": 0.0,
+                           "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": self.now_fn()}
+        self.tg.send(msg.opened(name, side, px, d, amount, lev, notional, tp, tp_usd, sl, sl_usd))
 
     def close_one(self, pid: str, kind: str) -> None:
         pos = self.known.get(pid)
@@ -225,18 +276,30 @@ class Assistant:
             kind = self.expecting.pop(pid, None)
             pnl = old.get("last_pnl", 0.0)
             if kind is None:
-                kind = "TP" if pnl >= 0.6 * self.cfg["tp_usd"] else "SL" if pnl <= -0.6 * self.cfg["sl_usd"] else "OTHER"
-            self.realized += pnl
-            self.n_closed += 1
-            self.tg.send(msg.closed(old["name"], kind, pnl, self.realized))
+                kind = ("TP" if pnl >= 0.6 * old.get("tp_usd", self.cfg["tp_usd"])
+                        else "SL" if pnl <= -0.6 * old.get("sl_usd", self.cfg["sl_usd"]) else "OTHER")
+            self.add_realized(pnl)
+            self.tg.send(msg.closed(old["name"], kind, pnl, self.realized, self.equity() if self.cfg.get("progressive") else None))
         for pid, pos in current.items():
-            self.known[pid] = pos
+            self.known[pid] = {**self.known.get(pid, {}), **pos}          # pastram tinta/plasa in $ si ora deschiderii
+            self.known[pid].setdefault("opened_at", self.now_fn())
+        self.hold_alert()
         total = sum(r["last_pnl"] for r in rows)
         c = self.cfg
         if check_basket and len(rows) >= c["basket_min_positions"] and total >= c["basket_target_usd"]:
             self.tg.send(msg.basket(len(rows), total))
             for pid in list(self.known):
                 self.close_one(pid, "BASKET")
+
+    def hold_alert(self) -> None:
+        """O pozitie care nu si-a atins ținta in ~2 ore: te intreb daca vrei sa o inchizi tu."""
+        now = self.now_fn()
+        for pid, p in self.known.items():
+            age = (now - p["opened_at"]).total_seconds() / 60 if p.get("opened_at") else 0
+            if age >= self.cfg.get("hold_alert_min", 120) and pid not in self.hold_alerted:
+                self.hold_alerted.add(pid)
+                self.tg.send(msg.hold_alert(p["name"], int(age // 60), p.get("last_pnl", 0.0)),
+                             [[(f"🔒 Închide {msg.pair(p['name']).split(' ')[0]}", f"close:{pid}"), ("👍 Las-o", "cancel")]])
 
     def status(self) -> None:
         self.monitor()
@@ -245,7 +308,7 @@ class Assistant:
         buttons = [[(f"🔒 Închide {msg.pair(r['name']).split(' ')[0]}", f"close:{p['id']}")] for r, p in zip(rows, self.known.values())]
         if len(rows) >= 2:
             buttons.append([("🔒🔒 Închide tot", "closeall")])
-        self.tg.send(msg.status(rows, total, self.free_margin(), self.cfg["budget_usd"], self.realized, self.n_closed), buttons or None)
+        self.tg.send(msg.status(rows, total, self.free_margin(), self.equity(), self.realized, self.n_closed, self.autotrade), buttons or None)
 
     # ------------------------------------------------------------------ comenzi
     def handle(self, ev: dict) -> None:
@@ -276,6 +339,11 @@ class Assistant:
                 self.tg.clear_buttons(ev["msg_id"])
                 for pid in list(self.known):
                     self.close_one(pid, "YOU")
+            elif d == "autoon":
+                self.tg.clear_buttons(ev["msg_id"])
+                self.autotrade = True
+                self.save_state()
+                self.tg.send(msg.autotrade_on(self.cfg["max_positions"], self.cfg["autotrade_daily_loss_usd"]))
             elif d == "stopnow":
                 self.tg.clear_buttons(ev["msg_id"])
                 self.stop_reason = "la cererea ta"
@@ -284,7 +352,19 @@ class Assistant:
                 self.tg.send(msg.cancelled())
             return
         t = ev["text"].lower().replace("î", "i").replace("â", "a").replace("ă", "a").replace("ș", "s").replace("ț", "t")
-        if "porne" in t:
+        if "autotrading" in t or t.startswith("/auto"):
+            if self.autotrade:
+                self.autotrade = False
+                self.save_state()
+                self.tg.send(msg.autotrade_off())
+            else:
+                self.tg.send(msg.confirm_autotrade(self.cfg["max_positions"], self.cfg["autotrade_daily_loss_usd"]),
+                             [[("✅ Da, pornește autotrading", "autoon"), ("❌ Nu", "cancel")]])
+        elif t.startswith("/reset"):
+            self.realized, self.n_closed = 0.0, 0
+            self.save_state()
+            self.tg.send(f"♻️ Am resetat câștigul realizat. Bugetul de lucru e din nou {msg.usd(self.cfg['budget_usd'])}.")
+        elif "porne" in t:
             self.tg.send("✅ Sunt deja pornit și scanez. Spune-mi dacă vrei Status sau Caută semnale.")
         elif t.startswith("/status") or "status" in t:
             self.status()
@@ -344,10 +424,15 @@ class Assistant:
     def run(self, hours: float) -> None:
         c = self.cfg
         self.tg.drain()
+        st = state_mod.load()
+        self.realized, self.n_closed = st.get("realized", 0.0), st.get("n_closed", 0)
+        self.day, self.day_pnl = st.get("day", ""), st.get("day_pnl", 0.0)
+        self.autotrade = bool(st.get("autotrade")) and os.getenv("CONTINUED") == "1"      # sesiune noua pornita de tine: autotrading oprit
         if os.getenv("CONTINUED") == "1":
             self.tg.send(msg.continued(hours), menu=msg.MENU)
         else:
-            self.tg.send(msg.started(hours, c["budget_usd"], c["scan_every_min"], c["tp_usd"], c["basket_target_usd"]), menu=msg.MENU)
+            self.tg.send(msg.started(hours, self.equity(), c["scan_every_min"], c["basket_target_usd"]), menu=msg.MENU)
+        self.save_state()
         try:
             for p in self.broker.positions():
                 if p["name"] in self.inst:
