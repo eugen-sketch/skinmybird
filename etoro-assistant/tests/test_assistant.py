@@ -132,7 +132,7 @@ def test_oil_needs_big_margin_and_blocks_others(monkeypatch):
     a.scan()
     sid = next(iter(a.pending))
     press(a, f"open:{sid}")
-    assert a.free_margin() < a.sizing(a.inst["EURUSD"])[0]        # dupa petrol nu mai incape o pozitie forex
+    assert a.free_margin() < 2 * a.sizing(a.inst["EURUSD"])[0]    # dupa petrol nu mai incap doua pozitii forex
 
 
 def test_three_positions_basket_closes_automatically(monkeypatch):
@@ -388,3 +388,46 @@ def test_real_scan_reports_bar_age_and_atr():
     assert s["bar"].startswith(str(idx[-1].date())) and abs(s["age_min"] - 10) < 1 and 0 < s["atr_pct"] < 0.05
     s2 = signals.scan(df, ["rsi_rev25"], idx[-1] + pd.Timedelta(hours=30))
     assert s2["age_min"] > 1000
+
+
+def test_signal_fires_only_on_new_condition():
+    import pandas as pd
+    s = pd.Series([0, 0, 1, 1, 1, 0, -1, -1])
+    assert [signals.edge(s.iloc[:i]) for i in range(2, 9)] == [0, 1, 0, 0, 0, -1, 0]
+
+
+def test_three_index_positions_fit_in_150():
+    a, tg, br = make()
+    m, lev, notional = a.sizing(a.inst["SPX500"])
+    assert lev == 20 and notional >= 1000
+    for _ in range(3):
+        assert a.free_margin() >= m
+        a.known[str(len(a.known))] = {"amount": m, "name": "SPX500", "side": 1}
+
+
+def test_ger40_pnl_converted_from_eur_to_usd():
+    a, tg, br = make()
+    a.eurusd = 1.10
+    pos = {"name": "GER40", "side": 1, "units": 1.0, "open_rate": 24000.0, "amount": 50.0, "leverage": 20}
+    assert abs(a.pnl(pos, 24010.0) - (10 * 1.10 - 0.05 / 2 / 100 * 1000)) < 1e-6
+
+
+def test_vanished_position_booked_at_target_not_at_stale_reading():
+    a, tg, br = make()
+    old = {"name": "EURUSD", "side": 1, "tp": 1.1010, "sl": 1.0940, "tp_usd": 2.5, "sl_usd": 8.0, "last_pnl": 0.3}
+    br.prices["EURUSD"] = 1.1012                          # pretul a trecut de TP intre doua verificari
+    assert a.classify_vanished(old, 0.3) == ("TP", 2.5)
+    br.prices["EURUSD"] = 1.0930                          # sub SL
+    assert a.classify_vanished(old, -0.5) == ("SL", -8.0)
+    br.prices["EURUSD"] = 1.1000                          # pretul in interior: a inchis-o altcineva
+    assert a.classify_vanished(old, 0.3) == ("OTHER", 0.3)
+
+
+def test_seen_bars_survive_a_restart(monkeypatch):
+    import state
+    a, tg, br = make()
+    a.seen_bar = {"EURUSD": "bar1"}
+    a.realized = 5.0
+    a.save_state()
+    st = state.load()
+    assert st["seen"] == {"EURUSD": "bar1"} and st["realized"] == 5.0

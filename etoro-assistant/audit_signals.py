@@ -2,6 +2,8 @@
 """Verificare pe date reale: bare, proaspatime, RSI recalculat independent, trend, ATR, voturi pe familii, pret Yahoo vs eToro.
 Doar date de piata (nimic despre cont) - poate rula in loguri publice."""
 import json
+import functools
+import signal as sigmod
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,6 +16,7 @@ import ta
 
 cfg = json.loads((Path(__file__).parent / "config.json").read_text())
 now = pd.Timestamp(datetime.now(timezone.utc))
+print = functools.partial(print, flush=True)
 print(f"Acum: {now:%Y-%m-%d %H:%M} UTC ({now:%A})\n")
 
 
@@ -26,6 +29,7 @@ def rsi_wilder(close: np.ndarray, n: int = 14) -> float:
     return 100.0 if ad == 0 else 100 - 100 / (1 + au / ad)
 
 
+sigmod.signal(sigmod.SIGALRM, lambda *a: (_ for _ in ()).throw(TimeoutError()))
 api = ids = None
 try:
     from etoro import EToroDemo
@@ -50,8 +54,11 @@ for inst in cfg["instruments"]:
             f" | RSI {own:5.1f} (control {ref:5.1f}) | trend {s['trend']:8s} | ATR {s['atr_pct'] * 100:.3f}% | voturi {votes} -> {s['side']:+d}")
     if api:
         try:
+            sigmod.alarm(25)
             et = api.last_price(api.find_instrument_id(inst["etoro"]))
+            sigmod.alarm(0)
             line += f" | Yahoo {s['price']:.4g} vs eToro {et:.4g} ({(et / s['price'] - 1) * 100:+.2f}%)"
-        except Exception as e:  # noqa: BLE001
+        except BaseException as e:  # noqa: BLE001  (inclusiv alarma de 25 s)
+            sigmod.alarm(0)
             line += f" | eToro pret: {type(e).__name__}"
     print(line)
