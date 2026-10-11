@@ -132,7 +132,7 @@ def test_oil_needs_big_margin_and_blocks_others(monkeypatch):
     a.scan()
     sid = next(iter(a.pending))
     press(a, f"open:{sid}")
-    assert a.free_margin() < 46.66        # dupa petrol nu mai incape o pozitie forex de 46.66$
+    assert a.free_margin() < a.sizing(a.inst["EURUSD"])[0]        # dupa petrol nu mai incape o pozitie forex
 
 
 def test_three_positions_basket_closes_automatically(monkeypatch):
@@ -293,3 +293,63 @@ def test_hourly_scan_report_sent_once_per_hour_and_silent(monkeypatch):
     a.now_fn = lambda: T0 + timedelta(minutes=60)
     a.scan()
     assert sum("Am scanat acum" in x for x in tg.texts) == 2     # ora urmatoare: raport nou
+
+
+def test_progressive_budget_grows_with_profit_and_shrinks_with_loss():
+    a, tg, br = make()
+    base = a.sizing(a.inst["EURUSD"])[0]
+    assert abs(base - 50.0) < 0.01                       # 150 / 3
+    a.add_realized(+10.0)
+    assert abs(a.sizing(a.inst["EURUSD"])[0] - 53.33) < 0.01    # 160 / 3
+    a.add_realized(-200.0)
+    assert a.equity() == 75.0                            # minim 50% din bugetul de baza
+
+
+def test_atr_levels_small_tp_wide_sl_clamped():
+    a, tg, br = make()
+    notional = 1500.0
+    sl, tp, tp_usd, sl_usd = a.levels(1, 1.1, notional, atr_pct=0.0012)
+    assert 1.5 <= tp_usd <= 4.0 and sl_usd > tp_usd and sl < 1.1 < tp
+    _, _, tp_big, sl_big = a.levels(1, 1.1, notional, atr_pct=0.05)       # volatilitate uriasa: limitat in $
+    assert tp_big <= 4.0 + 1e-9 and sl_big <= 20.0 + 1e-9
+
+
+def test_autotrade_opens_without_asking_and_stops_at_daily_loss(monkeypatch):
+    a, tg, br = make()
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    a.handle({"kind": "text", "text": "🤖 Autotrading"})
+    assert not a.autotrade and any("Pornesc autotrading" in x for x in tg.texts)         # cere confirmare
+    press(a, "autoon")
+    assert a.autotrade
+    a.scan()
+    assert br.pos and any("Autotrading:" in x for x in tg.texts)                          # a deschis singur
+    assert not any("Deschid?" in x for x in tg.texts)
+    # pierdere zilnica mare: se opreste din deschis
+    a2, tg2, br2 = make()
+    a2.autotrade = True
+    a2.add_realized(-16.0)
+    a2.scan()
+    assert not a2.autotrade and not br2.pos and any("am oprit autotrading" in x.lower() for x in tg2.texts)
+
+
+def test_hold_alert_after_two_hours(monkeypatch):
+    a, tg, br = make()
+    fake_scan(monkeypatch, {("rsi_rev20",): 1})
+    a.scan()
+    sid = next(iter(a.pending))
+    press(a, f"open:{sid}")
+    assert br.pos
+    a.now_fn = lambda: T0 + timedelta(minutes=125)
+    a.monitor()
+    assert any("nu și-a atins încă ținta" in x for x in tg.texts)
+    n = sum("nu și-a atins încă ținta" in x for x in tg.texts)
+    a.monitor()
+    assert sum("nu și-a atins încă ținta" in x for x in tg.texts) == n                     # o singura data
+
+
+def test_state_roundtrip(tmp_path):
+    import state
+    p = tmp_path / "s.json"
+    state.save({"realized": 12.5, "autotrade": True}, p)
+    assert "12.5" not in p.read_text() and state.load(p) == {"realized": 12.5, "autotrade": True}
+    assert state.load(tmp_path / "missing") == {}

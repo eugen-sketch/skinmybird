@@ -12,3 +12,5 @@ work/
 *.PNG.DDS
 *.PNG.DDS.json
 tools/
+etoro-assistant/state.json
+etoro-assistant/handover.txt
