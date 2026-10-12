@@ -528,3 +528,38 @@ def test_real_only_tracks_positions_opened_by_the_bot(monkeypatch):
     sid = next(iter(a.pending))
     press(a, f"open:{sid}")
     assert len(a.bot_pids) == 1 and next(iter(a.bot_pids)) in a.known
+
+
+def test_uses_all_free_money_when_full_slice_does_not_fit():
+    a, tg, br = make_real(60.0)                                # sold mic: felia ar fi 20$, minimul pentru 1.000$ expunere e 33.67$
+    m, lev, notional = a.sizing(a.inst["NZDUSD"])
+    assert lev == 30 and notional >= 1000 and m <= 60.0 and abs(m - 33.67) < 0.01
+    a2, _, _ = make_real(34.5)
+    m2, _, n2 = a2.sizing(a2.inst["NZDUSD"])
+    assert m2 <= 34.5 and n2 >= 1000
+    a3, _, _ = make_real(20.0)                                 # prea putin: sub minimul eToro
+    m3, _, n3 = a3.sizing(a3.inst["NZDUSD"])
+    assert a3.free_margin() < m3 and n3 >= 1000                # ramane "nu pot deschide", cu motivul in mesaj
+
+
+def test_manual_sell_asks_with_buttons_and_opens(monkeypatch):
+    a, tg, br = make_real(60.0)
+    br.prices["NZDUSD"] = 0.56
+    a.unlocked = True
+    monkeypatch.setattr(signals, "scan", lambda df, names, now=None: {"side": 0, "why": "", "rsi": 50.0, "price": 0.56, "bar": "b",
+                                                                     "age_min": 5.0, "atr_pct": 0.0009})
+    a.handle({"kind": "text", "text": "vinde nzdusd"})
+    text, buttons, _ = tg.sent[-1]
+    assert "VÂND" in text and "Deschid?" in text and buttons[0][0][1].startswith("open:")
+    sid = next(iter(a.pending))
+    press(a, f"open:{sid}")
+    pos = next(iter(br.pos.values()))
+    assert pos["side"] == -1 and pos["amount"] <= 60.0 and pos["amount"] * pos["leverage"] >= 1000 and pos["tp"] < pos["open_rate"] < pos["sl"]
+
+
+def test_manual_command_names_and_lock():
+    a, tg, br = make_real(60.0)
+    assert a.resolve_name("nzd/usd") == "NZDUSD" and a.resolve_name("aur") == "GOLD" and a.resolve_name("dax") == "GER40"
+    assert a.resolve_name("xyz") is None
+    a.handle({"kind": "text", "text": "cumpără eurusd"})
+    assert any("confirmă contul real" in x for x in tg.texts) and not a.pending        # blocat pana confirmi
