@@ -311,9 +311,9 @@ def test_atr_levels_small_tp_wide_sl_clamped():
     a, tg, br = make()
     notional = 1500.0
     sl, tp, tp_usd, sl_usd = a.levels(1, 1.1, notional, atr_pct=0.0012)
-    assert 1.5 <= tp_usd <= 4.0 and sl_usd > tp_usd and sl < 1.1 < tp
+    assert 2.25 <= tp_usd <= 6.0 and sl_usd > tp_usd and sl < 1.1 < tp
     _, _, tp_big, sl_big = a.levels(1, 1.1, notional, atr_pct=0.05)       # volatilitate uriasa: limitat in $
-    assert tp_big <= 4.0 + 1e-9 and sl_big <= 20.0 + 1e-9
+    assert tp_big <= 6.0 + 1e-9 and sl_big <= 20.0 + 1e-9
 
 
 def test_autotrade_opens_without_asking_and_stops_at_daily_loss(monkeypatch):
