@@ -124,6 +124,11 @@ class Assistant:
         margin = math.floor(self.equity() / c["max_positions"] * 100) / 100
         if margin * lev < c["min_notional"] * 1.005:
             margin = math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100       # minimul eToro pentru expunere
+        free = self.free_margin()
+        if margin > free + 0.001:        # nu ajung banii pentru felia plina: folosesc tot ce e liber, daca atinge expunerea minima
+            fit = math.floor(free * 100) / 100
+            if fit * lev >= c["min_notional"] * 1.001:
+                margin = fit
         return margin, lev, margin * lev
 
     def pcts(self, notional: float, atr_pct: float | None = None) -> tuple[float, float]:
@@ -217,6 +222,40 @@ class Assistant:
                 report.append({"name": n, "rsi": 50.0, "thr": 25, "bar": report[0]["bar"] if report else "?", "note": "ai deja poziție/semnal"})
             self.tg.send(msg.scan_report(report) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.",
                          silent=not manual)
+
+    ALIASES = {"AUR": "GOLD", "PETROL": "OIL", "SP500": "SPX500", "SP": "SPX500", "SPX": "SPX500", "NASDAQ": "NSDQ100", "NSDQ": "NSDQ100",
+               "NDX": "NSDQ100", "DOW": "DJ30", "DJ": "DJ30", "DAX": "GER40", "GER": "GER40"}
+
+    def resolve_name(self, arg: str) -> str | None:
+        key = "".join(ch for ch in arg.upper() if ch.isalnum())
+        if not key:
+            return None
+        key = self.ALIASES.get(key, key)
+        if key in self.inst:
+            return key
+        hits = [n for n in self.inst if n.startswith(key)]
+        return hits[0] if len(hits) == 1 else None
+
+    def manual_open(self, name: str, side: int) -> None:
+        """Deschidere ceruta de tine (ex. «vinde nzd»): calculez marja din banii liberi si te intreb cu OK/NU."""
+        if not self.unlocked:
+            self.tg.send("🔒 Mai întâi confirmă contul real din mesajul de la pornire (butonul „Confirm”).")
+            return
+        if any(p["name"] == name for p in self.known.values()):
+            self.tg.send(f"ℹ️ Ai deja o poziție deschisă pe {msg.pair(name)}.")
+            return
+        self.refresh_real()
+        atr = None
+        try:
+            atr = signals.scan(self.fetch(self.inst[name]["yahoo"], "1h", "90d"), self.inst[name]["signals"], pd.Timestamp(self.now_fn())).get("atr_pct")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            px = self.broker.price(name)
+        except Exception as e:  # noqa: BLE001
+            self.tg.send(f"⚠️ Nu pot citi prețul pentru {msg.pair(name)}: {str(e)[:120]}")
+            return
+        self.propose(name, {"side": side, "why": "la cererea ta", "price": px, "atr_pct": atr})
 
     def propose(self, name: str, s: dict) -> bool:
         inst = self.inst[name]
@@ -446,7 +485,14 @@ class Assistant:
                 self.tg.send(msg.cancelled())
             return
         t = ev["text"].lower().replace("î", "i").replace("â", "a").replace("ă", "a").replace("ș", "s").replace("ț", "t")
-        if "autotrading" in t or t.startswith("/auto"):
+        words = t.replace("/", " ").split()
+        if words and words[0] in ("vinde", "vand", "sell", "cumpara", "cumpar", "buy"):
+            name = self.resolve_name(" ".join(words[1:]))
+            if name is None:
+                self.tg.send("🤔 Nu știu pe ce instrument. Scrie de exemplu: vinde nzdusd, cumpără eurusd, vinde aur, cumpără dax.")
+            else:
+                self.manual_open(name, -1 if words[0] in ("vinde", "vand", "sell") else 1)
+        elif "autotrading" in t or t.startswith("/auto"):
             if not self.unlocked:
                 self.tg.send("🔒 Mai întâi confirmă contul real din mesajul de la pornire (butonul „Confirm”).")
             elif self.autotrade:
@@ -535,7 +581,11 @@ class Assistant:
             self.tg.send(msg.started(hours, self.equity(), c["scan_every_min"], c["basket_target_usd"], real=self.real), menu=msg.MENU)
         if self.real and not self.unlocked:
             bal = "necunoscut (nu pot citi soldul!)" if self.real_balance is None else msg.usd(self.real_balance)
-            self.tg.send(f"🔴 CONT REAL. Sold disponibil: {bal}.\nNu deschid nimic până nu confirmi că vrei să tranzacționez cu bani adevărați.",
+            lev = min(self.inst["EURUSD"]["lev_cap"], c["max_leverage"]) if "EURUSD" in self.inst else 30
+            need = math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100
+            can_n = 0 if self.real_balance is None else int(self.real_balance // need)
+            self.tg.send(f"🔴 CONT REAL. Sold disponibil: {bal}.\nMarja minimă pe o poziție: {msg.usd(need)} (expunere minimă $1.000 la levier {lev}); "
+                         f"deschid acum maxim {can_n} poziții.\nNu deschid nimic până nu confirmi că vrei să tranzacționez cu bani adevărați.",
                          [[("✅ Confirm: cont real", "realok"), ("❌ Nu, oprește", "stopnow")]])
         self.save_state()
         try:
