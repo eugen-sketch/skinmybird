@@ -182,5 +182,8 @@
   "max_sl_usd": 20.0,
   "hold_alert_min": 120,
   "autotrade_daily_loss_usd": 15.0,
-  "max_bar_age_min": 100
+  "max_bar_age_min": 100,
+  "min_margin_usd": 50,
+  "small_account_usd": 150,
+  "max_positions_small": 2
 }
