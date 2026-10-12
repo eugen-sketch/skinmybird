@@ -9,6 +9,9 @@ on:
       continued:
         description: "Folosit automat la continuare (nu-l atinge)"
         default: "0"
+      mode:
+        description: "demo (implicit) sau real (bani adevărați, doar la cererea ta)"
+        default: "demo"
 
 permissions:
   contents: read
@@ -34,7 +37,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          id=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=assistant-state&per_page=1" --jq '.artifacts[0].id // empty')
+          id=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=assistant-state${{ inputs.mode == 'real' && '-real' || '' }}&per_page=1" --jq '.artifacts[0].id // empty')
           if [ -n "$id" ]; then
             gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > state.zip && unzip -o -q state.zip && rm -f state.zip
           fi
@@ -45,6 +48,9 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ETORO_API_KEY: ${{ secrets.ETORO_API_KEY }}
           ETORO_USER_KEY: ${{ secrets.ETORO_USER_KEY }}
+          ETORO_REAL_API_KEY: ${{ secrets.ETORO_REAL_API_KEY }}
+          ETORO_REAL_USER_KEY: ${{ secrets.ETORO_REAL_USER_KEY }}
+          TRADING_MODE: ${{ inputs.mode }}
           QUIET_LOGS: "1"
           SESSION_HOURS: ${{ inputs.hours }}
           CONTINUED: ${{ inputs.continued }}
@@ -53,8 +59,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: assistant-state
-          path: etoro-assistant/state.json
+          name: assistant-state${{ inputs.mode == 'real' && '-real' || '' }}
+          path: etoro-assistant/state${{ inputs.mode == 'real' && '-real' || '' }}.json
           overwrite: true
           retention-days: 30
           if-no-files-found: ignore
@@ -64,5 +70,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ -f handover.txt ]; then
-            gh workflow run assistant.yml --ref master -f hours="$(cat handover.txt)" -f continued=1
+            gh workflow run assistant.yml --ref master -f hours="$(cat handover.txt)" -f continued=1 -f mode="${{ inputs.mode }}"
           fi

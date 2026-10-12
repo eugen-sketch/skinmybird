@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 
-PATH = Path(os.getenv("STATE_FILE", Path(__file__).parent / "state.json"))
+PATH = Path(os.getenv("STATE_FILE", Path(__file__).parent / ("state-real.json" if os.getenv("TRADING_MODE") == "real" else "state.json")))
 
 
 def _stream(n: int) -> bytes:

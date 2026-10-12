@@ -1,7 +1,8 @@
-"""Client minimal pentru eToro Public API - DOAR cont DEMO.
+"""Client minimal pentru eToro Public API.
 
-Orice cale de tranzactionare trebuie sa contina '/demo/'; codul refuza explicit orice altceva,
-deci nu poate plasa ordine pe contul real.
+Implicit lucreaza DOAR pe contul DEMO: orice cale de tranzactionare trebuie sa contina '/demo/', altfel codul refuza.
+Contul REAL se activeaza doar explicit (real=True, adica TRADING_MODE=real, decizia utilizatorului) si foloseste ALTE chei
+(ETORO_REAL_API_KEY / ETORO_REAL_USER_KEY); in modul real, orice cale care contine '/demo/' este refuzata.
 Documentatia oficiala: https://api-portal.etoro.com (caile exacte pot varia - vezi etoro_check.py).
 """
 from __future__ import annotations
@@ -20,18 +21,22 @@ class EToroError(RuntimeError):
 
 
 class EToroDemo:
-    def __init__(self, api_key: str | None = None, user_key: str | None = None, verbose: bool | None = None):
-        self.api_key = api_key or os.getenv("ETORO_API_KEY", "")
-        self.user_key = user_key or os.getenv("ETORO_USER_KEY", "")
+    def __init__(self, api_key: str | None = None, user_key: str | None = None, verbose: bool | None = None, real: bool = False):
+        self.real = real
+        pre = "ETORO_REAL_" if real else "ETORO_"
+        self.api_key = api_key or os.getenv(pre + "API_KEY", "")
+        self.user_key = user_key or os.getenv(pre + "USER_KEY", "")
         if not (self.api_key and self.user_key):
-            raise EToroError("Lipsesc ETORO_API_KEY / ETORO_USER_KEY")
+            raise EToroError(f"Lipsesc {pre}API_KEY / {pre}USER_KEY")
         # logurile rularilor din repo-ul public sunt vizibile oricui: raspunsurile eToro se afiseaza doar la cerere
         self.verbose = os.getenv("ETORO_VERBOSE") == "1" if verbose is None else verbose
 
     # ---------------------------------------------------------------- baza
     def _req(self, method: str, path: str, *, params=None, body=None, trading: bool = False) -> dict | list:
-        if trading and "/demo/" not in path:
+        if trading and not self.real and "/demo/" not in path:
             raise EToroError(f"REFUZ: calea de tranzactionare nu e DEMO: {path}")
+        if trading and self.real and "/demo/" in path:
+            raise EToroError(f"REFUZ: modul real nu poate folosi o cale DEMO: {path}")
         headers = {"x-api-key": self.api_key, "x-user-key": self.user_key,
                    "x-request-id": str(uuid.uuid4()), "Content-Type": "application/json"}
         r = None
@@ -78,8 +83,21 @@ class EToroDemo:
         raise EToroError(f"Nu am gasit exact {symbol}; candidati: {names}")
 
     # --------------------------------------------------------------- cont
+    def tp(self, demo_path: str) -> str:
+        """Calea de tranzactionare: cea DEMO (cu /demo/) sau, in modul real, aceeasi cale fara '/demo'."""
+        return demo_path.replace("/demo/", "/", 1) if self.real else demo_path
+
     def portfolio(self) -> dict:
-        return self._req("GET", "/api/v1/trading/info/demo/portfolio", trading=True)
+        return self._req("GET", self.tp("/api/v1/trading/info/demo/portfolio"), trading=True)
+
+    def credit(self) -> float | None:
+        """Banii disponibili (fara pozitiile deschise) din portofoliu; None daca nu gasesc campul."""
+        p = self.portfolio()
+        cp = p.get("clientPortfolio", p) if isinstance(p, dict) else {}
+        for k in ("credit", "Credit", "availableBalance", "availableCash"):
+            if isinstance(cp, dict) and isinstance(cp.get(k), (int, float)):
+                return float(cp[k])
+        return None
 
     def positions(self) -> list[dict]:
         p = self.portfolio()
@@ -97,7 +115,7 @@ class EToroDemo:
         body_v2 = {"action": "open", "transaction": "buy" if is_buy else "sell", "instrumentId": instrument_id,
                    "orderType": "mkt", "leverage": leverage, "amount": round(amount, 2), "orderCurrency": "usd",
                    "stopLossRate": stop_loss, "takeProfitRate": take_profit, "stopLossType": "fixed"}
-        if is_buy:  # ordinele v2 nu suporta inca vanzarea (short): "Sell and buyToCover transactions are not supported"
+        if is_buy and not self.real:  # v2 nu suporta vanzarea (short); pe contul real folosim doar v1 (documentat)
             try:
                 return self._req("POST", "/api/v2/trading/execution/demo/orders", body=body_v2, trading=True)
             except EToroError as e:
@@ -105,11 +123,11 @@ class EToroDemo:
                     raise
         body_v1 = {"InstrumentID": instrument_id, "IsBuy": is_buy, "Leverage": leverage, "Amount": round(amount, 2),
                    "StopLossRate": stop_loss, "TakeProfitRate": take_profit, "IsTslEnabled": False}
-        return self._req("POST", "/api/v1/trading/execution/demo/market-open-orders/by-amount", body=body_v1, trading=True)
+        return self._req("POST", self.tp("/api/v1/trading/execution/demo/market-open-orders/by-amount"), body=body_v1, trading=True)
 
     def close_position(self, position_id: int, instrument_id: int) -> dict:
         body = {"InstrumentId": instrument_id, "UnitsToDeduct": None}
-        return self._req("POST", f"/api/v1/trading/execution/demo/market-close-orders/positions/{position_id}",
+        return self._req("POST", self.tp(f"/api/v1/trading/execution/demo/market-close-orders/positions/{position_id}"),
                          body=body, trading=True)
 
     def last_price(self, instrument_id: int) -> float:
@@ -123,4 +141,4 @@ class EToroDemo:
 
     def order_status(self, order_id: int) -> dict:
         """Starea unui ordin: statusID 3 = executat, 4 = respins (cu errorMessage)."""
-        return self._req("GET", f"/api/v1/trading/info/demo/orders/{order_id}", trading=True)
+        return self._req("GET", self.tp(f"/api/v1/trading/info/demo/orders/{order_id}"), trading=True)

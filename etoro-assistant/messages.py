@@ -26,8 +26,9 @@ def signed(x: float) -> str:
 MENU = [["📊 Status", "🔎 Caută semnale"], ["🔒 Închide tot", "⛔ Oprește"], ["🤖 Autotrading", "❓ Ajutor"], ["▶️ Pornește"]]
 
 
-def started(hours: float, budget: float, scan_min: int, basket: float) -> str:
-    return (f"🟢 Asistentul a pornit și mă uit pe piață.\n\n"
+def started(hours: float, budget: float, scan_min: int, basket: float, real: bool = False) -> str:
+    head = "🔴 CONT REAL (bani adevărați)" if real else "🧪 Cont DEMO"
+    return (f"🟢 Asistentul a pornit și mă uit pe piață. {head}\n\n"
             f"🔎 Scanez forex, petrol, aur și indici la fiecare {scan_min} minute, pe trendul orar, și îți scriu când văd un semnal.\n"
             f"🤝 Nu deschid NICIUN ordin fără un „OK” de la tine, decât dacă pornești tu 🤖 Autotrading din meniu.\n"
             f"🎯 Țintă (TP) și plasă de siguranță (SL) le pun eu automat, din volatilitatea orară: țintă mică, atinsă de obicei în 1–2 ore, plasă largă.\n"
