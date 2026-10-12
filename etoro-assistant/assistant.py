@@ -174,6 +174,7 @@ class Assistant:
                 self.tg.send("😴 Piața e închisă sau prea aproape de închidere, nu caut semnale acum.")
             return
         self.refresh_real()
+        t_scan0 = time.time()
         found, overflow, report = 0, [], []
         open_names = {p["name"] for p in self.known.values()}
         for name, inst in self.inst.items():
@@ -195,7 +196,7 @@ class Assistant:
                 print(f"{name}: semnal={s['side']:+d} rsi={s['rsi']:.0f}")
             thr = next((int(n[7:]) for n in inst["signals"] if n.startswith("rsi_rev")), 25)
             report.append({"name": name, "rsi": s["rsi"], "thr": thr, "asia": s.get("asia_pos"), "bar": msg.hour_range(s["bar"]),
-                           "trend": s.get("trend"),
+                           "trend": s.get("trend"), "rsi_live": s.get("rsi_live"), "tick": s.get("tick"),
                            "rsi_rule": any(n.startswith("rsi_rev") for n in inst["signals"])})
             if s["side"] == 0 or self.seen_bar.get(name) == s["bar"]:
                 continue
@@ -220,7 +221,7 @@ class Assistant:
         if (manual or hourly) and not found:
             for n in sorted(open_names | {p["name"] for p in self.pending.values()}):
                 report.append({"name": n, "rsi": 50.0, "thr": 25, "bar": report[0]["bar"] if report else "?", "note": "ai deja poziție/semnal"})
-            self.tg.send(msg.scan_report(report) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.",
+            self.tg.send(msg.scan_report(report, time.time() - t_scan0) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.",
                          silent=not manual)
 
     ALIASES = {"AUR": "GOLD", "PETROL": "OIL", "SP500": "SPX500", "SP": "SPX500", "SPX": "SPX500", "NASDAQ": "NSDQ100", "NSDQ": "NSDQ100",

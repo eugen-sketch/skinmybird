@@ -166,7 +166,7 @@ def cancelled() -> str:
     return "👌 Bine, las totul cum era."
 
 
-def scan_report(rows: list[dict]) -> str:
+def scan_report(rows: list[dict], took: float | None = None) -> str:
     """rows: name, rsi, thr (prag RSI), asia (poz. fata de intervalul de noapte sau None), bar (ora ultimei bare), note,
     trend, rsi_rule (are regula de RSI extrem), skip (n-am putut/nu trebuia sa-l scanez acum)."""
     lines = []
@@ -178,7 +178,9 @@ def scan_report(rows: list[dict]) -> str:
             continue
         extra = f" · fața de intervalul de noapte: {r['asia']}" if r.get("asia") and len(r["name"]) == 6 and r["name"].isalpha() else ""
         trend = {"sus": " · trend orar: ↗️ sus", "jos": " · trend orar: ↘️ jos", "lateral": " · trend orar: ↔️ lateral"}.get(r.get("trend"), "")
-        lines.append(f"• {nm}: RSI {r['rsi']:.0f}{trend}{extra}{note}")
+        live = r.get("rsi_live")
+        now_rsi = f" (acum {live:.0f})" if live is not None and abs(live - r["rsi"]) >= 1 else ""
+        lines.append(f"• {nm}: RSI {r['rsi']:.0f}{now_rsi}{trend}{extra}{note}")
     scanned = [r for r in rows if not r.get("skip")]
     bar = next((r["bar"] for r in scanned if r.get("bar") not in (None, "?")), "?")
     near = sorted((r for r in scanned if r.get("rsi_rule", True) and not r.get("note")),
@@ -190,11 +192,17 @@ def scan_report(rows: list[dict]) -> str:
                  f"Ar deveni {side} dacă RSI ajunge {'sub ' + str(n['thr']) if side == 'BUY' else 'peste ' + str(100 - n['thr'])}.")
     else:
         close = ""
+    ticks = [r["tick"] for r in scanned if r.get("tick")]
+    stamp = ""
+    if took is not None:
+        last = max(ticks)[11:16] + " UTC" if ticks else "?"
+        stamp = (f"\n\n⏱️ Am citit datele proaspete acum, în {took:.1f} s (ultima cotație văzută: {last}). "
+                 f"RSI-ul fără paranteză e pe ultima oră ÎNCHEIATĂ (după el decid semnalele); „acum” e pe ora în curs, doar informativ.")
     skipped = len(rows) - len(scanned)
     tail = f", {skipped} în afara programului sau fără date proaspete" if skipped else ""
     return (f"🔎 Am scanat acum {len(scanned)} instrumente{tail} (ultima oră încheiată: {bar}).\n" + "\n".join(lines) +
             f"\n\nNiciun semnal nou. Cumpăr/vând doar când văd semnal clar (revenire după retragere în trend, spargere de maxim/minim, RSI extrem, spargerea intervalului de noapte pe forex).{close}"
-            f"\n\n👉 Recomandare acum: HOLD ⏸️ — nu cumpăra și nu vinde nimic, așteptăm.")
+            f"{stamp}\n\n👉 Recomandare acum: HOLD ⏸️ — nu cumpăra și nu vinde nimic, așteptăm.")
 
 
 def heartbeat(hhmm: str, scans: int, last_scan: str, open_n: int, market_open: bool) -> str:
