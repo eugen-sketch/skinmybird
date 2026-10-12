@@ -35,6 +35,17 @@ class Telegram:
             print(f"[!] Telegram: {type(e).__name__}")
             return None
 
+    def send_photo(self, png: bytes, caption: str = "", silent: bool = False) -> int | None:
+        """Trimite o imagine (graficul). Esecul nu opreste restul: asistentul merge mai departe si fara grafic."""
+        try:
+            r = requests.post(f"{self.base}/sendPhoto", data={"chat_id": self.chat, "caption": caption[:1000], "disable_notification": str(silent).lower()},
+                              files={"photo": ("grafic.png", png, "image/png")}, timeout=60)
+            r.raise_for_status()
+            return (r.json().get("result") or {}).get("message_id")
+        except requests.RequestException as e:
+            print(f"[!] Telegram foto: {type(e).__name__}")
+            return None
+
     def clear_buttons(self, message_id: int | None) -> None:
         if not message_id:
             return

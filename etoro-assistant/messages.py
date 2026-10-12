@@ -114,8 +114,9 @@ def advice_block(adv: dict | None) -> str:
         h = adv["age_h"]
         bits.append(f"deschisă de {int(h)} h {int((h % 1) * 60)} min" if h >= 1 else f"deschisă de {int(h * 60)} min")
     trend = {"sus": "↗️ sus", "jos": "↘️ jos", "lateral": "↔️ lateral"}.get(adv.get("trend"))
+    t4 = {"sus": "↗️", "jos": "↘️", "lateral": "↔️"}.get(adv.get("trend4h"))
     if trend:
-        bits.append(f"trend orar {trend}")
+        bits.append(f"trend orar {trend}" + (f", pe 4 ore {t4}" if t4 else ""))
     if adv.get("rsi") is not None:
         bits.append(f"RSI {adv['rsi']:.0f}")
     why = "; ".join(adv.get("reasons", [])[:3])
