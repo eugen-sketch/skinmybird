@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Sondare date de piata (fara cont): ce da eToro pentru cotatii live? Doar numele campurilor."""
-from etoro import EToroDemo, EToroError
+"""Sondare date de piata (fara cont): cotatii live bid/ask si cursul de conversie in USD pentru fiecare instrument."""
+import json
+from pathlib import Path
+
+from etoro import EToroDemo
 
 api = EToroDemo()
-for path in ("/api/v1/market-data/instruments/rates", "/api/v1/market-data/instruments/1/rates", "/api/v1/market-data/rates"):
-    try:
-        d = api._req("GET", path, params={"instrumentIds": "1,3"})
-        items = d.get("rates") if isinstance(d, dict) else d
-        first = items[0] if isinstance(items, list) and items else d
-        print(path, "OK ->", sorted(first.keys()) if isinstance(first, dict) else type(first).__name__)
-    except EToroError as e:
-        print(path, "ERR", str(e)[:120])
+cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+ids = {i["name"]: api.find_instrument_id(i["etoro"]) for i in cfg["instruments"]}
+d = api._req("GET", "/api/v1/market-data/instruments/rates", params={"instrumentIds": ",".join(str(v) for v in ids.values())})
+items = d.get("rates") if isinstance(d, dict) else d
+by = {int(x["instrumentID"]): x for x in items}
+for n, i in ids.items():
+    x = by.get(i)
+    if x:
+        print(f"{n:8s} bid {x['bid']} ask {x['ask']} convBid {x.get('conversionRateBid')} convAsk {x.get('conversionRateAsk')} date {x.get('date')}")
