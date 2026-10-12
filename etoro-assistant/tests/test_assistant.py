@@ -857,3 +857,46 @@ def test_advice_tick_warns_once_per_hour_with_close_button(monkeypatch):
     assert len(msgs) == 1 and msgs[0][1][0][0][1] == "close:1" and "ÎNCHIDE-O" in msgs[0][0]
     a.advice_tick()
     assert len([x for x in tg.sent if "💡" in x[0]]) == 1                       # nu se repeta in aceeasi ora
+
+
+class PhotoTG(FakeTG):
+    def __init__(self):
+        super().__init__()
+        self.photos = []
+
+    def send_photo(self, png, caption="", silent=False):
+        self.photos.append((png[:8], caption))
+        self.sent.append(("[FOTO] " + caption, None, self._mid))
+        return 1
+
+
+def _synthetic_df(n=400):
+    import numpy as np
+    import pandas as pd
+    rng = np.random.default_rng(3)
+    idx = pd.date_range("2026-09-20", periods=n, freq="h", tz="UTC")
+    c = 1.1 + np.cumsum(rng.normal(0, 0.0005, n))
+    return pd.DataFrame({"open": c, "high": c + 0.0004, "low": c - 0.0004, "close": c}, index=idx)
+
+
+def test_signal_comes_with_a_chart_and_context_line(monkeypatch):
+    tg, br = PhotoTG(), FakeBroker()
+    a = A.Assistant(CFG, tg, br, fetch=lambda *x, **k: None, now_fn=lambda: T0, sleep=lambda s: None)
+    df = _synthetic_df()
+    monkeypatch.setattr(signals, "scan", lambda d, names, now=None: {"side": 1 if names == ["rsi_rev20"] else 0, "why": "test", "rsi": 18.0,
+        "price": 1.1, "bar": "b1", "age_min": 5.0, "atr_pct": 0.0008, "trend": "jos", "trend4h": "jos", "support": 1.095, "resistance": 1.105, "_df": df})
+    a.scan()
+    assert tg.photos and tg.photos[0][0] == b"\x89PNG\r\n\x1a\n"
+    texts = [t for t, _, _ in tg.sent]
+    i_photo = next(i for i, t in enumerate(texts) if t.startswith("[FOTO]"))
+    i_sig = next(i for i, t in enumerate(texts) if "Semnal pe" in t)
+    assert i_photo < i_sig and "Context: trend 1h ↘️, 4h ↘️" in texts[i_sig] and "suport 1.095" in texts[i_sig]
+
+
+def test_levels_and_4h_trend_on_real_shaped_data():
+    import signals as S
+    df = _synthetic_df(900)
+    sup, res = S.levels_sr(df)
+    px = float(df["close"].iloc[-1])
+    assert (sup is None or sup < px) and (res is None or res > px)
+    assert S.trend4h(df) in ("sus", "jos", "lateral")

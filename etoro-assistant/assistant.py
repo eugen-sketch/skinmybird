@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import advisor
+import chart as chart_mod
 import messages as msg
 import pandas as pd
 import signals
@@ -262,17 +263,18 @@ class Assistant:
             self.tg.send(f"ℹ️ Ai deja {len(self.known) + len(self.pending)} poziții/propuneri; maxim acum: {self.max_pos()}. "
                          f"Închide una sau răspunde la propuneri.")
             return
-        atr = None
+        info: dict = {}
         try:
-            atr = signals.scan(self.fetch(self.inst[name]["yahoo"], "1h", "90d"), self.inst[name]["signals"], pd.Timestamp(self.now_fn())).get("atr_pct")
+            info = signals.scan(self.fetch(self.inst[name]["yahoo"], "1h", "90d"), self.inst[name]["signals"], pd.Timestamp(self.now_fn()))
         except Exception:  # noqa: BLE001
             pass
+        atr = info.get("atr_pct")
         try:
             px = self.broker.price(name)
         except Exception as e:  # noqa: BLE001
             self.tg.send(f"⚠️ Nu pot citi prețul pentru {msg.pair(name)}: {str(e)[:120]}")
             return
-        self.propose(name, {"side": side, "why": "la cererea ta", "price": px, "atr_pct": atr})
+        self.propose(name, {**info, "side": side, "why": "la cererea ta", "price": px, "atr_pct": atr})
 
     def adopt_existing(self, name: str) -> None:
         """«preia nzdusd»: pozitiile deschise pe eToro pe acest instrument incep sa fie urmarite de asistent (TP/SL ramase ale eToro)."""
@@ -305,7 +307,8 @@ class Assistant:
         can = amount <= free + 0.001
         reason = (f"eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție și ai doar {msg.usd(free)} liber"
                   if free < self.cfg["min_margin_usd"] else msg.no_free_margin(amount, free))
-        text = msg.signal(name, side, s["why"], px, d, amount, lev, notional, tp_px, tp_usd, sl_px, sl_usd, free, can, reason)
+        ctx = self.context_line(s)
+        text = msg.signal(name, side, s["why"] + ctx, px, d, amount, lev, notional, tp_px, tp_usd, sl_px, sl_usd, free, can, reason)
         if not can:
             self.tg.send(text)
             return False
@@ -318,9 +321,11 @@ class Assistant:
         if self.autotrade:
             self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": None, "amount": amount,
                                  "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct}
+            self.send_chart(name, s, side, px, tp_px, sl_px, f"{msg.pair(name)}: autotrading, intrare, țintă și plasă")
             self.tg.send(msg.auto_signal(name, side, s["why"], px, d))
             self.open_pending(sid)
             return True
+        self.send_chart(name, s, side, px, tp_px, sl_px, f"{msg.pair(name)}: așa arată piața acum și unde ar sta ținta și plasa")
         mid = self.tg.send(text, [[("✅ OK, deschide", f"open:{sid}"), ("❌ NU", f"skip:{sid}")]])
         self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": mid, "amount": amount,
                              "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct}
@@ -584,20 +589,48 @@ class Assistant:
                 self.tg.send(msg.hold_alert(p["name"], int(age // 60), p.get("last_pnl", 0.0), self.advice_for(p)),
                              [[(f"🔒 Închide {msg.pair(p['name']).split(' ')[0]}", f"close:{pid}"), ("👍 Las-o", "cancel")]])
 
+    @staticmethod
+    def context_line(s: dict) -> str:
+        """Context pe scurt pentru semnal: trend pe 1h si 4h, cel mai apropiat suport si rezistenta."""
+        arrow = {"sus": "↗️", "jos": "↘️", "lateral": "↔️"}
+        bits = []
+        if s.get("trend"):
+            bits.append(f"trend 1h {arrow[s['trend']]}" + (f", 4h {arrow[s['trend4h']]}" if s.get("trend4h") else ""))
+        if s.get("support"):
+            bits.append(f"suport {s['support']:.5g}")
+        if s.get("resistance"):
+            bits.append(f"rezistență {s['resistance']:.5g}")
+        return (". Context: " + " · ".join(bits)) if bits else ""
+
+    def send_chart(self, name: str, s: dict, side: int | None = None, entry: float | None = None, tp: float | None = None,
+                   sl: float | None = None, caption: str = "") -> None:
+        """Graficul instrumentului pe Telegram (lumanari, medii, intrare/tinta/plasa, suport/rezistenta, RSI). Nu blocheaza nimic la eroare."""
+        df = s.get("_df")
+        if df is None or not hasattr(self.tg, "send_photo"):
+            return
+        try:
+            d = digits_for(name, entry or float(df["close"].iloc[-1]))
+            png = chart_mod.render(df, msg.pair(name).split(" ")[0], side, entry, tp, sl, s.get("support"), s.get("resistance"), digits=d)
+            self.tg.send_photo(png, caption)
+        except Exception as e:  # noqa: BLE001
+            print(f"[!] grafic: {type(e).__name__}")
+
     def advice_for(self, pos: dict) -> dict:
         """Sfat pentru o pozitie: trendul orar si RSI-ul de acum (din Yahoo) + pretul/profitul de acum (din eToro)."""
         trend = rsi = None
+        scan_res: dict = {}
         try:
             inst = self.inst[pos["name"]]
             s = signals.scan(self.fetch(inst["yahoo"], "1h", "90d"), inst["signals"], pd.Timestamp(self.now_fn()))
             trend, rsi = s.get("trend"), s.get("rsi_live")
+            scan_res = s
         except Exception:  # noqa: BLE001
-            pass
+            scan_res = {}
         opened = pos.get("opened_at")
         age_h = (self.now_fn() - opened).total_seconds() / 3600 if opened else 0.0
         out = advisor.advise(pos["side"], pos["open_rate"], pos.get("px_now"), pos.get("tp"), pos.get("sl"),
                              pos.get("last_pnl", 0.0), age_h, trend, rsi)
-        out.update(trend=trend, rsi=rsi, age_h=age_h)
+        out.update(trend=trend, rsi=rsi, age_h=age_h, trend4h=scan_res.get("trend4h"), scan=scan_res)
         return out
 
     def advice_tick(self) -> None:
@@ -625,6 +658,9 @@ class Assistant:
             warn = "⚠️ Nu am putut citi soldul de la eToro în ultimele minute; cifrele de buget pot fi vechi."
         self.tg.send(msg.status(rows, total, self.free_margin(), self.equity(), self.realized, self.n_closed, self.autotrade, warn),
                      buttons or None)
+        for r, p in zip(rows, self.known.values()):                      # un grafic pe fiecare pozitie, cu intrarea, tinta si plasa
+            self.send_chart(p["name"], r["advice"].get("scan", {}), p["side"], p.get("open_rate"), p.get("tp") or None, p.get("sl") or None,
+                            f"{msg.pair(p['name'])}: {'cumpărat' if p['side'] == 1 else 'vândut'}, acum {msg.signed(p['last_pnl'])}")
 
     # ------------------------------------------------------------------ comenzi
     def handle(self, ev: dict) -> None:
