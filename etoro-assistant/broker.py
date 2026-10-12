@@ -1,18 +1,34 @@
-"""eToro DEMO: pozitii, ordine cu SL/TP, inchideri, pret."""
+"""eToro (demo sau real): pozitii, ordine cu SL/TP, inchideri, cotatii."""
 from __future__ import annotations
 
 import math
 import time
 
-from etoro import EToroDemo, EToroError
+from datetime import datetime, timedelta, timezone
+
+from etoro import EToroDemo, EToroError, EToroHTTPError, EToroNetworkError
+
+
+def parse_time(txt) -> datetime | None:
+    """Ora de la eToro (ISO, uneori cu fractii de secunda si 'Z'); None daca nu o pot citi."""
+    try:
+        s = str(txt).replace("Z", "+00:00")
+        t = datetime.fromisoformat(s.split(".")[0] + ("+00:00" if "+" not in s else ""))
+        return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+class OrderRejected(EToroError):
+    """Ordin respins CLAR de eToro (nu s-a deschis nimic)."""
 
 
 class OrderUnconfirmed(EToroError):
-    """Ordin trimis (eToro l-a primit), dar pozitia nu a aparut inca in portofoliu: poate fi deschis sau in asteptare."""
+    """Ordin trimis (sau cu rezultat neclar), dar pozitia nu a aparut inca in portofoliu: poate fi deschis sau in asteptare."""
 
-    def __init__(self, msg: str, before: set, response):
+    def __init__(self, msg: str, before: set, response, sent_at: datetime | None = None):
         super().__init__(msg)
-        self.before, self.response = before, response
+        self.before, self.response, self.sent_at = before, response, sent_at or datetime.now(timezone.utc)
 
 
 class EToroBroker:
@@ -25,11 +41,23 @@ class EToroBroker:
         return self.api.credit()
 
     def price(self, name: str) -> float:
+        """Pret orientativ (ultima lumanare de 1 ora); pentru profit/pierdere si ordine folosim quotes() (bid/ask live)."""
         return self.api.last_price(self.ids[name])
 
-    def positions(self) -> list[dict]:
+    def quotes(self, names: list[str]) -> dict[str, dict]:
+        """Cotatii live pentru mai multe instrumente intr-un singur apel: {nume: {bid, ask, conv_bid, conv_ask}}."""
+        by = self.api.rates([self.ids[n] for n in names])
+        out = {}
+        for n in names:
+            x = by.get(self.ids[n])
+            if x and x.get("bid") and x.get("ask"):
+                out[n] = {"bid": float(x["bid"]), "ask": float(x["ask"]),
+                          "conv_bid": float(x.get("conversionRateBid") or 0), "conv_ask": float(x.get("conversionRateAsk") or 0)}
+        return out
+
+    def positions(self, fresh: bool = False) -> list[dict]:
         out = []
-        for p in self.api.positions():
+        for p in self.api.positions(fresh):
             iid = int(p.get("instrumentID") or p.get("InstrumentID") or p.get("instrumentId") or 0)
             pid = p.get("positionID") or p.get("PositionID") or p.get("positionId")
             if not pid or iid not in self.rev:
@@ -58,41 +86,57 @@ class EToroBroker:
                         return o
         return None
 
-    def open(self, name: str, side: int, amount: float, lev: int, sl: float, tp: float) -> str:
-        """Deschide pozitia. Daca levierul > 20 e REFUZAT CURAT, reincearca cu 20 (aceeasi expunere).
-        Dupa un ordin trimis dar neconfirmat NU se reincearca niciodata (risc de ordin dublu)."""
+    def open(self, name: str, side: int, amount: float, lev: int, sl: float, tp: float, max_amount: float | None = None) -> str:
+        """Deschide pozitia. Reincearca cu levier 20 DOAR daca eToro a respins CLAR ordinul din cauza levierului si doar daca marja
+        mai mare incape in max_amount. Dupa un ordin trimis sau cu rezultat neclar NU se reincearca niciodata (risc de ordin dublu)."""
         try:
             pid = self._open(name, side, amount, lev, sl, tp)
             self.last = {"amount": amount, "leverage": lev}
             return pid
-        except OrderUnconfirmed:
-            raise
-        except EToroError:
-            if lev <= 20:
+        except OrderRejected as e:
+            if lev <= 20 or "leverage" not in str(e).lower():
                 raise
             amount2 = math.ceil(amount * lev / 20 * 100) / 100
+            if max_amount is not None and amount2 > max_amount + 0.001:
+                raise OrderRejected(f"{e} (levier 20 ar cere {amount2:.2f}$ marja, peste banii liberi)") from e
             pid = self._open(name, side, amount2, 20, sl, tp)
             self.last = {"amount": amount2, "leverage": 20}
             return pid
 
     def _open(self, name, side, amount, lev, sl, tp) -> str:
-        before = {p["id"] for p in self.positions()}
-        r = self.api.open_market(self.ids[name], side == 1, amount, lev, sl, tp)
+        try:
+            before = {p["id"] for p in self.positions(fresh=True)}
+        except EToroError as e:                                   # inainte de a trimite ordinul: nu s-a intamplat nimic
+            raise OrderRejected(f"nu pot citi portofoliul inainte de ordin ({type(e).__name__}); n-am trimis nimic") from e
+        sent = datetime.now(timezone.utc)
+        try:
+            r = self.api.open_market(self.ids[name], side == 1, amount, lev, sl, tp)
+        except EToroNetworkError as e:                            # nu stim daca a ajuns
+            raise OrderUnconfirmed(f"nu stiu daca ordinul a ajuns la eToro ({type(e).__name__})", before, None, sent) from e
+        except EToroHTTPError as e:
+            if e.status >= 500:
+                raise OrderUnconfirmed(f"eToro a raspuns cu eroare de server ({e.status}); rezultat neclar", before, str(e)[:200], sent) from e
+            raise OrderRejected(str(e)) from e                    # 4xx: respins clar
         oid = self._order_id(r)
-        for _ in range(20):                                   # pana la ~60 s
-            time.sleep(3)
+        for _ in range(12):                                       # pana la ~60 s
+            time.sleep(5)
             if oid:
                 try:
                     st = self.api.order_status(oid)
-                    if st.get("statusID") == 4:
-                        raise EToroError(f"Ordin respins: {st.get('errorMessage')}")
-                except EToroError as e:
-                    if "respins" in str(e):
-                        raise
-            new = [p for p in self.positions() if p["id"] not in before and p["name"] == name and p["side"] == side]
+                    if isinstance(st, dict) and st.get("statusID") == 4:
+                        raise OrderRejected(f"Ordin respins: {st.get('errorMessage')}")
+                except OrderRejected:
+                    raise
+                except EToroError:
+                    pass
+            try:
+                new = [p for p in self.positions(fresh=True) if p["id"] not in before and p["name"] == name and p["side"] == side
+                       and (parse_time(p["time"]) is None or parse_time(p["time"]) >= sent.replace(microsecond=0) - timedelta(seconds=120))]
+            except EToroError:
+                continue
             if new:
                 return new[0]["id"]
-        raise OrderUnconfirmed("Ordinul a fost trimis, dar nu l-am văzut încă în portofoliu", before, r)
+        raise OrderUnconfirmed("Ordinul a fost trimis, dar nu l-am văzut încă în portofoliu", before, r, sent)
 
     def close(self, pid: str, name: str) -> None:
         self.api.close_position(int(pid), self.ids[name])

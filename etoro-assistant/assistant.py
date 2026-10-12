@@ -13,7 +13,7 @@ import math
 import os
 import signal as sig_mod
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import messages as msg
@@ -21,7 +21,7 @@ import pandas as pd
 import signals
 import state as state_mod
 import ta
-from broker import OrderUnconfirmed
+from broker import OrderRejected, OrderUnconfirmed, parse_time
 from etoro import EToroError
 
 HERE = Path(__file__).parent
@@ -43,20 +43,13 @@ def digits_for(name: str, px: float) -> int:
     return 1 if name in INDICES else 2 if name in ("OIL", "GOLD") else 5 if px < 20 else 3
 
 
-def parse_time(txt) -> datetime | None:
-    """Ora deschiderii de la eToro (ISO, uneori cu fractii de secunda si 'Z'); None daca nu o pot citi."""
-    try:
-        t = datetime.fromisoformat(str(txt).replace("Z", "+00:00")[:32].split(".")[0] + ("+00:00" if "+" not in str(txt) and "Z" not in str(txt) else ""))
-        return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
-    except (ValueError, TypeError):
-        return None
-
-
 class Assistant:
     def __init__(self, cfg: dict, tg, broker, fetch=ta.fetch_ohlc, now_fn=None, sleep=time.sleep, real: bool = False):
         self.cfg, self.tg, self.broker, self.fetch = cfg, tg, broker, fetch
         self.real = real                          # cont REAL (bani adevarati): decizia utilizatorului, TRADING_MODE=real
         self.unlocked = not real                  # pe real, nimic nu se deschide pana nu confirmi din Telegram
+        self.miss: dict[str, int] = {}            # de cate ori la rand o pozitie urmarita lipseste din portofoliu
+        self.last_ok: float | None = None         # ultima citire reusita a soldului real
         self.adopt: list[dict] = []               # ordine trimise dar neconfirmate: daca pozitia apare mai tarziu, o preiau
         self.bot_pids: set[str] = set()           # pozitiile deschise de asistent (pe real le urmarim doar pe acestea)
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
@@ -98,6 +91,7 @@ class Assistant:
             c = self.broker.credit()
             if c is not None:
                 self.real_balance = c
+                self.last_ok = time.time()
         except Exception as e:  # noqa: BLE001
             self.report_error(f"nu pot citi soldul real ({type(e).__name__})")
 
@@ -170,7 +164,9 @@ class Assistant:
     def save_state(self) -> None:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
-                        "bot_pids": sorted(self.bot_pids), "unlocked": self.unlocked and self.real})
+                        "bot_pids": sorted(self.bot_pids), "unlocked": self.unlocked and self.real,
+                        "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
+                                   "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
     def market_open(self, now: datetime) -> bool:
         return not (now.weekday() >= 5 or (now.weekday() == 4 and now.hour >= 20) or now.hour in (21, 22))
@@ -184,7 +180,7 @@ class Assistant:
             if manual:
                 self.tg.send("😴 Piața e închisă sau prea aproape de închidere, nu caut semnale acum.")
             return
-        self.refresh_real()
+        self.sync()                                      # sold si pozitii la zi, inainte de orice calcul
         t_scan0 = time.time()
         found, overflow, report = 0, [], []
         open_names = {p["name"] for p in self.known.values()}
@@ -253,10 +249,17 @@ class Assistant:
         if not self.unlocked:
             self.tg.send("🔒 Mai întâi confirmă contul real din mesajul de la pornire (butonul „Confirm”).")
             return
+        self.sync()
         if any(p["name"] == name for p in self.known.values()):
             self.tg.send(f"ℹ️ Ai deja o poziție deschisă pe {msg.pair(name)}.")
             return
-        self.refresh_real()
+        if any(p["name"] == name for p in self.pending.values()):
+            self.tg.send(f"ℹ️ Ai deja o propunere în așteptare pe {msg.pair(name)}; răspunde-i mai întâi.")
+            return
+        if len(self.known) + len(self.pending) >= self.max_pos():
+            self.tg.send(f"ℹ️ Ai deja {len(self.known) + len(self.pending)} poziții/propuneri; maxim acum: {self.max_pos()}. "
+                         f"Închide una sau răspunde la propuneri.")
+            return
         atr = None
         try:
             atr = signals.scan(self.fetch(self.inst[name]["yahoo"], "1h", "90d"), self.inst[name]["signals"], pd.Timestamp(self.now_fn())).get("atr_pct")
@@ -280,11 +283,8 @@ class Assistant:
             self.tg.send(f"ℹ️ Nu găsesc o poziție {msg.pair(name)} pe care s-o preiau (sau o urmăresc deja).")
             return
         for p in found:
-            notional = p["amount"] * p["leverage"]
-            tp_usd = abs(p["tp"] - p["open_rate"]) / p["open_rate"] * notional if p.get("tp") and p["open_rate"] else self.cfg["tp_usd"]
-            sl_usd = abs(p["sl"] - p["open_rate"]) / p["open_rate"] * notional if p.get("sl") and p["open_rate"] else self.cfg["sl_usd"]
             self.bot_pids.add(str(p["id"]))
-            self.known[p["id"]] = {**p, "last_pnl": 0.0, "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": self.now_fn()}
+            self.track(p)
         self.save_state()
         self.tg.send(f"✅ Am preluat {len(found)} poziții {msg.pair(name)}. De acum le urmăresc, le văd la 📊 Status și le pot închide de aici.")
 
@@ -347,25 +347,36 @@ class Assistant:
         if not self.unlocked:
             self.tg.send("🔒 Contul real nu e confirmat în sesiunea asta, nu deschid nimic.")
             return
-        self.refresh_real()
-        amount, lev, notional = self.sizing(inst)
-        if amount > self.free_margin() + 0.001:
-            self.tg.send(f"🚫 Nu mai am buget liber pentru {msg.pair(name)}: {msg.no_free_margin(amount, self.free_margin())}.")
+        self.sync()                                              # sold si pozitii la zi INAINTE de dimensionare
+        if any(k["name"] == name for k in self.known.values()):
+            self.tg.send(f"ℹ️ Ai deja o poziție deschisă pe {msg.pair(name)}, nu deschid încă una.")
             return
+        amount, lev, notional = self.sizing(inst)
+        free = self.free_margin()
+        if amount > free + 0.001 or amount < self.cfg["min_margin_usd"] - 0.001:
+            self.tg.send(f"🚫 Nu pot deschide {msg.pair(name)}: " + (
+                f"eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție și ai {msg.usd(free)} liber."
+                if free < self.cfg["min_margin_usd"] else msg.no_free_margin(amount, free)) + ".")
+            return
+        px = sl = tp = None
         try:
-            px = self.broker.price(name)
+            px = self.live_price(name, side)
             sl, tp, _, _ = self.levels(side, px, notional, p.get("atr_pct"))
             d = digits_for(name, px)
-            pid = self.broker.open(name, side, amount, lev, round(sl, d), round(tp, d))
+            problem = self.order_problem(side, px, round(sl, d), round(tp, d))
+            if problem:
+                self.tg.send(f"🛑 Nu trimit ordinul pe {msg.pair(name)}: {problem}")
+                return
+            pid = self.broker.open(name, side, amount, lev, round(sl, d), round(tp, d), max_amount=free)
         except OrderUnconfirmed as e:
-            self.adopt.append({"name": name, "side": side, "before": set(e.before), "at": self.now_fn(), "atr_pct": p.get("atr_pct"),
-                               "sl": sl, "tp": tp, "px": px})
-            self.tg.send(f"⏳ Ordinul pe {msg.pair(name)} a fost TRIMIS la eToro, dar nu l-am văzut încă în portofoliu "
-                         f"(poate fi în curs de execuție). NU repet ordinul.\nRăspuns eToro: {str(e.response)[:250]}\n"
+            self.adopt.append({"name": name, "side": side, "before": set(e.before), "at": e.sent_at or self.now_fn(),
+                               "atr_pct": p.get("atr_pct"), "px": px})
+            self.save_state()
+            self.tg.send(f"⏳ Ordinul pe {msg.pair(name)}: {e}. NU repet ordinul.\nRăspuns eToro: {str(e.response)[:250]}\n"
                          f"Cauză frecventă: sold prea mic (eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție). "
                          f"Verifică în eToro. Dacă poziția apare, o preiau automat în următoarele 15 minute și o urmăresc.")
             return
-        except (EToroError, Exception) as e:  # noqa: BLE001
+        except (OrderRejected, EToroError, Exception) as e:  # noqa: BLE001
             self.tg.send(f"⚠️ Ordinul pe {msg.pair(name)} n-a mers (respins): {str(e)[:250]}\nNu am deschis nimic.")
             return
         self.bot_pids.add(str(pid))
@@ -381,15 +392,23 @@ class Assistant:
         self.tg.send(("🔴 CONT REAL\n" if self.real else "") + msg.opened(name, side, px, d, amount, lev, notional, tp, tp_usd, sl, sl_usd))
         self.save_state()
 
+    def order_problem(self, side: int, px: float, sl: float, tp: float) -> str | None:
+        """Verificari de bun-simt inainte sa trimit un ordin cu bani: SL/TP de partea corecta a pretului si la distanta rezonabila."""
+        if not (px > 0 and sl > 0 and tp > 0):
+            return "pret sau niveluri invalide"
+        ok = (sl < px < tp) if side == 1 else (tp < px < sl)
+        if not ok:
+            return f"plasa ({sl}) și ținta ({tp}) nu sunt de-o parte și de alta a prețului ({px})"
+        if min(abs(px - sl), abs(tp - px)) / px < 0.0003:
+            return "țința sau plasa sunt prea aproape de preț (sub 0,03%)"
+        return None
+
     def close_one(self, pid: str, kind: str) -> None:
         pos = self.known.get(pid)
         if not pos:
             return
         self.expecting[pid] = kind
-        try:
-            pos["last_pnl"] = self.pnl(pos, self.broker.price(pos["name"]))         # rezultat proaspat la momentul inchiderii
-        except Exception:  # noqa: BLE001
-            pass
+        pos["last_pnl"] = self.fresh_pnl(pos)                                   # rezultat proaspat la momentul inchiderii
         try:
             self.broker.close(pid, pos["name"])
         except Exception as e:  # noqa: BLE001
@@ -400,6 +419,50 @@ class Assistant:
         self.monitor(check_basket=False)                # confirma inchiderea si anunta
 
     # ------------------------------------------------------------------ urmarire pozitii
+    def track(self, p: dict, atr_pct: float | None = None) -> None:
+        """Incep sa urmaresc o pozitie: tinta/plasa in $ vin din ATR (pozitii deschise de mine) sau din nivelurile puse pe eToro."""
+        notional = p["amount"] * p["leverage"]
+        if atr_pct:
+            _, _, tp_usd, sl_usd = self.levels(p["side"], p["open_rate"] or 1.0, notional, atr_pct)
+        else:
+            op = p["open_rate"]
+            tp_usd = abs(p["tp"] - op) / op * notional if p.get("tp") and op else self.cfg["tp_usd"]
+            sl_usd = abs(p["sl"] - op) / op * notional if p.get("sl") and op else self.cfg["sl_usd"]
+        self.known[p["id"]] = {**p, "last_pnl": 0.0, "tp_usd": tp_usd, "sl_usd": sl_usd,
+                               "opened_at": parse_time(p.get("time")) or self.now_fn()}
+
+    def sync(self) -> None:
+        """Aduce starea la zi (sold si pozitii de la eToro) inainte de dimensionare sau ordine."""
+        self.monitor(check_basket=False)
+
+    def quote_pnl(self, pos: dict, q: dict) -> float | None:
+        """Profit/pierdere din cotatia live: iesirea se face la bid (pozitie lunga) sau ask (scurta), iar cursul de conversie
+        aduce valoarea in $. Spread-ul e inclus deja in bid/ask."""
+        conv = q.get("conv_bid") or 0
+        if conv <= 0:
+            return None
+        exit_px = q["bid"] if pos["side"] == 1 else q["ask"]
+        return pos["side"] * pos["units"] * (exit_px - pos["open_rate"]) * conv
+
+    def fresh_pnl(self, pos: dict) -> float:
+        try:
+            q = self.broker.quotes([pos["name"]]).get(pos["name"]) if hasattr(self.broker, "quotes") else None
+            v = self.quote_pnl(pos, q) if q else None
+            return v if v is not None else self.pnl(pos, self.broker.price(pos["name"]))
+        except Exception:  # noqa: BLE001
+            return pos.get("last_pnl", 0.0)
+
+    def live_price(self, name: str, side: int) -> float:
+        """Pretul la care s-ar deschide acum (ask la cumparare, bid la vanzare); altfel ultima lumanare."""
+        try:
+            if hasattr(self.broker, "quotes"):
+                q = self.broker.quotes([name]).get(name)
+                if q:
+                    return q["ask"] if side == 1 else q["bid"]
+        except Exception:  # noqa: BLE001
+            pass
+        return self.broker.price(name)
+
     def monitor(self, check_basket: bool = True) -> None:
         self.refresh_real()                               # soldul liber real, proaspat la fiecare verificare
         self.try_adopt()                                  # inainte de citirea pozitiilor, ca cele preluate sa fie incluse
@@ -410,20 +473,37 @@ class Assistant:
             self.report_error(f"nu pot citi pozițiile de pe eToro ({type(e).__name__})")
             return
         rows = []
-        if any(p["name"] in EUR_QUOTE for p in current.values()):
+        qs: dict = {}
+        if current and hasattr(self.broker, "quotes"):
+            try:
+                qs = self.broker.quotes(sorted({p["name"] for p in current.values()}))
+            except Exception:  # noqa: BLE001
+                qs = {}
+        if any(p["name"] in EUR_QUOTE and p["name"] not in qs for p in current.values()):
             try:
                 self.eurusd = self.broker.price("EURUSD")
             except Exception:  # noqa: BLE001
                 pass
         for pid, pos in current.items():
-            try:
-                pos["last_pnl"] = self.pnl(pos, self.broker.price(pos["name"]))
-            except Exception:  # noqa: BLE001
-                pos["last_pnl"] = self.known.get(pid, {}).get("last_pnl", 0.0)
+            pnl = self.quote_pnl(pos, qs[pos["name"]]) if pos["name"] in qs else None
+            if pnl is None:
+                try:
+                    pnl = self.pnl(pos, self.broker.price(pos["name"]))
+                except Exception:  # noqa: BLE001
+                    pnl = self.known.get(pid, {}).get("last_pnl", 0.0)
+            pos["last_pnl"] = pnl
             rows.append(pos)
-        # pozitii care au disparut: inchise (TP / SL / de tine / de mine)
-        for pid in [k for k in self.known if k not in current]:
+        # pozitii care au disparut: inchise (TP / SL / de tine / de mine). O singura citire fara ele poate fi o eroare a API-ului,
+        # deci cele neasteptate se considera inchise abia la a doua verificare la rand.
+        for pid in list(self.known):
+            if pid in current:
+                self.miss.pop(pid, None)
+                continue
+            self.miss[pid] = self.miss.get(pid, 0) + 1
+            if pid not in self.expecting and self.miss[pid] < 2:
+                continue
             old = self.known.pop(pid)
+            self.miss.pop(pid, None)
             kind = self.expecting.pop(pid, None)
             pnl = old.get("last_pnl", 0.0)
             if kind is None:
@@ -454,37 +534,40 @@ class Assistant:
         except Exception:  # noqa: BLE001
             return
         for rec in list(self.adopt):
-            hit = next((p for p in allpos if p["id"] not in rec["before"] and p["name"] == rec["name"] and p["side"] == rec["side"]), None)
+            def fresh(p, rec=rec):
+                t = parse_time(p.get("time"))
+                return t is None or t >= rec["at"] - timedelta(seconds=120)          # deschisa dupa trimiterea ordinului
+            hit = next((p for p in allpos if p["id"] not in rec["before"] and p["name"] == rec["name"]
+                        and p["side"] == rec["side"] and fresh(p)), None)
             if hit:
                 self.adopt.remove(rec)
                 self.bot_pids.add(str(hit["id"]))
-                notional = hit["amount"] * hit["leverage"]
-                sl, tp, tp_usd, sl_usd = self.levels(rec["side"], hit["open_rate"] or rec["px"], notional, rec["atr_pct"])
-                self.known[hit["id"]] = {**hit, "last_pnl": 0.0, "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": now}
+                self.track(hit, rec.get("atr_pct"))
                 self.save_state()
                 self.tg.send(f"✅ Poziția pe {msg.pair(rec['name'])} a apărut în eToro (preț {hit['open_rate']}). O urmăresc acum.")
             elif (now - rec["at"]).total_seconds() > 15 * 60:
                 self.adopt.remove(rec)
+                self.save_state()
                 self.tg.send(f"⌛ Ordinul pe {msg.pair(rec['name'])} nu a apărut în portofoliu în 15 minute. Probabil n-a fost executat; "
                              f"verifică în eToro (ordine în așteptare).")
 
     def classify_vanished(self, old: dict, last_pnl: float) -> tuple[str, float]:
-        """O pozitie a disparut fara sa o fi inchis eu: a atins TP, SL sau a inchis-o altcineva? Rezultatul ultimei verificari
-        poate avea 30 de secunde, deci pentru TP/SL folosesc valorile $ ale nivelurilor, nu ultima citire."""
+        """O pozitie a disparut fara sa o fi inchis eu: TP, SL sau a inchis-o altcineva? Decid dupa pretul de iesire de acum fata de
+        nivelurile puse pe eToro. TP/SL se noteaza la valoarea nivelului (estimare); inchiderile manuale la profitul de acum."""
         tp_usd, sl_usd = old.get("tp_usd", self.cfg["tp_usd"]), old.get("sl_usd", self.cfg["sl_usd"])
+        px = None
         try:
-            px = self.broker.price(old["name"])
-            side = old["side"]
-            if old.get("tp") and side * (px - old["tp"]) >= 0 or last_pnl >= 0.6 * tp_usd:
-                return "TP", max(tp_usd, last_pnl) if last_pnl > 0 else tp_usd
-            if old.get("sl") and side * (old["sl"] - px) >= 0 or last_pnl <= -0.6 * sl_usd:
-                return "SL", min(-sl_usd, last_pnl)
+            q = self.broker.quotes([old["name"]]).get(old["name"]) if hasattr(self.broker, "quotes") else None
+            px = (q["bid"] if old["side"] == 1 else q["ask"]) if q else self.broker.price(old["name"])
         except Exception:  # noqa: BLE001
-            if last_pnl >= 0.6 * tp_usd:
-                return "TP", last_pnl
-            if last_pnl <= -0.6 * sl_usd:
-                return "SL", last_pnl
-        return "OTHER", last_pnl
+            pass
+        if px is not None:
+            side = old["side"]
+            if old.get("tp") and side * (px - old["tp"]) >= 0:
+                return "TP", tp_usd
+            if old.get("sl") and side * (old["sl"] - px) >= 0:
+                return "SL", -sl_usd
+        return "OTHER", self.fresh_pnl(old) if px is not None else last_pnl
 
     def hold_alert(self) -> None:
         """O pozitie care nu si-a atins ținta in ~2 ore: te intreb daca vrei sa o inchizi tu."""
@@ -504,7 +587,11 @@ class Assistant:
         buttons = [[(f"🔒 Închide {msg.pair(r['name']).split(' ')[0]}", f"close:{p['id']}")] for r, p in zip(rows, self.known.values())]
         if len(rows) >= 2:
             buttons.append([("🔒🔒 Închide tot", "closeall")])
-        self.tg.send(msg.status(rows, total, self.free_margin(), self.equity(), self.realized, self.n_closed, self.autotrade), buttons or None)
+        warn = ""
+        if self.real and (self.last_ok is None or time.time() - self.last_ok > 120):
+            warn = "⚠️ Nu am putut citi soldul de la eToro în ultimele minute; cifrele de buget pot fi vechi."
+        self.tg.send(msg.status(rows, total, self.free_margin(), self.equity(), self.realized, self.n_closed, self.autotrade, warn),
+                     buttons or None)
 
     # ------------------------------------------------------------------ comenzi
     def handle(self, ev: dict) -> None:
@@ -650,8 +737,19 @@ class Assistant:
         cont = os.getenv("CONTINUED") == "1"
         self.autotrade = bool(st.get("autotrade")) and cont                               # sesiune noua pornita de tine: autotrading oprit
         self.bot_pids = set(st.get("bot_pids", [])) if self.real else set()
+        for r in st.get("adopt", []) if self.real else []:
+            t = parse_time(r.get("at"))
+            if t:
+                self.adopt.append({**r, "before": set(r.get("before", [])), "at": t})
         self.unlocked = (bool(st.get("unlocked")) and cont) if self.real else True        # pe real: confirmare la fiecare pornire noua
         self.refresh_real()
+        try:
+            for p in self.broker.positions(fresh=True):
+                if p["name"] in self.inst and (not self.real or str(p["id"]) in self.bot_pids):
+                    self.track(p)
+        except Exception as e:  # noqa: BLE001
+            self.report_error(f"nu pot citi pozițiile de pe eToro ({type(e).__name__})")
+
         if os.getenv("CONTINUED") == "1":
             self.tg.send(msg.continued(hours), menu=msg.MENU)
         else:
@@ -665,12 +763,6 @@ class Assistant:
                          f"Nu deschid nimic până nu confirmi că vrei să tranzacționez cu bani adevărați.",
                          [[("✅ Confirm: cont real", "realok"), ("❌ Nu, oprește", "stopnow")]])
         self.save_state()
-        try:
-            for p in self.broker.positions():
-                if p["name"] in self.inst and (not self.real or str(p["id"]) in self.bot_pids):
-                    self.known[p["id"]] = dict(p, last_pnl=0.0)
-        except Exception as e:  # noqa: BLE001
-            self.report_error(f"nu pot citi pozițiile de pe eToro ({type(e).__name__})")
         if self.known:
             self.tg.send(f"👀 Am găsit {len(self.known)} poziții deschise {'de mine' if self.real else 'pe eToro'}; le urmăresc și pe ele.")
             self.monitor()
