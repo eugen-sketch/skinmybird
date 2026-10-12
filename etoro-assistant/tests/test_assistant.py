@@ -530,16 +530,37 @@ def test_real_only_tracks_positions_opened_by_the_bot(monkeypatch):
     assert len(a.bot_pids) == 1 and next(iter(a.bot_pids)) in a.known
 
 
-def test_uses_all_free_money_when_full_slice_does_not_fit():
-    a, tg, br = make_real(60.0)                                # sold mic: felia ar fi 20$, minimul pentru 1.000$ expunere e 33.67$
-    m, lev, notional = a.sizing(a.inst["NZDUSD"])
-    assert lev == 30 and notional >= 1000 and m <= 60.0 and abs(m - 33.67) < 0.01
-    a2, _, _ = make_real(34.5)
-    m2, _, n2 = a2.sizing(a2.inst["NZDUSD"])
-    assert m2 <= 34.5 and n2 >= 1000
-    a3, _, _ = make_real(20.0)                                 # prea putin: sub minimul eToro
-    m3, _, n3 = a3.sizing(a3.inst["NZDUSD"])
-    assert a3.free_margin() < m3 and n3 >= 1000                # ramane "nu pot deschide", cu motivul in mesaj
+def test_min_50_per_position_and_two_positions_below_150():
+    a, _, _ = make_real(45.0)                                  # sub 50$: eToro nu permite nicio pozitie
+    m, lev, n = a.sizing(a.inst["NZDUSD"])
+    assert a.free_margin() < m and m >= 50.0
+    b, _, _ = make_real(60.0)                                  # 60$: o singura pozitie, cu tot ce ai
+    assert b.max_pos() == 2 and abs(b.sizing(b.inst["NZDUSD"])[0] - 60.0) < 0.01
+    c, _, _ = make_real(120.0)                                 # 120$: doua pozitii de cate 60$
+    assert c.max_pos() == 2 and abs(c.sizing(c.inst["NZDUSD"])[0] - 60.0) < 0.01
+    d, _, _ = make_real(150.0)                                 # 150$: trei pozitii de cate 50$
+    assert d.max_pos() == 3 and abs(d.sizing(d.inst["NZDUSD"])[0] - 50.0) < 0.01
+    e, _, _ = make_real(100.0)                                 # 100$: doua de cate 50$
+    assert abs(e.sizing(e.inst["NZDUSD"])[0] - 50.0) < 0.01
+
+
+def test_second_position_uses_remaining_money_and_third_is_refused_under_150():
+    a, tg, br = make_real(120.0)
+    a.unlocked = True
+    for name in ("EURUSD", "GBPUSD"):
+        m, lev, notional = a.sizing(a.inst[name])
+        a.known[name] = {"amount": m, "name": name, "side": 1, "leverage": lev}
+        a.real_balance = 120.0 - sum(p["amount"] for p in a.known.values())
+    assert len(a.known) == 2 and a.max_pos() == 2
+    br.balance = a.real_balance
+
+
+def test_below_minimum_signal_message_explains_the_50_rule(monkeypatch):
+    a, tg, br = make_real(30.0)
+    a.unlocked = True
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    a.scan()
+    assert any("eToro cere minim $50.00" in x for x in tg.texts) and not a.pending
 
 
 def test_manual_sell_asks_with_buttons_and_opens(monkeypatch):

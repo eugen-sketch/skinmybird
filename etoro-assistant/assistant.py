@@ -120,16 +120,25 @@ class Assistant:
     def free_margin(self) -> float:
         return self.equity() * (1.0 if self.real else 1.015) - self.used_margin()       # demo: 1.5% toleranta (3 pozitii de ~50.5$ in 150$)
 
+    def max_pos(self) -> int:
+        """Cate pozitii deschise odata: 2 cat timp bugetul e sub 150$, 3 de la 150$ in sus (eToro cere minim 50$ pe pozitie)."""
+        c = self.cfg
+        return c["max_positions"] if self.equity() >= c["small_account_usd"] else c["max_positions_small"]
+
     def sizing(self, inst: dict) -> tuple[float, int, float]:
+        """(marja $, levier, expunere $). Impart bugetul la nr. de pozitii posibile (minim 50$ pe pozitie, expunere minima 1.000$);
+        daca felia nu mai incape din banii liberi, folosesc tot ce e liber, cat timp ramane peste minimele eToro."""
         c = self.cfg
         lev = min(inst["lev_cap"], c["max_leverage"])
-        margin = math.floor(self.equity() / c["max_positions"] * 100) / 100
+        eq, mm = self.equity(), c["min_margin_usd"]
+        n = max(1, min(self.max_pos(), int(eq // mm)))
+        margin = max(math.floor(eq / n * 100) / 100, mm)
         if margin * lev < c["min_notional"] * 1.005:
             margin = math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100       # minimul eToro pentru expunere
         free = self.free_margin()
-        if margin > free + 0.001:        # nu ajung banii pentru felia plina: folosesc tot ce e liber, daca atinge expunerea minima
+        if margin > free + 0.001:
             fit = math.floor(free * 100) / 100
-            if fit * lev >= c["min_notional"] * 1.001:
+            if fit >= mm and fit * lev >= c["min_notional"] * 1.001:
                 margin = fit
         return margin, lev, margin * lev
 
@@ -206,14 +215,14 @@ class Assistant:
                 continue
             self.seen_bar[name] = s["bar"]
             self.save_state()
-            if len(self.known) + len(self.pending) >= self.cfg["max_positions"]:
+            if len(self.known) + len(self.pending) >= self.max_pos():
                 overflow.append(name)
                 continue
             if self.propose(name, s):
                 found += 1
         if overflow:
             self.tg.send(f"ℹ️ Mai sunt semnale pe {', '.join(msg.pair(n).split(' ')[0] for n in overflow)}, dar am deja "
-                         f"{self.cfg['max_positions']} poziții/semnale în așteptare. Dacă te interesează, spune-mi /scan după ce se eliberează un loc.")
+                         f"{self.max_pos()} poziții/semnale în așteptare. Dacă te interesează, spune-mi /scan după ce se eliberează un loc.")
             for n in overflow:
                 self.seen_bar.pop(n, None)               # le re-evaluam la urmatoarea scanare
         hour_key = now.strftime("%Y%m%d%H")
@@ -292,7 +301,8 @@ class Assistant:
         d = digits_for(name, px)
         free = self.free_margin()
         can = amount <= free + 0.001
-        reason = msg.no_free_margin(amount, free)
+        reason = (f"eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție și ai doar {msg.usd(free)} liber"
+                  if free < self.cfg["min_margin_usd"] else msg.no_free_margin(amount, free))
         text = msg.signal(name, side, s["why"], px, d, amount, lev, notional, tp_px, tp_usd, sl_px, sl_usd, free, can, reason)
         if not can:
             self.tg.send(text)
@@ -352,6 +362,7 @@ class Assistant:
                                "sl": sl, "tp": tp, "px": px})
             self.tg.send(f"⏳ Ordinul pe {msg.pair(name)} a fost TRIMIS la eToro, dar nu l-am văzut încă în portofoliu "
                          f"(poate fi în curs de execuție). NU repet ordinul.\nRăspuns eToro: {str(e.response)[:250]}\n"
+                         f"Cauză frecventă: sold prea mic (eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție). "
                          f"Verifică în eToro. Dacă poziția apare, o preiau automat în următoarele 15 minute și o urmăresc.")
             return
         except (EToroError, Exception) as e:  # noqa: BLE001
@@ -530,7 +541,7 @@ class Assistant:
                 self.tg.clear_buttons(ev["msg_id"])
                 self.autotrade = True
                 self.save_state()
-                self.tg.send(msg.autotrade_on(self.cfg["max_positions"], self.cfg["autotrade_daily_loss_usd"] * self.scale()))
+                self.tg.send(msg.autotrade_on(self.max_pos(), self.cfg["autotrade_daily_loss_usd"] * self.scale()))
             elif d == "stopnow":
                 self.tg.clear_buttons(ev["msg_id"])
                 self.stop_reason = "la cererea ta"
@@ -562,7 +573,7 @@ class Assistant:
                 self.save_state()
                 self.tg.send(msg.autotrade_off())
             else:
-                self.tg.send(msg.confirm_autotrade(self.cfg["max_positions"], self.cfg["autotrade_daily_loss_usd"] * self.scale()),
+                self.tg.send(msg.confirm_autotrade(self.max_pos(), self.cfg["autotrade_daily_loss_usd"] * self.scale()),
                              [[("✅ Da, pornește autotrading", "autoon"), ("❌ Nu", "cancel")]])
         elif t.startswith("/reset"):
             self.realized, self.n_closed = 0.0, 0
@@ -643,11 +654,11 @@ class Assistant:
             self.tg.send(msg.started(hours, self.equity(), c["scan_every_min"], c["basket_target_usd"], real=self.real), menu=msg.MENU)
         if self.real and not self.unlocked:
             bal = "necunoscut (nu pot citi soldul!)" if self.real_balance is None else msg.usd(self.real_balance)
-            lev = min(self.inst["EURUSD"]["lev_cap"], c["max_leverage"]) if "EURUSD" in self.inst else 30
-            need = math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100
-            can_n = 0 if self.real_balance is None else int(self.real_balance // need)
-            self.tg.send(f"🔴 CONT REAL. Sold disponibil: {bal}.\nMarja minimă pe o poziție: {msg.usd(need)} (expunere minimă $1.000 la levier {lev}); "
-                         f"deschid acum maxim {can_n} poziții.\nNu deschid nimic până nu confirmi că vrei să tranzacționez cu bani adevărați.",
+            mm = c["min_margin_usd"]
+            can_n = 0 if self.real_balance is None else min(self.max_pos(), int(self.real_balance // mm))
+            self.tg.send(f"🔴 CONT REAL. Sold disponibil: {bal}.\neToro cere minim {msg.usd(mm)} pe poziție. Deschid acum maxim {can_n} poziții "
+                         f"(maxim {self.max_pos()} odată cât bugetul e {'sub' if self.equity() < c['small_account_usd'] else 'peste'} {msg.usd(c['small_account_usd'])}).\n"
+                         f"Nu deschid nimic până nu confirmi că vrei să tranzacționez cu bani adevărați.",
                          [[("✅ Confirm: cont real", "realok"), ("❌ Nu, oprește", "stopnow")]])
         self.save_state()
         try:
