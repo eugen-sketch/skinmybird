@@ -90,10 +90,36 @@ def status(rows: list[dict], total: float, free: float, budget: float, realized:
     if not rows:
         return (f"📭 Nu ai nicio poziție deschisă.\n👛 Buget liber: {usd(free)} din {usd(budget)}\n"
                 f"📒 Închise: {n_closed}, rezultat estimat {signed(realized)}{tail}")
-    lines = [f"{'🟢' if r['pnl'] >= 0 else '🔴'} {pair(r['name'])} ({'cumpărat' if r['side'] == 1 else 'vândut'}): {signed(r['pnl'])}" for r in rows]
+    lines = [f"{'🟢' if r['pnl'] >= 0 else '🔴'} {pair(r['name'])} ({'cumpărat' if r['side'] == 1 else 'vândut'}): {signed(r['pnl'])}"
+             + advice_block(r.get("advice")) for r in rows]
     icon = "📈" if total >= 0 else "📉"
     return ("📊 Pozițiile deschise acum:\n" + "\n".join(lines) + f"\n\n{icon} Total acum: {signed(total)}\n"
-            f"👛 Buget liber: {usd(free)} din {usd(budget)}\n📒 Închise: {n_closed}, rezultat estimat {signed(realized)}{tail}")
+            f"👛 Buget liber: {usd(free)} din {usd(budget)}\n📒 Închise: {n_closed}, rezultat estimat {signed(realized)}{tail}\n"
+            f"ℹ️ Sfaturile vin din reguli simple (trend orar, RSI, timp, cât a mers spre țintă/plasă), nu garantează nimic; decizia e a ta.")
+
+
+VERDICT = {"TINE": "✋ ȚINE-O", "INCHIDE": "🔒 ÎNCHIDE-O", "ATENTIE": "⚠️ ATENȚIE"}
+
+
+def advice_block(adv: dict | None) -> str:
+    """Sfatul pentru o pozitie, pe scurt si pe intelesul tuturor (fara grafice)."""
+    if not adv:
+        return ""
+    bits = []
+    if adv.get("to_tp") is not None:
+        bits.append(f"până la țintă: {min(100, adv['to_tp'] * 100):.0f}% parcurs")
+    if adv.get("to_sl"):
+        bits.append(f"spre plasă: {min(100, adv['to_sl'] * 100):.0f}%")
+    if adv.get("age_h"):
+        h = adv["age_h"]
+        bits.append(f"deschisă de {int(h)} h {int((h % 1) * 60)} min" if h >= 1 else f"deschisă de {int(h * 60)} min")
+    trend = {"sus": "↗️ sus", "jos": "↘️ jos", "lateral": "↔️ lateral"}.get(adv.get("trend"))
+    if trend:
+        bits.append(f"trend orar {trend}")
+    if adv.get("rsi") is not None:
+        bits.append(f"RSI {adv['rsi']:.0f}")
+    why = "; ".join(adv.get("reasons", [])[:3])
+    return (f"\n   {' · '.join(bits)}" if bits else "") + f"\n   👉 Sfat: {VERDICT.get(adv['verdict'], adv['verdict'])}" + (f" — {why}" if why else "")
 
 
 def update(rows: list[dict], total: float) -> str:
@@ -257,6 +283,6 @@ def autotrade_limit(daily_loss: float) -> str:
             f"Nu mai deschid singur nimic azi. Dacă vrei, îl pornești din nou din meniu.")
 
 
-def hold_alert(name: str, hours: int, pnl: float) -> str:
-    return (f"⏱️ {pair(name)} e deschisă de ≈{hours} ore și nu și-a atins încă ținta (acum {signed(pnl)}). "
+def hold_alert(name: str, hours: int, pnl: float, adv: dict | None = None) -> str:
+    return (f"⏱️ {pair(name)} e deschisă de ≈{hours} ore și nu și-a atins încă ținta (acum {signed(pnl)}).{advice_block(adv)}\n"
             f"Vrei s-o închizi tu, sau o las să-și vadă de țintă?")

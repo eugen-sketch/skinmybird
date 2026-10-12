@@ -16,6 +16,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import advisor
 import messages as msg
 import pandas as pd
 import signals
@@ -67,6 +68,7 @@ class Assistant:
         self.autotrade = False                   # pornit doar de tine, din buton
         self.day, self.day_pnl = "", 0.0
         self.hold_alerted: set[str] = set()
+        self.advice_sent: dict[str, float] = {}   # cand ti-am dat ultima oara sfatul "inchide" pentru fiecare pozitie
         self.eurusd = 1.08                       # actualizat din eToro la fiecare verificare a pozitiilor
         self.last_slot = None                    # ultimul sfert de ora scanat
         self.stop_reason: str | None = None
@@ -492,6 +494,9 @@ class Assistant:
                 except Exception:  # noqa: BLE001
                     pnl = self.known.get(pid, {}).get("last_pnl", 0.0)
             pos["last_pnl"] = pnl
+            q = qs.get(pos["name"])
+            if q:
+                pos["px_now"] = q["bid"] if pos["side"] == 1 else q["ask"]
             rows.append(pos)
         # pozitii care au disparut: inchise (TP / SL / de tine / de mine). O singura citire fara ele poate fi o eroare a API-ului,
         # deci cele neasteptate se considera inchise abia la a doua verificare la rand.
@@ -576,13 +581,41 @@ class Assistant:
             age = (now - p["opened_at"]).total_seconds() / 60 if p.get("opened_at") else 0
             if age >= self.cfg.get("hold_alert_min", 120) and pid not in self.hold_alerted:
                 self.hold_alerted.add(pid)
-                self.tg.send(msg.hold_alert(p["name"], int(age // 60), p.get("last_pnl", 0.0)),
+                self.tg.send(msg.hold_alert(p["name"], int(age // 60), p.get("last_pnl", 0.0), self.advice_for(p)),
                              [[(f"🔒 Închide {msg.pair(p['name']).split(' ')[0]}", f"close:{pid}"), ("👍 Las-o", "cancel")]])
+
+    def advice_for(self, pos: dict) -> dict:
+        """Sfat pentru o pozitie: trendul orar si RSI-ul de acum (din Yahoo) + pretul/profitul de acum (din eToro)."""
+        trend = rsi = None
+        try:
+            inst = self.inst[pos["name"]]
+            s = signals.scan(self.fetch(inst["yahoo"], "1h", "90d"), inst["signals"], pd.Timestamp(self.now_fn()))
+            trend, rsi = s.get("trend"), s.get("rsi_live")
+        except Exception:  # noqa: BLE001
+            pass
+        opened = pos.get("opened_at")
+        age_h = (self.now_fn() - opened).total_seconds() / 3600 if opened else 0.0
+        out = advisor.advise(pos["side"], pos["open_rate"], pos.get("px_now"), pos.get("tp"), pos.get("sl"),
+                             pos.get("last_pnl", 0.0), age_h, trend, rsi)
+        out.update(trend=trend, rsi=rsi, age_h=age_h)
+        return out
+
+    def advice_tick(self) -> None:
+        """La fiecare 15 min: daca sfatul pentru o pozitie e sa o inchizi, te anunt (cu buton), cel mult o data pe ora pe pozitie."""
+        now = time.time()
+        for pid, p in list(self.known.items()):
+            if now - self.advice_sent.get(pid, 0) < 3600:
+                continue
+            adv = self.advice_for(p)
+            if adv["verdict"] == "INCHIDE":
+                self.advice_sent[pid] = now
+                self.tg.send(f"💡 {msg.pair(p['name'])} ({'cumpărat' if p['side'] == 1 else 'vândut'}): {msg.signed(p.get('last_pnl', 0.0))}"
+                             f"{msg.advice_block(adv)}", [[(f"🔒 Închide {msg.pair(p['name']).split(' ')[0]}", f"close:{pid}"), ("👍 Las-o", "cancel")]])
 
     def status(self) -> None:
         self.monitor()
         self.refresh_real()
-        rows = [{"name": p["name"], "side": p["side"], "pnl": p["last_pnl"]} for p in self.known.values()]
+        rows = [{"name": p["name"], "side": p["side"], "pnl": p["last_pnl"], "advice": self.advice_for(p)} for p in self.known.values()]
         total = sum(r["pnl"] for r in rows)
         buttons = [[(f"🔒 Închide {msg.pair(r['name']).split(' ')[0]}", f"close:{p['id']}")] for r, p in zip(rows, self.known.values())]
         if len(rows) >= 2:
@@ -791,6 +824,7 @@ class Assistant:
                     t_upd = now
                     self.tg.send(msg.update([{"name": p["name"], "pnl": p["last_pnl"]} for p in self.known.values()],
                                             sum(p["last_pnl"] for p in self.known.values())))
+                    self.advice_tick()
                 if now - t_hb >= 3600 and not self.market_open(self.now_fn()):
                     t_hb = now
                     n = self.now_fn()
