@@ -48,7 +48,7 @@ def test_text_helpers():
 def test_start_request_dispatches(monkeypatch):
     sent, disp = setup(monkeypatch, running=False, texts=["▶️ Pornește"])
     launcher.main()
-    assert disp == [{"ref": "master", "inputs": {"hours": "12", "continued": "0"}}] and "Am primit" in sent[0]
+    assert disp == [{"ref": "master", "inputs": {"hours": "12", "continued": "0", "mode": "demo"}}] and "DEMO" in sent[0]
 
 
 def test_nothing_when_already_running_or_no_message(monkeypatch):
@@ -67,3 +67,15 @@ def test_old_message_ignored_and_other_text_gets_hint(monkeypatch):
     sent, disp = setup(monkeypatch, running=False, texts=["status"])
     launcher.main()
     assert not disp and "oprit" in sent[0]
+
+
+def test_real_only_when_explicitly_asked(monkeypatch):
+    sent, disp = setup(monkeypatch, running=False, texts=["pornește real 24"])
+    launcher.main()
+    assert disp[0]["inputs"] == {"hours": "24", "continued": "0", "mode": "real"} and "REAL" in sent[0]
+
+
+def test_word_containing_real_does_not_switch_to_real(monkeypatch):
+    sent, disp = setup(monkeypatch, running=False, texts=["pornește, am realizat ceva"])
+    launcher.main()
+    assert disp[0]["inputs"]["mode"] == "demo"

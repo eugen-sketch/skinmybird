@@ -59,10 +59,11 @@ def main() -> None:
                    "Poți scrie și «pornește 24» ca să rămână pornit 24 de ore.")
         return
     hours = hours_from(last_start["text"])
+    mode = "real" if re.search(r"\breal\b", plain(last_start["text"])) else "demo"          # cont real doar daca scrii explicit «pornește real»
     d = requests.post(f"{GH}/actions/workflows/assistant.yml/dispatches", headers=GH_HEAD, timeout=30,
-                      json={"ref": "master", "inputs": {"hours": str(hours), "continued": "0"}})
+                      json={"ref": "master", "inputs": {"hours": str(hours), "continued": "0", "mode": mode}})
     if d.status_code == 204:
-        send(chat, f"▶️ Am primit. Pornesc asistentul pentru {hours} ore, în 1–2 minute vezi mesajul de pornire.")
+        send(chat, f"▶️ Am primit. Pornesc asistentul pe contul {'REAL 🔴' if mode == 'real' else 'DEMO'} pentru {hours} ore, în 1–2 minute vezi mesajul de pornire.")
     else:
         send(chat, f"⚠️ N-am reușit să-l pornesc (cod {d.status_code}). Încearcă din nou peste câteva minute.")
 

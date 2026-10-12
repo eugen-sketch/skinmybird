@@ -52,8 +52,12 @@ def parse_time(txt) -> datetime | None:
 
 
 class Assistant:
-    def __init__(self, cfg: dict, tg, broker, fetch=ta.fetch_ohlc, now_fn=None, sleep=time.sleep):
+    def __init__(self, cfg: dict, tg, broker, fetch=ta.fetch_ohlc, now_fn=None, sleep=time.sleep, real: bool = False):
         self.cfg, self.tg, self.broker, self.fetch = cfg, tg, broker, fetch
+        self.real = real                          # cont REAL (bani adevarati): decizia utilizatorului, TRADING_MODE=real
+        self.unlocked = not real                  # pe real, nimic nu se deschide pana nu confirmi din Telegram
+        self.bot_pids: set[str] = set()           # pozitiile deschise de asistent (pe real le urmarim doar pe acestea)
+        self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.sleep = sleep
         self.inst = {i["name"]: i for i in cfg["instruments"]}
@@ -80,6 +84,21 @@ class Assistant:
         half_spread = self.inst[pos["name"]]["cost"] / 2 / 100 * pos["amount"] * pos["leverage"]
         return usd - half_spread                    # estimare dupa costul de iesire (spread)
 
+    def scale(self) -> float:
+        """Limitele in $ (TP/SL/pierdere zilnica) cresc proportional cu bugetul fata de cel de baza (150$): fara plafon,
+        dar cu aceleasi procente, ca tinta sa ramana o miscare realista a pietei."""
+        return max(1.0, self.equity() / self.cfg["budget_usd"])
+
+    def refresh_real(self) -> None:
+        if not self.real:
+            return
+        try:
+            c = self.broker.credit()
+            if c is not None:
+                self.real_balance = c
+        except Exception as e:  # noqa: BLE001
+            self.report_error(f"nu pot citi soldul real ({type(e).__name__})")
+
     def fx(self, name: str) -> float:
         """Cursul pentru a trece in $ valoarea unui instrument cotat in EUR (altfel 1)."""
         return self.eurusd if name in EUR_QUOTE else 1.0
@@ -90,12 +109,14 @@ class Assistant:
     def equity(self) -> float:
         """Bugetul de lucru: cel de baza plus castigul realizat (cresc pozitiile cand castigi, scad cand pierzi, minim 50%)."""
         c = self.cfg
+        if self.real:                               # fara plafon: tot ce e disponibil pe cont (poti adauga bani oricand)
+            return (self.real_balance or 0.0) + self.used_margin()
         if not c.get("progressive"):
             return c["budget_usd"]
         return max(c["budget_usd"] * c.get("min_budget_frac", 0.5), c["budget_usd"] + self.realized)
 
     def free_margin(self) -> float:
-        return self.equity() * 1.015 - self.used_margin()       # 1.5% toleranta: 3 pozitii minime de ~50.5$ incap in 150$
+        return self.equity() * (1.0 if self.real else 1.015) - self.used_margin()       # demo: 1.5% toleranta (3 pozitii de ~50.5$ in 150$)
 
     def sizing(self, inst: dict) -> tuple[float, int, float]:
         c = self.cfg
@@ -111,8 +132,9 @@ class Assistant:
         c = self.cfg
         if not atr_pct:
             return c["tp_usd"] / notional, c["sl_usd"] / notional
-        tp = min(max(c["tp_atr"] * atr_pct, c["min_tp_usd"] / notional), c["max_tp_usd"] / notional)
-        sl = min(max(c["sl_atr"] * atr_pct, c["min_sl_pct"] / 100), c["max_sl_usd"] / notional)
+        k = self.scale()
+        tp = min(max(c["tp_atr"] * atr_pct, k * c["min_tp_usd"] / notional), k * c["max_tp_usd"] / notional)
+        sl = min(max(c["sl_atr"] * atr_pct, c["min_sl_pct"] / 100), k * c["max_sl_usd"] / notional)
         return tp, sl
 
     def levels(self, side: int, px: float, notional: float, atr_pct: float | None = None) -> tuple[float, float, float, float]:
@@ -131,7 +153,8 @@ class Assistant:
 
     def save_state(self) -> None:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
-                        "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar})
+                        "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
+                        "bot_pids": sorted(self.bot_pids), "unlocked": self.unlocked and self.real})
 
     def market_open(self, now: datetime) -> bool:
         return not (now.weekday() >= 5 or (now.weekday() == 4 and now.hour >= 20) or now.hour in (21, 22))
@@ -145,6 +168,7 @@ class Assistant:
             if manual:
                 self.tg.send("😴 Piața e închisă sau prea aproape de închidere, nu caut semnale acum.")
             return
+        self.refresh_real()
         found, overflow, report = 0, [], []
         open_names = {p["name"] for p in self.known.values()}
         for name, inst in self.inst.items():
@@ -169,6 +193,8 @@ class Assistant:
                            "trend": s.get("trend"),
                            "rsi_rule": any(n.startswith("rsi_rev") for n in inst["signals"])})
             if s["side"] == 0 or self.seen_bar.get(name) == s["bar"]:
+                continue
+            if not self.unlocked:                        # cont real neconfirmat: doar urmaresc, nu propun si nu deschid nimic
                 continue
             self.seen_bar[name] = s["bar"]
             self.save_state()
@@ -212,10 +238,10 @@ class Assistant:
             return False
         self.sid += 1
         sid = self.sid
-        if self.autotrade and self.day_pnl_today() <= -self.cfg["autotrade_daily_loss_usd"]:
+        if self.autotrade and self.day_pnl_today() <= -self.cfg["autotrade_daily_loss_usd"] * self.scale():
             self.autotrade = False
             self.save_state()
-            self.tg.send(msg.autotrade_limit(self.cfg["autotrade_daily_loss_usd"]))
+            self.tg.send(msg.autotrade_limit(self.cfg["autotrade_daily_loss_usd"] * self.scale()))
         if self.autotrade:
             self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": None, "amount": amount,
                                  "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct}
@@ -247,6 +273,10 @@ class Assistant:
             self.tg.send(msg.expired())
             return
         name, side, inst = p["name"], p["side"], self.inst[p["name"]]
+        if not self.unlocked:
+            self.tg.send("🔒 Contul real nu e confirmat în sesiunea asta, nu deschid nimic.")
+            return
+        self.refresh_real()
         amount, lev, notional = self.sizing(inst)
         if amount > self.free_margin() + 0.001:
             self.tg.send(f"🚫 Nu mai am buget liber pentru {msg.pair(name)}: {msg.no_free_margin(amount, self.free_margin())}.")
@@ -259,6 +289,7 @@ class Assistant:
         except (EToroError, Exception) as e:  # noqa: BLE001
             self.tg.send(f"⚠️ Ordinul pe {msg.pair(name)} n-a mers: {str(e)[:200]}\nNu am deschis nimic.")
             return
+        self.bot_pids.add(str(pid))
         fill = getattr(self.broker, "last", None) or {}
         amount, lev = fill.get("amount", amount), fill.get("leverage", lev)
         notional = amount * lev
@@ -266,7 +297,8 @@ class Assistant:
         self.known[pid] = {"id": pid, "name": name, "side": side, "open_rate": px, "units": notional / (px * self.fx(name)) if name in USD_QUOTE_FACTOR_ONE else notional,
                            "amount": amount, "leverage": lev, "sl": sl, "tp": tp, "last_pnl": 0.0,
                            "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": self.now_fn()}
-        self.tg.send(msg.opened(name, side, px, d, amount, lev, notional, tp, tp_usd, sl, sl_usd))
+        self.tg.send(("🔴 CONT REAL\n" if self.real else "") + msg.opened(name, side, px, d, amount, lev, notional, tp, tp_usd, sl, sl_usd))
+        self.save_state()
 
     def close_one(self, pid: str, kind: str) -> None:
         pos = self.known.get(pid)
@@ -289,7 +321,8 @@ class Assistant:
     # ------------------------------------------------------------------ urmarire pozitii
     def monitor(self, check_basket: bool = True) -> None:
         try:
-            current = {p["id"]: p for p in self.broker.positions() if p["name"] in self.inst}
+            current = {p["id"]: p for p in self.broker.positions()
+                       if p["name"] in self.inst and (not self.real or str(p["id"]) in self.bot_pids)}
         except Exception as e:  # noqa: BLE001
             self.report_error(f"nu pot citi pozițiile de pe eToro ({type(e).__name__})")
             return
@@ -312,7 +345,9 @@ class Assistant:
             pnl = old.get("last_pnl", 0.0)
             if kind is None:
                 kind, pnl = self.classify_vanished(old, pnl)
+            self.bot_pids.discard(str(pid))
             self.add_realized(pnl)
+            self.refresh_real()
             self.tg.send(msg.closed(old["name"], kind, pnl, self.realized, self.equity() if self.cfg.get("progressive") else None))
         for pid, pos in current.items():
             self.known[pid] = {**self.known.get(pid, {}), **pos}          # pastram tinta/plasa in $ si ora deschiderii
@@ -392,11 +427,17 @@ class Assistant:
                 self.tg.clear_buttons(ev["msg_id"])
                 for pid in list(self.known):
                     self.close_one(pid, "YOU")
+            elif d == "realok":
+                self.tg.clear_buttons(ev["msg_id"])
+                self.unlocked = True
+                self.save_state()
+                self.tg.send("🔓 Confirmat: tranzacționez cu bani REALI, doar cu OK-ul tău la fiecare semnal. "
+                             "Poți porni și 🤖 Autotrading din meniu.")
             elif d == "autoon":
                 self.tg.clear_buttons(ev["msg_id"])
                 self.autotrade = True
                 self.save_state()
-                self.tg.send(msg.autotrade_on(self.cfg["max_positions"], self.cfg["autotrade_daily_loss_usd"]))
+                self.tg.send(msg.autotrade_on(self.cfg["max_positions"], self.cfg["autotrade_daily_loss_usd"] * self.scale()))
             elif d == "stopnow":
                 self.tg.clear_buttons(ev["msg_id"])
                 self.stop_reason = "la cererea ta"
@@ -406,12 +447,14 @@ class Assistant:
             return
         t = ev["text"].lower().replace("î", "i").replace("â", "a").replace("ă", "a").replace("ș", "s").replace("ț", "t")
         if "autotrading" in t or t.startswith("/auto"):
-            if self.autotrade:
+            if not self.unlocked:
+                self.tg.send("🔒 Mai întâi confirmă contul real din mesajul de la pornire (butonul „Confirm”).")
+            elif self.autotrade:
                 self.autotrade = False
                 self.save_state()
                 self.tg.send(msg.autotrade_off())
             else:
-                self.tg.send(msg.confirm_autotrade(self.cfg["max_positions"], self.cfg["autotrade_daily_loss_usd"]),
+                self.tg.send(msg.confirm_autotrade(self.cfg["max_positions"], self.cfg["autotrade_daily_loss_usd"] * self.scale()),
                              [[("✅ Da, pornește autotrading", "autoon"), ("❌ Nu", "cancel")]])
         elif t.startswith("/reset"):
             self.realized, self.n_closed = 0.0, 0
@@ -481,20 +524,28 @@ class Assistant:
         self.realized, self.n_closed = st.get("realized", 0.0), st.get("n_closed", 0)
         self.day, self.day_pnl = st.get("day", ""), st.get("day_pnl", 0.0)
         self.seen_bar = {k: v for k, v in st.get("seen", {}).items() if k in self.inst}      # nu re-propun aceeasi bara dupa o repornire
-        self.autotrade = bool(st.get("autotrade")) and os.getenv("CONTINUED") == "1"      # sesiune noua pornita de tine: autotrading oprit
+        cont = os.getenv("CONTINUED") == "1"
+        self.autotrade = bool(st.get("autotrade")) and cont                               # sesiune noua pornita de tine: autotrading oprit
+        self.bot_pids = set(st.get("bot_pids", [])) if self.real else set()
+        self.unlocked = (bool(st.get("unlocked")) and cont) if self.real else True        # pe real: confirmare la fiecare pornire noua
+        self.refresh_real()
         if os.getenv("CONTINUED") == "1":
             self.tg.send(msg.continued(hours), menu=msg.MENU)
         else:
-            self.tg.send(msg.started(hours, self.equity(), c["scan_every_min"], c["basket_target_usd"]), menu=msg.MENU)
+            self.tg.send(msg.started(hours, self.equity(), c["scan_every_min"], c["basket_target_usd"], real=self.real), menu=msg.MENU)
+        if self.real and not self.unlocked:
+            bal = "necunoscut (nu pot citi soldul!)" if self.real_balance is None else msg.usd(self.real_balance)
+            self.tg.send(f"🔴 CONT REAL. Sold disponibil: {bal}.\nNu deschid nimic până nu confirmi că vrei să tranzacționez cu bani adevărați.",
+                         [[("✅ Confirm: cont real", "realok"), ("❌ Nu, oprește", "stopnow")]])
         self.save_state()
         try:
             for p in self.broker.positions():
-                if p["name"] in self.inst:
+                if p["name"] in self.inst and (not self.real or str(p["id"]) in self.bot_pids):
                     self.known[p["id"]] = dict(p, last_pnl=0.0)
         except Exception as e:  # noqa: BLE001
             self.report_error(f"nu pot citi pozițiile de pe eToro ({type(e).__name__})")
         if self.known:
-            self.tg.send(f"👀 Am găsit {len(self.known)} poziții deja deschise pe eToro; le urmăresc și pe ele.")
+            self.tg.send(f"👀 Am găsit {len(self.known)} poziții deschise {'de mine' if self.real else 'pe eToro'}; le urmăresc și pe ele.")
             self.monitor()
         this_run, remaining = plan_session(hours)
         start = time.time()
@@ -548,11 +599,12 @@ def main() -> int:
     from telegram_bot import Telegram
     cfg = json.loads((HERE / "config.json").read_text())
     hours = float(os.getenv("SESSION_HOURS", "5"))
-    tg, api = Telegram(), EToroDemo()
+    real = os.getenv("TRADING_MODE") == "real"
+    tg, api = Telegram(), EToroDemo(real=real)
     ids = {}
     for inst in cfg["instruments"]:
         ids[inst["name"]] = api.find_instrument_id(inst["etoro"])
-    Assistant(cfg, tg, EToroBroker(api, ids)).run(hours)
+    Assistant(cfg, tg, EToroBroker(api, ids), real=real).run(hours)
     return 0
 
 

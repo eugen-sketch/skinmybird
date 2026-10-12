@@ -13,6 +13,9 @@ class EToroBroker:
         self.rev = {v: k for k, v in ids.items()}
         self.last: dict = {}
 
+    def credit(self) -> float | None:
+        return self.api.credit()
+
     def price(self, name: str) -> float:
         return self.api.last_price(self.ids[name])
 

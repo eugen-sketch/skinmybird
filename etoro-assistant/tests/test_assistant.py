@@ -431,3 +431,100 @@ def test_seen_bars_survive_a_restart(monkeypatch):
     a.save_state()
     st = state.load()
     assert st["seen"] == {"EURUSD": "bar1"} and st["realized"] == 5.0
+
+
+# ---------------------------------------------------------------- modul REAL
+def test_etoro_paths_demo_vs_real(monkeypatch):
+    import etoro
+    seen = []
+
+    class R:
+        status_code, text = 200, "{}"
+
+        def json(self):
+            return {}
+    monkeypatch.setattr(etoro.requests, "request", lambda m, url, **k: (seen.append(url), R())[1])
+    demo = etoro.EToroDemo("k", "u")
+    demo.portfolio()
+    assert "/demo/" in seen[-1]
+    real = etoro.EToroDemo("k", "u", real=True)
+    real.portfolio()
+    real.close_position(1, 2)
+    assert all("/demo" not in u for u in seen[-2:]) and seen[-2].endswith("/api/v1/trading/info/portfolio")
+    import pytest
+    with pytest.raises(etoro.EToroError):
+        real._req("GET", "/api/v1/trading/info/demo/portfolio", trading=True)       # real refuza caile demo
+    with pytest.raises(etoro.EToroError):
+        demo._req("GET", "/api/v1/trading/info/portfolio", trading=True)            # demo refuza caile nedemo
+
+
+def test_real_keys_are_separate_from_demo_keys(monkeypatch):
+    import etoro
+    monkeypatch.setenv("ETORO_API_KEY", "demo")
+    monkeypatch.setenv("ETORO_USER_KEY", "demo")
+    monkeypatch.delenv("ETORO_REAL_API_KEY", raising=False)
+    monkeypatch.delenv("ETORO_REAL_USER_KEY", raising=False)
+    import pytest
+    with pytest.raises(etoro.EToroError):
+        etoro.EToroDemo(real=True)                       # cheile demo nu pot fi folosite pe real
+
+
+class RealBroker(FakeBroker):
+    def __init__(self, balance):
+        super().__init__()
+        self.balance = balance
+
+    def credit(self):
+        return self.balance
+
+
+def make_real(balance, now=T0):
+    tg, br = FakeTG(), RealBroker(balance)
+    a = A.Assistant(CFG, tg, br, fetch=lambda *a, **k: None, now_fn=lambda: now, sleep=lambda s: None, real=True)
+    a.refresh_real()
+    return a, tg, br
+
+
+def test_real_is_locked_until_confirmed(monkeypatch):
+    a, tg, br = make_real(500.0)
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    a.scan()
+    assert not a.pending and not br.pos                  # blocat: nu propune nimic
+    a.handle({"kind": "text", "text": "🤖 Autotrading"})
+    assert any("confirmă contul real" in x for x in tg.texts) and not a.autotrade
+    press(a, "realok")
+    assert a.unlocked
+    a.seen_bar.clear()
+    a.scan()
+    assert a.pending                                    # dupa confirmare propune, tot cu OK
+    sid = next(iter(a.pending))
+    press(a, f"open:{sid}")
+    assert br.pos and any("CONT REAL" in x for x in tg.texts)
+
+
+def test_real_budget_has_no_cap_and_limits_scale():
+    small, _, _ = make_real(150.0)
+    big, _, _ = make_real(3000.0)
+    assert abs(big.equity() - 3000.0) < 1e-6 and abs(small.equity() - 150.0) < 1e-6
+    m_small = small.sizing(small.inst["EURUSD"])[0]
+    m_big = big.sizing(big.inst["EURUSD"])[0]
+    assert abs(m_big - 1000.0) < 0.01 and m_big / m_small > 19          # 3000/3 vs 150/3, fara plafon
+    _, _, tp_s, sl_s = small.levels(1, 1.1, small.sizing(small.inst["EURUSD"])[2], atr_pct=0.0008)
+    _, _, tp_b, sl_b = big.levels(1, 1.1, big.sizing(big.inst["EURUSD"])[2], atr_pct=0.0008)
+    assert abs(tp_b / tp_s - 20) < 0.5 and abs(sl_b / sl_s - 20) < 0.5   # aceleasi procente, sume proportionale
+
+
+def test_real_only_tracks_positions_opened_by_the_bot(monkeypatch):
+    a, tg, br = make_real(500.0)
+    a.unlocked = True
+    br.pos["999"] = {"id": "999", "name": "GOLD", "side": 1, "open_rate": 4000.0, "units": 5.0, "amount": 400.0, "leverage": 1,
+                     "sl": 0, "tp": 0, "time": ""}                      # investitia ta personala, nu a botului
+    br.prices["GOLD"] = 4200.0
+    a.monitor()
+    assert "999" not in a.known                          # nu o ating si nu o includ in cos
+    a.close_all = None
+    fake_scan(monkeypatch, {("rsi_rev20",): 1})
+    a.scan()
+    sid = next(iter(a.pending))
+    press(a, f"open:{sid}")
+    assert len(a.bot_pids) == 1 and next(iter(a.bot_pids)) in a.known
