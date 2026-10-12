@@ -812,3 +812,48 @@ def test_full_loop_runs_on_real_with_existing_position_and_reports_correct_budge
     a.run(0.01)
     assert a.unlocked and set(a.known) == {"1", "2"}
     assert abs(a.equity() - (br.credit() + 146.2)) < 0.5
+
+
+def test_advisor_rules():
+    import advisor as AD
+    # in plus de 2$, deschisa de 3h, trendul s-a intors -> incaseaza
+    r = AD.advise(1, 1.1000, 1.1020, 1.1050, 1.0900, 2.0, 3.0, "jos", 55)
+    assert r["verdict"] == "INCHIDE" and any("+$2.00" in x for x in r["reasons"])
+    # in plus de 2$ dar aproape de tinta -> tine
+    assert AD.advise(1, 1.1000, 1.1040, 1.1050, 1.0900, 2.0, 1.0, "sus", 55)["verdict"] == "TINE"
+    # pe minus, trend impotriva si aproape de plasa -> inchide
+    assert AD.advise(-1, 1.1000, 1.1080, 1.0950, 1.1100, -4.0, 1.0, "sus", 60)["verdict"] == "INCHIDE"
+    # pe minus mic, trend in directia ta -> tine
+    assert AD.advise(-1, 1.1000, 1.1003, 1.0950, 1.1100, -0.5, 1.0, "jos", 45)["verdict"] == "TINE"
+    # profit mic, de ore pe loc, fara trend favorabil -> poti iesi in verde
+    assert AD.advise(1, 1.4260, 1.4264, 1.4290, 1.4230, 0.14, 3.5, "lateral", 52)["verdict"] == "INCHIDE"
+
+
+def test_status_gives_advice_per_position():
+    a, tg, br = make_real(150.0)
+    a.unlocked = True
+    br.pos["1"] = {"id": "1", "name": "GBPUSD", "side": -1, "open_rate": 1.3240, "units": 1700.0, "amount": 73.0, "leverage": 30,
+                   "sl": 1.3280, "tp": 1.3225, "time": ""}
+    a.bot_pids.add("1")
+    br.prices["GBPUSD"] = 1.3230
+    a.now_fn = lambda: T0 + timedelta(hours=3)
+    a.monitor()
+    a.known["1"]["opened_at"] = T0
+    a.known["1"]["px_now"] = 1.3230
+    a.status()
+    text = tg.texts[-1]
+    assert "Sfat:" in text and "ȚINE-O" in text or "ÎNCHIDE-O" in text
+    assert "până la țintă" in text and "deschisă de 3 h" in text and "nu garantează" in text
+
+
+def test_advice_tick_warns_once_per_hour_with_close_button(monkeypatch):
+    a, tg, br = make_real(150.0)
+    a.unlocked = True
+    a.known["1"] = {"id": "1", "name": "EURUSD", "side": 1, "open_rate": 1.1000, "units": 1000.0, "amount": 50.0, "leverage": 30,
+                    "sl": 1.0900, "tp": 1.1050, "last_pnl": 2.0, "px_now": 1.1020, "opened_at": T0 - timedelta(hours=4)}
+    monkeypatch.setattr(signals, "scan", lambda df, names, now=None: {"trend": "jos", "rsi_live": 55.0})
+    a.advice_tick()
+    msgs = [x for x in tg.sent if "💡" in x[0]]
+    assert len(msgs) == 1 and msgs[0][1][0][0][1] == "close:1" and "ÎNCHIDE-O" in msgs[0][0]
+    a.advice_tick()
+    assert len([x for x in tg.sent if "💡" in x[0]]) == 1                       # nu se repeta in aceeasi ora
