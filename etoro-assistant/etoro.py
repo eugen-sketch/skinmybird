@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid
 
 import requests
@@ -18,6 +19,18 @@ BASE = os.getenv("ETORO_BASE_URL", "https://public-api.etoro.com")
 
 class EToroError(RuntimeError):
     pass
+
+
+class EToroHTTPError(EToroError):
+    """eToro a raspuns cu eroare HTTP (respingere clara pentru 4xx; 5xx = rezultat neclar)."""
+
+    def __init__(self, msg: str, status: int):
+        super().__init__(msg)
+        self.status = status
+
+
+class EToroNetworkError(EToroError):
+    """Nu stim daca cererea a ajuns (timeout, conexiune cazuta): la un ordin, rezultatul e NECLAR."""
 
 
 class EToroDemo:
@@ -30,6 +43,7 @@ class EToroDemo:
             raise EToroError(f"Lipsesc {pre}API_KEY / {pre}USER_KEY")
         # logurile rularilor din repo-ul public sunt vizibile oricui: raspunsurile eToro se afiseaza doar la cerere
         self.verbose = os.getenv("ETORO_VERBOSE") == "1" if verbose is None else verbose
+        self._pf: tuple[float, dict | list] | None = None        # portofoliul citit recent (reducem numarul de apeluri)
 
     # ---------------------------------------------------------------- baza
     def _req(self, method: str, path: str, *, params=None, body=None, trading: bool = False) -> dict | list:
@@ -47,12 +61,12 @@ class EToroDemo:
                 break
             except requests.RequestException as e:
                 if attempt == 2 or method != "GET":   # nu repetam ordinele (risc de dublare)
-                    raise EToroError(f"{method} {path}: {type(e).__name__}") from e
+                    raise EToroNetworkError(f"{method} {path}: {type(e).__name__}") from e
                 headers["x-request-id"] = str(uuid.uuid4())
         if self.verbose:
             print(f"[eToro] {method} {path} {params or ''} {json.dumps(body) if body else ''} -> {r.status_code} {r.text[:2500] if 'portfolio' in path else r.text[:600]}")
         if r.status_code >= 400:
-            raise EToroError(f"{method} {path} -> {r.status_code}: {r.text[:200]}")
+            raise EToroHTTPError(f"{method} {path} -> {r.status_code}: {r.text[:200]}", r.status_code)
         try:
             return r.json()
         except ValueError:
@@ -87,22 +101,35 @@ class EToroDemo:
         """Calea de tranzactionare: cea DEMO (cu /demo/) sau, in modul real, aceeasi cale fara '/demo'."""
         return demo_path.replace("/demo/", "/", 1) if self.real else demo_path
 
-    def portfolio(self) -> dict:
-        return self._req("GET", self.tp("/api/v1/trading/info/demo/portfolio"), trading=True)
+    def portfolio(self, fresh: bool = False) -> dict:
+        """Portofoliul; reutilizat max. 6 secunde (monitorizarea il cere de mai multe ori), cu fresh=True mereu proaspat."""
+        if not fresh and self._pf and time.time() - self._pf[0] < 6:
+            return self._pf[1]
+        data = self._req("GET", self.tp("/api/v1/trading/info/demo/portfolio"), trading=True)
+        self._pf = (time.time(), data)
+        return data
 
-    def credit(self) -> float | None:
+    def rates(self, instrument_ids: list[int]) -> dict[int, dict]:
+        """Cotatii live (bid/ask + cursul de conversie in USD) pentru mai multe instrumente, intr-un singur apel."""
+        d = self._req("GET", "/api/v1/market-data/instruments/rates", params={"instrumentIds": ",".join(str(i) for i in instrument_ids)})
+        items = d.get("rates") if isinstance(d, dict) else d
+        return {int(x["instrumentID"]): x for x in (items or []) if isinstance(x, dict) and "instrumentID" in x}
+
+    def credit(self, fresh: bool = False) -> float | None:
         """Banii disponibili (fara pozitiile deschise) din portofoliu; None daca nu gasesc campul."""
-        p = self.portfolio()
+        p = self.portfolio(fresh)
         cp = p.get("clientPortfolio", p) if isinstance(p, dict) else {}
         for k in ("credit", "Credit", "availableBalance", "availableCash"):
             if isinstance(cp, dict) and isinstance(cp.get(k), (int, float)):
                 return float(cp[k])
         return None
 
-    def positions(self) -> list[dict]:
-        p = self.portfolio()
+    def positions(self, fresh: bool = False) -> list[dict]:
+        p = self.portfolio(fresh)
         if isinstance(p, dict):
             p = p.get("clientPortfolio", p)
+            if "positions" not in p and "Positions" not in p:
+                raise EToroError("raspuns de portofoliu fara campul 'positions'")     # nu-l tratam ca 'nicio pozitie'
             pos = p.get("positions") or p.get("Positions") or []
         else:
             pos = p
@@ -121,12 +148,14 @@ class EToroDemo:
             except EToroError as e:
                 if not any(k in str(e) for k in ("404", "405", "not supported")):
                     raise
+        self._pf = None                                             # dupa un ordin, portofoliul se citeste din nou
         body_v1 = {"InstrumentID": instrument_id, "IsBuy": is_buy, "Leverage": leverage, "Amount": round(amount, 2),
                    "StopLossRate": stop_loss, "TakeProfitRate": take_profit, "IsTslEnabled": False}
         return self._req("POST", self.tp("/api/v1/trading/execution/demo/market-open-orders/by-amount"), body=body_v1, trading=True)
 
     def close_position(self, position_id: int, instrument_id: int) -> dict:
         body = {"InstrumentId": instrument_id, "UnitsToDeduct": None}
+        self._pf = None
         return self._req("POST", self.tp(f"/api/v1/trading/execution/demo/market-close-orders/positions/{position_id}"),
                          body=body, trading=True)
 

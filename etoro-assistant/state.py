@@ -38,7 +38,11 @@ def load(path: Path | None = None) -> dict:
 
 
 def save(d: dict, path: Path | None = None) -> None:
+    """Scriere atomica (fisier temporar + redenumire): o oprire in mijlocul scrierii nu strica starea."""
+    p = path or PATH
     try:
-        (path or PATH).write_text(dumps(d))
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text(dumps(d))
+        os.replace(tmp, p)
     except OSError:
         pass

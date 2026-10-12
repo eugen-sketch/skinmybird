@@ -33,7 +33,7 @@ def started(hours: float, budget: float, scan_min: int, basket: float, real: boo
             f"🤝 Nu deschid NICIUN ordin fără un „OK” de la tine, decât dacă pornești tu 🤖 Autotrading din meniu.\n"
             f"🎯 Țintă (TP) și plasă de siguranță (SL) le pun eu automat, din volatilitatea orară: țintă mică, atinsă de obicei în 1–2 ore, plasă largă.\n"
             f"🤝 Dacă ai mai multe poziții și împreună ajung la ≈ {usd(basket)}, le închid eu.\n"
-            f"📈 Sumele cresc cu câștigul realizat (împart bugetul la 3).\n"
+            f"📈 Sumele urmează soldul din cont (împart bugetul pe 2 sau 3 poziții, minim 50 $ pe poziție).\n"
             f"✋ Poți închide oricând, din eToro sau de aici.\n"
             f"👛 Buget de lucru: {usd(budget)} · Sesiune: {hours:g} ore (apoi mă opresc singur)\n\n"
             f"👇 Folosește butoanele din meniul de sub căsuța de scris.")
@@ -85,15 +85,15 @@ def opened(name: str, side: int, px: float, digits: int, amount: float, lev: int
             f"Te țin la curent. Poți închide oricând cu /inchide.")
 
 
-def status(rows: list[dict], total: float, free: float, budget: float, realized: float, n_closed: int, auto: bool = False) -> str:
-    tail = "\n🤖 Autotrading: PORNIT" if auto else ""
+def status(rows: list[dict], total: float, free: float, budget: float, realized: float, n_closed: int, auto: bool = False, warn: str = "") -> str:
+    tail = ("\n🤖 Autotrading: PORNIT" if auto else "") + (f"\n{warn}" if warn else "")
     if not rows:
         return (f"📭 Nu ai nicio poziție deschisă.\n👛 Buget liber: {usd(free)} din {usd(budget)}\n"
-                f"📒 Închise: {n_closed}, rezultat {signed(realized)}{tail}")
+                f"📒 Închise: {n_closed}, rezultat estimat {signed(realized)}{tail}")
     lines = [f"{'🟢' if r['pnl'] >= 0 else '🔴'} {pair(r['name'])} ({'cumpărat' if r['side'] == 1 else 'vândut'}): {signed(r['pnl'])}" for r in rows]
     icon = "📈" if total >= 0 else "📉"
     return ("📊 Pozițiile deschise acum:\n" + "\n".join(lines) + f"\n\n{icon} Total acum: {signed(total)}\n"
-            f"👛 Buget liber: {usd(free)} din {usd(budget)}\n📒 Închise: {n_closed}, rezultat {signed(realized)}{tail}")
+            f"👛 Buget liber: {usd(free)} din {usd(budget)}\n📒 Închise: {n_closed}, rezultat estimat {signed(realized)}{tail}")
 
 
 def update(rows: list[dict], total: float) -> str:
@@ -108,9 +108,9 @@ def closed(name: str, kind: str, pnl: float, total_closed: float, equity: float 
 def _closed(name: str, kind: str, pnl: float) -> str:
     p = pair(name)
     if kind == "TP":
-        return f"🎉💵 {p}: ținta a fost atinsă! Rezultat {signed(pnl)}. Poziția e închisă."
+        return f"🎉💵 {p}: ținta a fost atinsă! Rezultat ≈ {signed(pnl)}. Poziția e închisă."
     if kind == "SL":
-        return f"😕🛡️ {p}: s-a activat plasa de siguranță. Rezultat {signed(pnl)}. Poziția e închisă."
+        return f"😕🛡️ {p}: s-a activat plasa de siguranță. Rezultat ≈ {signed(pnl)}. Poziția e închisă."
     if kind == "BASKET":
         return f"🎯 {p}: închisă împreună cu celelalte. Rezultat {signed(pnl)}."
     if kind == "YOU":
@@ -240,7 +240,7 @@ def auto_signal(name: str, side: int, why: str, px: float, digits: int) -> str:
 def confirm_autotrade(max_pos: int, daily_loss: float) -> str:
     return (f"🤖 Pornesc autotrading?\n\nDeschid singur semnalele noi (fără să te mai întreb), cu țintă și plasă puse automat, "
             f"maxim {max_pos} poziții odată. Dacă pierderea realizată azi ajunge la {usd(daily_loss)}, mă opresc singur din deschis.\n"
-            f"Tot demo. Îl oprești oricând din același buton.")
+            f"Îl oprești oricând din același buton.")
 
 
 def autotrade_on(max_pos: int, daily_loss: float) -> str:

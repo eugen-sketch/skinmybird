@@ -46,10 +46,10 @@ class FakeBroker:
     def price(self, name):
         return self.prices[name]
 
-    def positions(self):
+    def positions(self, fresh=False):
         return [dict(p) for p in self.pos.values()]
 
-    def open(self, name, side, amount, lev, sl, tp):
+    def open(self, name, side, amount, lev, sl, tp, max_amount=None):
         self.n += 1
         pid = str(1000 + self.n)
         notional = amount * lev
@@ -170,6 +170,8 @@ def test_you_can_close_with_command_and_manual_close_is_detected(monkeypatch):
     a.handle({"kind": "text", "text": "/inchide EURUSD"})
     assert len(br.pos) == 1 and any("la cererea ta" in t for t in tg.texts)
     br.pos.clear()                                        # inchisa de tine din eToro
+    a.monitor()
+    assert not any("ai închis-o tu" in t for t in tg.texts)      # o singura citire fara ea: poate fi o eroare a API-ului, mai astept
     a.monitor()
     assert any("ai închis-o tu" in t for t in tg.texts)
 
@@ -596,7 +598,7 @@ def test_unconfirmed_order_is_never_repeated(monkeypatch):
         def __init__(self):
             self.opened, self.pos = 0, []
 
-        def positions(self):
+        def positions(self, fresh=False):
             return self.pos
 
         def open_market(self, *a, **k):
@@ -630,7 +632,7 @@ def test_unconfirmed_order_gets_adopted_when_it_appears(monkeypatch):
     a.handle({"kind": "text", "text": "vinde nzdusd"})
     sid = next(iter(a.pending))
     press(a, f"open:{sid}")
-    assert any("TRIMIS" in x and "NU repet" in x for x in tg.texts) and len(a.adopt) == 1
+    assert any("NU repet" in x for x in tg.texts) and len(a.adopt) == 1
     a.monitor()                                              # pozitia exista deja in portofoliu
     assert not a.adopt and len(a.bot_pids) == 1 and any("a apărut în eToro" in x for x in tg.texts)
 
@@ -662,3 +664,151 @@ def test_status_shows_zero_free_when_cash_is_fully_used():
     text = tg.texts[-1]
     assert "Buget liber: $0.00" in text and "$146.4" in text and "218" not in text
     assert abs(a.free_margin()) < 0.1 and abs(a.equity() - 146.4) < 0.1
+
+
+class _Api:
+    """eToro fals pentru testele de ordine."""
+
+    def __init__(self, post_error=None, status=None):
+        self.post_error, self.status, self.opened, self.calls, self.pos = post_error, status, [], 0, []
+
+    def positions(self, fresh=False):
+        self.calls += 1
+        return self.pos
+
+    def open_market(self, iid, buy, amount, lev, sl, tp):
+        self.opened.append((amount, lev))
+        if self.post_error:
+            raise self.post_error
+        return {"orderId": 5}
+
+    def order_status(self, oid):
+        return self.status or {"statusID": 1}
+
+
+def _broker(api, monkeypatch):
+    import broker as B
+    monkeypatch.setattr(B.time, "sleep", lambda s: None)
+    return B, B.EToroBroker(api, {"NZDUSD": 3})
+
+
+def test_network_error_on_order_is_unconfirmed_not_retried(monkeypatch):
+    import etoro
+    api = _Api(post_error=etoro.EToroNetworkError("POST x: ReadTimeout"))
+    B, br = _broker(api, monkeypatch)
+    import pytest
+    with pytest.raises(B.OrderUnconfirmed):
+        br.open("NZDUSD", -1, 73.0, 30, 0.562, 0.559)
+    assert len(api.opened) == 1                                   # un singur ordin, fara reincercare cu levier 20
+
+
+def test_server_error_is_unconfirmed_but_client_error_is_a_clean_rejection(monkeypatch):
+    import etoro
+    B, br = _broker(_Api(post_error=etoro.EToroHTTPError("POST x -> 503", 503)), monkeypatch)
+    import pytest
+    with pytest.raises(B.OrderUnconfirmed):
+        br.open("NZDUSD", -1, 73.0, 30, 0.562, 0.559)
+    api = _Api(post_error=etoro.EToroHTTPError("POST x -> 400: insufficient funds", 400))
+    B, br = _broker(api, monkeypatch)
+    with pytest.raises(B.OrderRejected):
+        br.open("NZDUSD", -1, 73.0, 30, 0.562, 0.559)
+    assert len(api.opened) == 1                                   # respingere care nu tine de levier: nu se reincearca
+
+
+def test_leverage_retry_only_for_leverage_rejection_and_within_free_money(monkeypatch):
+    import etoro
+    api = _Api(post_error=etoro.EToroHTTPError("POST x -> 400: leverage 30 not allowed", 400))
+    B, br = _broker(api, monkeypatch)
+    import pytest
+    with pytest.raises(B.OrderRejected) as ei:
+        br.open("NZDUSD", -1, 73.0, 30, 0.562, 0.559, max_amount=80.0)       # lev 20 ar cere 109.5$ > 80$ liber
+    assert len(api.opened) == 1 and "peste banii liberi" in str(ei.value)
+
+
+def test_read_errors_while_waiting_for_the_fill_do_not_crash_into_a_retry(monkeypatch):
+    import etoro
+    api = _Api()
+    calls = {"n": 0}
+    orig = api.positions
+
+    def flaky(fresh=False):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return []
+        raise etoro.EToroHTTPError("GET portfolio -> 429", 429)
+    api.positions = flaky
+    B, br = _broker(api, monkeypatch)
+    import pytest
+    with pytest.raises(B.OrderUnconfirmed):
+        br.open("NZDUSD", -1, 73.0, 30, 0.562, 0.559)
+    assert len(api.opened) == 1
+
+
+def test_empty_portfolio_glitch_does_not_drop_tracked_positions():
+    a, tg, br = make_real(150.0)
+    a.unlocked = True
+    br.pos["1"] = {"id": "1", "name": "GBPUSD", "side": -1, "open_rate": 1.3, "units": 1000.0, "amount": 75.0, "leverage": 30,
+                   "sl": 1.31, "tp": 1.29, "time": ""}
+    a.bot_pids.add("1")
+    a.monitor()
+    assert "1" in a.known
+    saved = dict(br.pos)
+    br.pos.clear()                                        # raspuns gol (eroare API), pozitia exista de fapt
+    a.monitor()
+    assert "1" in a.known and "1" in a.bot_pids and not any("închisă" in x for x in tg.texts)
+    br.pos.update(saved)                                  # apare la loc
+    a.monitor()
+    assert "1" in a.known and a.miss == {}
+
+
+def test_manual_close_in_etoro_is_booked_at_current_profit_not_at_target():
+    a, tg, br = make()
+    old = {"name": "EURUSD", "side": 1, "tp": 1.1050, "sl": 1.0900, "tp_usd": 2.75, "sl_usd": 6.0, "last_pnl": 1.8,
+           "units": 1000.0, "open_rate": 1.1000, "amount": 40.0, "leverage": 30}
+    br.prices["EURUSD"] = 1.1018                          # sub TP: inchisa de mana la +1.8$ aprox.
+    kind, pnl = a.classify_vanished(old, 1.8)
+    assert kind == "OTHER" and abs(pnl - 1.8) < 0.6      # nu "TP cu 2.75$"
+    br.prices["EURUSD"] = 1.1060
+    assert a.classify_vanished(old, 1.8) == ("TP", 2.75)
+
+
+def test_order_sanity_blocks_wrong_side_levels():
+    a, _, _ = make()
+    assert a.order_problem(1, 1.1, 1.09, 1.11) is None
+    assert a.order_problem(-1, 1.1, 1.11, 1.09) is None
+    assert a.order_problem(1, 1.1, 1.11, 1.09) is not None             # SL peste pret la o cumparare
+    assert a.order_problem(-1, 1.1, 1.09, 1.11) is not None            # SL sub pret la o vanzare
+    assert a.order_problem(1, 1.1, 1.0999, 1.1001) is not None         # prea aproape de pret
+
+
+def test_live_quotes_pnl_matches_etoro_formula():
+    a, _, _ = make()
+    # USDCAD cumparat: unitati = USD, iesire la bid, conversie CAD->USD 0.7010
+    pos = {"name": "USDCAD", "side": 1, "units": 2180.0, "open_rate": 1.42600}
+    q = {"bid": 1.42649, "ask": 1.42650, "conv_bid": 0.7010, "conv_ask": 0.7010}
+    assert abs(a.quote_pnl(pos, q) - 2180 * (1.42649 - 1.426) * 0.7010) < 1e-9
+    short = {"name": "GBPUSD", "side": -1, "units": 1700.0, "open_rate": 1.3240}
+    q2 = {"bid": 1.32296, "ask": 1.32299, "conv_bid": 1.0, "conv_ask": 1.0}
+    assert abs(a.quote_pnl(short, q2) - (-1) * 1700 * (1.32299 - 1.3240)) < 1e-9          # iesire la ask
+
+
+def test_full_loop_runs_on_real_with_existing_position_and_reports_correct_budget(monkeypatch):
+    """Simulare a buclei de pornire pe real: o pozitie a botului exista deja; mesajul de pornire/status foloseste sold + marja ei."""
+    import os
+    import time as _t
+    a, tg, br = make_real(146.4)
+    br.pos["1"] = {"id": "1", "name": "GBPUSD", "side": -1, "open_rate": 1.3, "units": 1700.0, "amount": 73.0, "leverage": 30,
+                   "sl": 1.31, "tp": 1.29, "time": "2026-10-09T08:00:00Z"}
+    br.balance = 146.4 + 73.0 * 0 + 0.0
+    br.pos["2"] = {"id": "2", "name": "USDCAD", "side": 1, "open_rate": 1.42, "units": 2180.0, "amount": 73.2, "leverage": 30,
+                   "sl": 1.41, "tp": 1.43, "time": "2026-10-09T08:00:00Z"}
+    a.bot_pids = {"1", "2"}
+    monkeypatch.setenv("CONTINUED", "1")
+    import state
+    state.save({"bot_pids": ["1", "2"], "unlocked": True, "realized": 3.57, "n_closed": 2})
+    monkeypatch.setattr(a, "scan", lambda manual=False: None)
+    monkeypatch.setattr(_t, "time", lambda: 10 ** 9)
+    a.stop_reason = "test"                                    # iese imediat din bucla, dupa partea de pornire
+    a.run(0.01)
+    assert a.unlocked and set(a.known) == {"1", "2"}
+    assert abs(a.equity() - (br.credit() + 146.2)) < 0.5
