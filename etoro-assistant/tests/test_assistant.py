@@ -470,12 +470,14 @@ def test_real_keys_are_separate_from_demo_keys(monkeypatch):
 
 
 class RealBroker(FakeBroker):
+    """Ca eToro: soldul liber scade cu marja pozitiilor deschise."""
+
     def __init__(self, balance):
         super().__init__()
         self.balance = balance
 
     def credit(self):
-        return self.balance
+        return self.balance - sum(p["amount"] for p in self.pos.values())
 
 
 def make_real(balance, now=T0):
@@ -515,7 +517,7 @@ def test_real_budget_has_no_cap_and_limits_scale():
 
 
 def test_real_only_tracks_positions_opened_by_the_bot(monkeypatch):
-    a, tg, br = make_real(500.0)
+    a, tg, br = make_real(1500.0)
     a.unlocked = True
     br.pos["999"] = {"id": "999", "name": "GOLD", "side": 1, "open_rate": 4000.0, "units": 5.0, "amount": 400.0, "leverage": 1,
                      "sl": 0, "tp": 0, "time": ""}                      # investitia ta personala, nu a botului
@@ -643,3 +645,20 @@ def test_adopt_existing_position_by_command():
     assert "555" in a.bot_pids and "555" in a.known and any("Am preluat 1" in x for x in tg.texts)
     a.handle({"kind": "text", "text": "preia nzdusd"})
     assert any("nu găsesc" in x.lower() or "Nu găsesc" in x for x in tg.texts)         # a doua oara: o urmaresc deja
+
+
+def test_status_shows_zero_free_when_cash_is_fully_used():
+    """Scenariul real: 146.4$ in cont, doua pozitii de ~73$ -> in eToro nu mai e cash; Status trebuie sa arate 0 liber, nu 72$."""
+    a, tg, br = make_real(146.4)
+    a.unlocked = True
+    assert a.max_pos() == 2
+    for name in ("GBPUSD", "USDCAD"):
+        br.prices.setdefault(name, 1.3)
+        a.propose(name, {"side": -1 if name == "GBPUSD" else 1, "why": "test", "price": 1.3, "atr_pct": 0.0008})
+    for sid in list(a.pending):
+        press(a, f"open:{sid}")
+    assert len(br.pos) == 2 and abs(sum(p["amount"] for p in br.pos.values()) - 146.4) < 0.05
+    a.status()
+    text = tg.texts[-1]
+    assert "Buget liber: $0.00" in text and "$146.4" in text and "218" not in text
+    assert abs(a.free_margin()) < 0.1 and abs(a.equity() - 146.4) < 0.1
