@@ -371,6 +371,8 @@ class Assistant:
         self.bot_pids.add(str(pid))
         fill = getattr(self.broker, "last", None) or {}
         amount, lev = fill.get("amount", amount), fill.get("leverage", lev)
+        if self.real and self.real_balance is not None:
+            self.real_balance = max(0.0, self.real_balance - amount)         # banii liberi scad imediat (citirea de la eToro vine la urmatoarea verificare)
         notional = amount * lev
         sl, tp, tp_usd, sl_usd = self.levels(side, px, notional, p.get("atr_pct"))
         self.known[pid] = {"id": pid, "name": name, "side": side, "open_rate": px, "units": notional / (px * self.fx(name)) if name in USD_QUOTE_FACTOR_ONE else notional,
@@ -399,6 +401,7 @@ class Assistant:
 
     # ------------------------------------------------------------------ urmarire pozitii
     def monitor(self, check_basket: bool = True) -> None:
+        self.refresh_real()                               # soldul liber real, proaspat la fiecare verificare
         self.try_adopt()                                  # inainte de citirea pozitiilor, ca cele preluate sa fie incluse
         try:
             current = {p["id"]: p for p in self.broker.positions()
@@ -495,6 +498,7 @@ class Assistant:
 
     def status(self) -> None:
         self.monitor()
+        self.refresh_real()
         rows = [{"name": p["name"], "side": p["side"], "pnl": p["last_pnl"]} for p in self.known.values()]
         total = sum(r["pnl"] for r in rows)
         buttons = [[(f"🔒 Închide {msg.pair(r['name']).split(' ')[0]}", f"close:{p['id']}")] for r, p in zip(rows, self.known.values())]
