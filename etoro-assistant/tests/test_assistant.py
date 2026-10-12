@@ -563,3 +563,62 @@ def test_manual_command_names_and_lock():
     assert a.resolve_name("xyz") is None
     a.handle({"kind": "text", "text": "cumpără eurusd"})
     assert any("confirmă contul real" in x for x in tg.texts) and not a.pending        # blocat pana confirmi
+
+
+def test_unconfirmed_order_is_never_repeated(monkeypatch):
+    import broker as B
+    monkeypatch.setattr(B.time, "sleep", lambda s: None)
+
+    class Api:
+        def __init__(self):
+            self.opened, self.pos = 0, []
+
+        def positions(self):
+            return self.pos
+
+        def open_market(self, *a, **k):
+            self.opened += 1
+            return {"orderForOpen": {"orderID": 77}}
+
+        def order_status(self, oid):
+            return {"statusID": 1}
+    api = Api()
+    br = B.EToroBroker(api, {"NZDUSD": 3})
+    import pytest
+    with pytest.raises(B.OrderUnconfirmed):
+        br.open("NZDUSD", -1, 47.67, 30, 0.562, 0.559)
+    assert api.opened == 1                                   # nicio reincercare cu levier 20 (risc de ordin dublu)
+    assert B.EToroBroker._order_id({"a": {"orderID": 9}}) == "9"
+
+
+def test_unconfirmed_order_gets_adopted_when_it_appears(monkeypatch):
+    import broker as B
+    a, tg, br = make_real(80.0)
+    a.unlocked = True
+    br.prices["NZDUSD"] = 0.56
+    monkeypatch.setattr(signals, "scan", lambda df, names, now=None: {"side": 0, "why": "", "rsi": 50.0, "price": 0.56, "bar": "b",
+                                                                     "age_min": 5.0, "atr_pct": 0.0009})
+    orig = br.open
+
+    def failing_open(*args, **kw):
+        orig(*args, **kw)                                    # ordinul ajunge la eToro...
+        raise B.OrderUnconfirmed("nevazut", set(), {"orderId": 1})      # ...dar nu e confirmat in timp
+    br.open = failing_open
+    a.handle({"kind": "text", "text": "vinde nzdusd"})
+    sid = next(iter(a.pending))
+    press(a, f"open:{sid}")
+    assert any("TRIMIS" in x and "NU repet" in x for x in tg.texts) and len(a.adopt) == 1
+    a.monitor()                                              # pozitia exista deja in portofoliu
+    assert not a.adopt and len(a.bot_pids) == 1 and any("a apărut în eToro" in x for x in tg.texts)
+
+
+def test_adopt_existing_position_by_command():
+    a, tg, br = make_real(80.0)
+    a.unlocked = True
+    br.pos["555"] = {"id": "555", "name": "NZDUSD", "side": -1, "open_rate": 0.56, "units": 2500.0, "amount": 47.0, "leverage": 30,
+                     "sl": 0.5625, "tp": 0.5595, "time": ""}
+    br.prices["NZDUSD"] = 0.56
+    a.handle({"kind": "text", "text": "preia nzdusd"})
+    assert "555" in a.bot_pids and "555" in a.known and any("Am preluat 1" in x for x in tg.texts)
+    a.handle({"kind": "text", "text": "preia nzdusd"})
+    assert any("nu găsesc" in x.lower() or "Nu găsesc" in x for x in tg.texts)         # a doua oara: o urmaresc deja

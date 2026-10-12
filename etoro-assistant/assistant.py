@@ -21,6 +21,7 @@ import pandas as pd
 import signals
 import state as state_mod
 import ta
+from broker import OrderUnconfirmed
 from etoro import EToroError
 
 HERE = Path(__file__).parent
@@ -56,6 +57,7 @@ class Assistant:
         self.cfg, self.tg, self.broker, self.fetch = cfg, tg, broker, fetch
         self.real = real                          # cont REAL (bani adevarati): decizia utilizatorului, TRADING_MODE=real
         self.unlocked = not real                  # pe real, nimic nu se deschide pana nu confirmi din Telegram
+        self.adopt: list[dict] = []               # ordine trimise dar neconfirmate: daca pozitia apare mai tarziu, o preiau
         self.bot_pids: set[str] = set()           # pozitiile deschise de asistent (pe real le urmarim doar pe acestea)
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
@@ -258,6 +260,25 @@ class Assistant:
             return
         self.propose(name, {"side": side, "why": "la cererea ta", "price": px, "atr_pct": atr})
 
+    def adopt_existing(self, name: str) -> None:
+        """«preia nzdusd»: pozitiile deschise pe eToro pe acest instrument incep sa fie urmarite de asistent (TP/SL ramase ale eToro)."""
+        try:
+            found = [p for p in self.broker.positions() if p["name"] == name and str(p["id"]) not in self.bot_pids]
+        except Exception as e:  # noqa: BLE001
+            self.tg.send(f"⚠️ Nu pot citi pozițiile: {str(e)[:150]}")
+            return
+        if not found:
+            self.tg.send(f"ℹ️ Nu găsesc o poziție {msg.pair(name)} pe care s-o preiau (sau o urmăresc deja).")
+            return
+        for p in found:
+            notional = p["amount"] * p["leverage"]
+            tp_usd = abs(p["tp"] - p["open_rate"]) / p["open_rate"] * notional if p.get("tp") and p["open_rate"] else self.cfg["tp_usd"]
+            sl_usd = abs(p["sl"] - p["open_rate"]) / p["open_rate"] * notional if p.get("sl") and p["open_rate"] else self.cfg["sl_usd"]
+            self.bot_pids.add(str(p["id"]))
+            self.known[p["id"]] = {**p, "last_pnl": 0.0, "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": self.now_fn()}
+        self.save_state()
+        self.tg.send(f"✅ Am preluat {len(found)} poziții {msg.pair(name)}. De acum le urmăresc, le văd la 📊 Status și le pot închide de aici.")
+
     def propose(self, name: str, s: dict) -> bool:
         inst = self.inst[name]
         try:
@@ -326,8 +347,15 @@ class Assistant:
             sl, tp, _, _ = self.levels(side, px, notional, p.get("atr_pct"))
             d = digits_for(name, px)
             pid = self.broker.open(name, side, amount, lev, round(sl, d), round(tp, d))
+        except OrderUnconfirmed as e:
+            self.adopt.append({"name": name, "side": side, "before": set(e.before), "at": self.now_fn(), "atr_pct": p.get("atr_pct"),
+                               "sl": sl, "tp": tp, "px": px})
+            self.tg.send(f"⏳ Ordinul pe {msg.pair(name)} a fost TRIMIS la eToro, dar nu l-am văzut încă în portofoliu "
+                         f"(poate fi în curs de execuție). NU repet ordinul.\nRăspuns eToro: {str(e.response)[:250]}\n"
+                         f"Verifică în eToro. Dacă poziția apare, o preiau automat în următoarele 15 minute și o urmăresc.")
+            return
         except (EToroError, Exception) as e:  # noqa: BLE001
-            self.tg.send(f"⚠️ Ordinul pe {msg.pair(name)} n-a mers: {str(e)[:200]}\nNu am deschis nimic.")
+            self.tg.send(f"⚠️ Ordinul pe {msg.pair(name)} n-a mers (respins): {str(e)[:250]}\nNu am deschis nimic.")
             return
         self.bot_pids.add(str(pid))
         fill = getattr(self.broker, "last", None) or {}
@@ -360,6 +388,7 @@ class Assistant:
 
     # ------------------------------------------------------------------ urmarire pozitii
     def monitor(self, check_basket: bool = True) -> None:
+        self.try_adopt()                                  # inainte de citirea pozitiilor, ca cele preluate sa fie incluse
         try:
             current = {p["id"]: p for p in self.broker.positions()
                        if p["name"] in self.inst and (not self.real or str(p["id"]) in self.bot_pids)}
@@ -400,6 +429,30 @@ class Assistant:
             self.tg.send(msg.basket(len(rows), total))
             for pid in list(self.known):
                 self.close_one(pid, "BASKET")
+
+    def try_adopt(self) -> None:
+        """Pozitii pentru care ordinul a fost trimis dar neconfirmat: daca apar in portofoliu (in 15 min), le preiau."""
+        if not self.adopt:
+            return
+        now = self.now_fn()
+        try:
+            allpos = self.broker.positions()
+        except Exception:  # noqa: BLE001
+            return
+        for rec in list(self.adopt):
+            hit = next((p for p in allpos if p["id"] not in rec["before"] and p["name"] == rec["name"] and p["side"] == rec["side"]), None)
+            if hit:
+                self.adopt.remove(rec)
+                self.bot_pids.add(str(hit["id"]))
+                notional = hit["amount"] * hit["leverage"]
+                sl, tp, tp_usd, sl_usd = self.levels(rec["side"], hit["open_rate"] or rec["px"], notional, rec["atr_pct"])
+                self.known[hit["id"]] = {**hit, "last_pnl": 0.0, "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": now}
+                self.save_state()
+                self.tg.send(f"✅ Poziția pe {msg.pair(rec['name'])} a apărut în eToro (preț {hit['open_rate']}). O urmăresc acum.")
+            elif (now - rec["at"]).total_seconds() > 15 * 60:
+                self.adopt.remove(rec)
+                self.tg.send(f"⌛ Ordinul pe {msg.pair(rec['name'])} nu a apărut în portofoliu în 15 minute. Probabil n-a fost executat; "
+                             f"verifică în eToro (ordine în așteptare).")
 
     def classify_vanished(self, old: dict, last_pnl: float) -> tuple[str, float]:
         """O pozitie a disparut fara sa o fi inchis eu: a atins TP, SL sau a inchis-o altcineva? Rezultatul ultimei verificari
@@ -487,7 +540,15 @@ class Assistant:
             return
         t = ev["text"].lower().replace("î", "i").replace("â", "a").replace("ă", "a").replace("ș", "s").replace("ț", "t")
         words = t.replace("/", " ").split()
-        if words and words[0] in ("vinde", "vand", "sell", "cumpara", "cumpar", "buy"):
+        if words and words[0] in ("preia", "adopta"):
+            name = self.resolve_name(" ".join(words[1:]))
+            if name is None:
+                self.tg.send("🤔 Pe ce instrument? Scrie de exemplu: preia nzdusd.")
+            elif not self.unlocked:
+                self.tg.send("🔒 Mai întâi confirmă contul real din mesajul de la pornire.")
+            else:
+                self.adopt_existing(name)
+        elif words and words[0] in ("vinde", "vand", "sell", "cumpara", "cumpar", "buy"):
             name = self.resolve_name(" ".join(words[1:]))
             if name is None:
                 self.tg.send("🤔 Nu știu pe ce instrument. Scrie de exemplu: vinde nzdusd, cumpără eurusd, vinde aur, cumpără dax.")
