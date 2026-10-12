@@ -49,6 +49,7 @@ def edge(series: pd.Series) -> int:
 def scan(df: pd.DataFrame, names: list[str], now: pd.Timestamp | None = None) -> dict:
     """+1 BUY / -1 SELL / 0. Semnale contradictorii => 0. Se folosesc doar orele incheiate."""
     now = now or pd.Timestamp.now(tz="UTC")
+    live_rsi, live_px, tick = float(ta.rsi(df["close"], 14).iloc[-1]), float(df["close"].iloc[-1]), df.index[-1]     # cu bara in formare (doar informativ)
     df = completed(df, now)
     S = strategies.all_signals(df)
     votes = {n: edge(S[n]) for n in names}
@@ -62,4 +63,5 @@ def scan(df: pd.DataFrame, names: list[str], now: pd.Timestamp | None = None) ->
     return {"side": side, "why": "; ".join(dict.fromkeys(why)), "rsi": float(ta.rsi(df["close"], 14).iloc[-1]),
             "price": price, "bar": df.index[-1].isoformat(), "asia_pos": pos, "n_bars": len(df),
             "atr_pct": float(ta.atr(df).iloc[-1]) / price, "trend": trend_of(df),
-            "age_min": (now - (df.index[-1] + timedelta(hours=1))).total_seconds() / 60}
+            "age_min": (now - (df.index[-1] + timedelta(hours=1))).total_seconds() / 60,
+            "rsi_live": live_rsi, "price_live": live_px, "tick": tick.isoformat()}
