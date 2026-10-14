@@ -1,6 +1,14 @@
 """Mesaje Telegram pe limbaj omenesc, cu iconuri."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
+try:
+    from zoneinfo import ZoneInfo
+    RO_TZ = ZoneInfo("Europe/Bucharest")
+except Exception:  # noqa: BLE001 - fara baza de fusuri orare: UTC+3 (ora de vara) ca rezerva
+    RO_TZ = timezone(timedelta(hours=3))
+
 
 INDEX_NAMES = {"SPX500": "S&P 500 📈", "NSDQ100": "Nasdaq 100 📈", "DJ30": "Dow Jones 📈", "GER40": "DAX Germania 📈"}
 
@@ -223,7 +231,7 @@ def scan_report(rows: list[dict], took: float | None = None) -> str:
     ticks = [r["tick"] for r in scanned if r.get("tick")]
     stamp = ""
     if took is not None:
-        last = max(ticks)[11:16] + " UTC" if ticks else "?"
+        last = ro_hm(max(ticks)) if ticks else "?"
         stamp = (f"\n\n⏱️ Am citit datele proaspete acum, în {took:.1f} s (ultima cotație văzută: {last}). "
                  f"RSI-ul fără paranteză e pe ultima oră ÎNCHEIATĂ (după el decid semnalele); „acum” e pe ora în curs, doar informativ.")
     skipped = len(rows) - len(scanned)
@@ -242,25 +250,40 @@ def radar(rows: list[dict], hhmm: str) -> str:
              f"(RSI {r['rsi']:.0f})" for r in top]
     quiet = max((abs(r.get("move_atr") or 0) for r in sc), default=0) < 0.8
     head = "piața e liniștită" if quiet else "ce s-a mișcat cel mai mult în ultimele 3 ore (în multipli de volatilitate normală)"
-    return (f"📡 Radar {hhmm} UTC – {head}:\n" + "\n".join(lines) +
+    return (f"📡 Radar {hhmm} – {head}:\n" + "\n".join(lines) +
             "\n\nSupraveghez la fiecare 5 minute; când apare un val mare sau un semnal clar, te anunț imediat.")
 
 
 def heartbeat(hhmm: str, scans: int, last_scan: str, open_n: int, market_open: bool) -> str:
     if not market_open:
-        return f"😴 {hhmm} UTC: sunt activ, dar piața e închisă acum. Reiau scanările când se deschide."
+        return f"😴 {hhmm}: sunt activ, dar piața e închisă acum. Reiau scanările când se deschide."
     pos = f" Ai {open_n} poziții deschise." if open_n else ""
-    return (f"🟢 {hhmm} UTC: sunt activ. De la pornire am făcut {scans} scanări (la fiecare 15 min), ultima la {last_scan} UTC: "
+    return (f"🟢 {hhmm}: sunt activ. De la pornire am făcut {scans} scanări (la fiecare 15 min), ultima la {last_scan}: "
             f"niciun semnal nou.{pos}")
 
 
-def hour_range(bar_iso: str) -> str:
-    """'2026-10-09T07:00:00+00:00' -> '07:00–08:00 UTC' (bara incepe la 07:00 si se incheie la 08:00)."""
+def ro_dt(x):
+    """Ora Romaniei (Europe/Bucharest, cu ora de vara/iarna) dintr-un datetime sau text ISO in UTC; None daca nu pot citi."""
     try:
-        h = int(bar_iso[11:13])
-    except ValueError:
+        d = datetime.fromisoformat(x) if isinstance(x, str) else x
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d.astimezone(RO_TZ)
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def ro_hm(x) -> str:
+    d = ro_dt(x)
+    return d.strftime("%H:%M") if d else "?"
+
+
+def hour_range(bar_iso: str) -> str:
+    """'2026-10-09T07:00:00+00:00' (UTC) -> '10:00–11:00' (ora Romaniei; bara dureaza o ora)."""
+    d = ro_dt(bar_iso)
+    if d is None:
         return str(bar_iso)
-    return f"{h:02d}:00–{(h + 1) % 24:02d}:00 UTC"
+    return f"{d:%H:%M}–{(d + timedelta(hours=1)):%H:%M}"
 
 
 def continued(hours: float) -> str:
