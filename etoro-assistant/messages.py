@@ -256,7 +256,13 @@ def daily_report(day: str, pnl: float, n: int, unreal: float, n_open: int, days:
     def dmy(s: str) -> str:
         return f"{s[8:10]}.{s[5:7]}"
     head = "🌙 Raportul zilei" if final else "📋 Raport până acum"
-    lines = [f"{head} ({dmy(day)})", "", profit_block(day, pnl, n, total, n_total, since), ""]
+    lines = [f"{head} · {dmy(day)}", "",
+             f"━━ 📅 PROFIT AZI ({dmy(day)}) ━━",
+             f"Profit azi: {signed(pnl)}",
+             f"Poziții închise azi: {n}", "",
+             f"━━ 💼 PROFIT TOTAL de la început ({dmy(since)}) ━━",
+             f"Profit total: {signed(total)}",
+             f"Poziții închise în total: {n_total}", ""]
     if n_open:
         lines.append(f"⏳ Deschise acum: {n_open} · {signed(unreal)} (nerealizat, NU intră în profit până nu se închid)")
     else:
