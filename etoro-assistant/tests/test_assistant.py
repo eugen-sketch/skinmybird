@@ -232,7 +232,7 @@ def test_manual_scan_explains_what_it_checked(monkeypatch):
                                                            "asia_pos": "în interior", "n_bars": 700})
     a.scan(manual=True)
     text = tg.texts[-1]
-    assert "Am scanat acum 10 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "07:00–08:00 UTC" in text
+    assert "Am scanat acum 10 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "10:00–11:00" in text
 
 
 def test_scan_counter_and_heartbeat_text(monkeypatch):
@@ -240,10 +240,10 @@ def test_scan_counter_and_heartbeat_text(monkeypatch):
     fake_scan(monkeypatch, {})
     a.scan()
     a.scan()
-    assert a.scans == 2 and a.last_scan == "08:15"
+    assert a.scans == 2 and a.last_scan == "11:15"
     import messages
     t = messages.heartbeat("09:15", a.scans, a.last_scan, 1, True)
-    assert "sunt activ" in t and "2 scanări" in t and "08:15" in t and "1 poziții" in t
+    assert "sunt activ" in t and "2 scanări" in t and "11:15" in t and "1 poziții" in t
     assert "piața e închisă" in messages.heartbeat("22:00", 5, "21:45", 0, False)
 
 

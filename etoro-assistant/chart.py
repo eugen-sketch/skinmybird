@@ -56,7 +56,7 @@ def render(df: pd.DataFrame, title: str, side: int | None = None, entry: float |
     line(resistance, "#b57bff", "rezistență", ":")
     line(support, "#7bd3ff", "suport", ":")
     arrow = {1: "▲ CUMPĂRARE", -1: "▼ VÂNZARE"}.get(side, "")
-    ax.set_title(f"{title}  {arrow}  (lumânări de 1 oră)", color=FG, fontsize=11, loc="left")
+    ax.set_title(f"{title}  {arrow}  (lumânări de 1 oră, ora României)", color=FG, fontsize=11, loc="left")
     ax.legend(loc="upper left", facecolor=BG, edgecolor=GRID, labelcolor=FG, fontsize=8)
     ar.plot(x, rsi.iloc[-bars:].values, color="#c9d1e0", linewidth=1.2)
     for lv, c in ((70, DOWN), (30, UP)):
@@ -65,7 +65,7 @@ def render(df: pd.DataFrame, title: str, side: int | None = None, entry: float |
     ar.set_ylabel("RSI", color=FG, fontsize=8)
     ticks = list(range(0, len(d), max(1, len(d) // 6)))
     ar.set_xticks(ticks)
-    ar.set_xticklabels([f"{d.index[t]:%d.%m %H:%M}" for t in ticks], fontsize=7)
+    ar.set_xticklabels([d.index[t].tz_convert("Europe/Bucharest").strftime("%d.%m %H:%M") if d.index.tz is not None else f"{d.index[t]:%d.%m %H:%M}" for t in ticks], fontsize=7)
     fig.tight_layout()
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=110, facecolor=BG)

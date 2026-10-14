@@ -178,7 +178,7 @@ class Assistant:
     def scan(self, manual: bool = False) -> None:
         now = self.now_fn()
         self.scans += 1
-        self.last_scan = now.strftime("%H:%M")
+        self.last_scan = msg.ro_hm(now)
         if not self.market_open(now):
             if manual:
                 self.tg.send("😴 Piața e închisă sau prea aproape de închidere, nu caut semnale acum.")
@@ -237,7 +237,7 @@ class Assistant:
                 report.append({"name": n, "rsi": 50.0, "thr": 25, "bar": report[0]["bar"] if report else "?", "note": "ai deja poziție/semnal"})
             self.tg.send(msg.scan_report(report, time.time() - t_scan0) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.")
         elif radar and report:
-            self.tg.send(msg.radar(report, now.strftime("%H:%M")), silent=True)
+            self.tg.send(msg.radar(report, msg.ro_hm(now)), silent=True)
 
     ALIASES = {"AUR": "GOLD", "PETROL": "OIL", "SP500": "SPX500", "SP": "SPX500", "SPX": "SPX500", "NASDAQ": "NSDQ100", "NSDQ": "NSDQ100",
                "NDX": "NSDQ100", "DOW": "DJ30", "DJ": "DJ30", "DAX": "GER40", "GER": "GER40"}
@@ -875,7 +875,7 @@ class Assistant:
                 if now - t_hb >= 6 * 3600 and not self.market_open(self.now_fn()):
                     t_hb = now
                     n = self.now_fn()
-                    self.tg.send(msg.heartbeat(n.strftime("%H:%M"), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
+                    self.tg.send(msg.heartbeat(msg.ro_hm(n), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
                 self.remind_pending()
                 self.expire_pending()
                 if not warned and remaining <= 0 and end - now < 20 * 60:

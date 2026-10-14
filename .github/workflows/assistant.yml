@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install requests pandas numpy matplotlib
+      - run: pip install requests pandas numpy matplotlib tzdata
       - name: Restore state (castig realizat intre sesiuni)
         continue-on-error: true
         working-directory: etoro-assistant
