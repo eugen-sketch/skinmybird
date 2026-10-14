@@ -108,6 +108,7 @@ def status(rows: list[dict], total: float, free: float, budget: float, profit: s
         return (f"📭 Nu ai nicio poziție deschisă.\n👛 Buget liber: {usd(free)} din {usd(budget)}\n"
                 f"\n{profit}{tail}")
     lines = [f"{'🟢' if r['pnl'] >= 0 else '🔴'} {pair(r['name'])} ({'cumpărat' if r['side'] == 1 else 'vândut'}): {signed(r['pnl'])}"
+             + (f" · ținta e {signed(r['tp_usd'])}" if r.get("tp_usd") else "")
              + advice_block(r.get("advice")) for r in rows]
     icon = "📈" if total >= 0 else "📉"
     return ("📊 Pozițiile deschise acum:\n" + "\n".join(lines) + f"\n\n{icon} Total acum: {signed(total)}\n"
@@ -141,7 +142,7 @@ def advice_block(adv: dict | None) -> str:
 
 
 def update(rows: list[dict], total: float) -> str:
-    parts = ", ".join(f"{pair(r['name']).split(' ')[0]} {signed(r['pnl'])}" for r in rows)
+    parts = ", ".join(f"{pair(r['name']).split(' ')[0]} {signed(r['pnl'])}" + (f" (ținta {signed(r['tp_usd'])})" if r.get("tp_usd") else "") for r in rows)
     return f"⏱️ Update: {parts} · total {signed(total)}"
 
 
@@ -250,7 +251,7 @@ def scan_report(rows: list[dict], took: float | None = None) -> str:
             f"{stamp}\n\n👉 Recomandare acum: HOLD ⏸️ — nu cumpăra și nu vinde nimic, așteptăm.")
 
 
-def daily_report(day: str, pnl: float, n: int, unreal: float, n_open: int, days: list, total: float, since: str, n_total: int,
+def daily_report(day: str, pnl: float, n: int, unreal: float, open_rows: list, days: list, total: float, since: str, n_total: int,
                  final: bool = True) -> str:
     """Raportul zilei: profit AZI si profit TOTAL (acelasi bloc ca peste tot), pozitii deschise acum, ultimele zile."""
     def dmy(s: str) -> str:
@@ -263,8 +264,14 @@ def daily_report(day: str, pnl: float, n: int, unreal: float, n_open: int, days:
              f"━━ 💼 PROFIT TOTAL de la început ({dmy(since)}) ━━",
              f"Profit total: {signed(total)}",
              f"Poziții închise în total: {n_total}", ""]
-    if n_open:
-        lines.append(f"⏳ Deschise acum: {n_open} · {signed(unreal)} (nerealizat, NU intră în profit până nu se închid)")
+    if open_rows:
+        lines.append(f"⏳ Poziții deschise acum: {len(open_rows)} · {signed(unreal)} nerealizat (NU intră în profit până nu se închid)")
+        for r in open_rows:
+            left = r["tp_usd"] - r["pnl"]
+            lines.append(f"• {pair(r['name'])} ({'cumpărat' if r['side'] == 1 else 'vândut'}): acum {signed(r['pnl'])} · "
+                         f"ținta e {signed(r['tp_usd'])}"
+                         + (f" (mai are {usd(left)} până la țintă)" if left > 0 else " (a trecut de țintă)")
+                         + f" · plasa −{usd(r['sl_usd'])}")
     else:
         lines.append("📭 Nu rămâne nicio poziție deschisă.")
     if days:
