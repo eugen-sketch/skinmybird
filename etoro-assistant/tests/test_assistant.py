@@ -918,3 +918,22 @@ def test_levels_and_4h_trend_on_real_shaped_data():
     px = float(df["close"].iloc[-1])
     assert (sup is None or sup < px) and (res is None or res > px)
     assert S.trend4h(df) in ("sus", "jos", "lateral")
+
+
+def test_daily_report_and_total_since_start():
+    a, tg, br = make()
+    a.add_realized(+3.0)
+    a.add_realized(-1.0)
+    a.add_realized(+0.5)
+    assert a.total_pnl == 2.5 and a.history["2026-10-09"] == {"pnl": 2.5, "n": 3}
+    a.realized = 0.0                                              # un /reset al bugetului nu sterge totalul de la inceput
+    assert a.total_pnl == 2.5
+    assert not a.report_due(T0)                                   # 08:15 UTC: prea devreme
+    late = T0.replace(hour=19, minute=35)                         # vineri: piata se inchide la 20:00 UTC
+    assert a.report_due(late) and not a.report_due(T0.replace(hour=19, minute=10))
+    a.now_fn = lambda: late
+    a.daily_report()
+    t = tg.texts[-1]
+    assert "Raportul zilei" in t and "+$2.50" in t and "3" in t and "TOTAL de la început" in t
+    assert not a.report_due(late)                                 # o singura data pe zi
+    assert not a.report_due(late + timedelta(days=1))             # sambata nu

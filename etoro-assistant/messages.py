@@ -59,6 +59,7 @@ HELP = ("🤖 Ce pot face (butoanele din meniul de jos fac același lucru):\n"
         "Cele scrise de mână:\n"
         "• /status – pozițiile deschise și cât câștigi/pierzi acum\n"
         "• /inchide tot – închid toate pozițiile\n"
+        "• /raport – raportul zilei (câștig azi + total de la început); vine singur cu ~30 min înainte de închiderea pieței\n"
         "• /inchide EURUSD – închid o singură poziție (poți scrie și OIL)\n"
         "• /scan – caut semnale chiar acum\n"
         "• /stop – mă opresc (pozițiile rămân pe eToro, cu Stop Loss și Take Profit)\n"
@@ -239,6 +240,27 @@ def scan_report(rows: list[dict], took: float | None = None) -> str:
     return (f"🔎 Am scanat acum {len(scanned)} instrumente{tail} (ultima oră încheiată: {bar}).\n" + "\n".join(lines) +
             f"\n\nNiciun semnal nou. Cumpăr/vând doar când văd semnal clar (revenire după retragere în trend, spargere de maxim/minim, RSI extrem, spargerea intervalului de noapte pe forex).{close}"
             f"{stamp}\n\n👉 Recomandare acum: HOLD ⏸️ — nu cumpăra și nu vinde nimic, așteptăm.")
+
+
+def daily_report(day: str, pnl: float, n: int, unreal: float, n_open: int, days: list, total: float, since: str, n_total: int,
+                 final: bool = True) -> str:
+    """Raportul zilei: rezultat realizat azi + pozitii deschise acum + ultimele zile + total de la inceput."""
+    def dmy(s: str) -> str:
+        return f"{s[8:10]}.{s[5:7]}"
+    head = "🌙 Raportul zilei" if final else "📋 Raport până acum"
+    icon = "🟢" if pnl >= 0 else "🔴"
+    lines = [f"{head} ({dmy(day)})", "",
+             f"{icon} Azi, pozițiile închise: {n} · rezultat {signed(pnl)}"]
+    if n_open:
+        lines.append(f"⏳ Deschise acum: {n_open} · {signed(unreal)} (încă nerealizat)")
+    else:
+        lines.append("📭 Nu rămâne nicio poziție deschisă.")
+    if days:
+        lines += ["", "Ultimele zile:"] + [f"• {dmy(k)}: {signed(v['pnl'])} ({v['n']} poziții)" for k, v in days]
+    lines += ["", f"💼 TOTAL de la început ({dmy(since)}): {signed(total)} din {n_total} poziții închise"]
+    if final:
+        lines.append("Piața se închide în curând; le păstrez pe cele deschise cu Stop Loss și Take Profit.")
+    return "\n".join(lines)
 
 
 def radar(rows: list[dict], hhmm: str) -> str:
