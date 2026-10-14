@@ -59,6 +59,7 @@ class Assistant:
         self.sleep = sleep
         self.inst = {i["name"]: i for i in cfg["instruments"]}
         self.pending: dict[int, dict] = {}
+        self.total_pnl, self.history, self.since, self.report_day = 0.0, {}, "", ""
         self.report_hour = ""            # ora la care am trimis ultimul raport orar de scanare
         self.seen_bar: dict[str, str] = {}
         self.known: dict[str, dict] = {}        # pozitii urmarite: pid -> {..., last_pnl}
@@ -66,6 +67,7 @@ class Assistant:
         self.sid = 0
         self.scans, self.last_scan = 0, "-"
         self.realized, self.n_closed = 0.0, 0
+        self.total_pnl, self.history, self.since, self.report_day = 0.0, {}, "", ""     # câștig total de la început, pe zile
         self.autotrade = False                   # pornit doar de tine, din buton
         self.day, self.day_pnl = "", 0.0
         self.hold_alerted: set[str] = set()
@@ -162,11 +164,16 @@ class Assistant:
         self.realized += pnl
         self.day_pnl += pnl
         self.n_closed += 1
+        self.total_pnl += pnl
+        h = self.history.setdefault(msg.ro_dt(self.now_fn()).strftime("%Y-%m-%d"), {"pnl": 0.0, "n": 0})   # ziua dupa ora Romaniei
+        h["pnl"] = round(h["pnl"] + pnl, 2)
+        h["n"] += 1
         self.save_state()
 
     def save_state(self) -> None:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
+                        "total_pnl": self.total_pnl, "history": self.history, "since": self.since, "report_day": self.report_day,
                         "bot_pids": sorted(self.bot_pids), "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
@@ -238,6 +245,25 @@ class Assistant:
             self.tg.send(msg.scan_report(report, time.time() - t_scan0) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.")
         elif radar and report:
             self.tg.send(msg.radar(report, msg.ro_hm(now)), silent=True)
+
+    def report_due(self, now: datetime) -> bool:
+        """Raportul zilei: cu ~30 min inainte de inchiderea pietei (vineri 20:00 UTC, in rest 21:00 UTC), o data pe zi (data Romaniei)."""
+        if now.weekday() >= 5:
+            return False
+        cutoff = (19, 30) if now.weekday() == 4 else (20, 30)
+        return (now.hour, now.minute) >= cutoff and msg.ro_dt(now).strftime("%Y-%m-%d") != self.report_day and now.hour < 23
+
+    def daily_report(self, final: bool = True) -> None:
+        now = self.now_fn()
+        today = msg.ro_dt(now).strftime("%Y-%m-%d")
+        d = self.history.get(today, {"pnl": 0.0, "n": 0})
+        unreal = sum(p.get("last_pnl", 0.0) for p in self.known.values())
+        days = [(k, v) for k, v in sorted(self.history.items()) if k != today][-5:]
+        n_total = sum(v["n"] for v in self.history.values())
+        self.tg.send(msg.daily_report(today, d["pnl"], d["n"], unreal, len(self.known), days, self.total_pnl, self.since, n_total, final))
+        if final:
+            self.report_day = today
+            self.save_state()
 
     ALIASES = {"AUR": "GOLD", "PETROL": "OIL", "SP500": "SPX500", "SP": "SPX500", "SPX": "SPX500", "NASDAQ": "NSDQ100", "NSDQ": "NSDQ100",
                "NDX": "NSDQ100", "DOW": "DJ30", "DJ": "DJ30", "DAX": "GER40", "GER": "GER40"}
@@ -748,6 +774,8 @@ class Assistant:
             self.tg.send(f"♻️ Am resetat câștigul realizat. Bugetul de lucru e din nou {msg.usd(self.cfg['budget_usd'])}.")
         elif "porne" in t:
             self.tg.send("✅ Sunt deja pornit și scanez. Spune-mi dacă vrei Status sau Caută semnale.")
+        elif t.startswith("/raport") or t.strip() == "raport":
+            self.daily_report(final=False)
         elif t.startswith("/status") or "status" in t:
             self.status()
         elif t.startswith("/scan") or "cauta semnale" in t:
@@ -808,6 +836,10 @@ class Assistant:
         self.tg.drain()
         st = state_mod.load()
         self.realized, self.n_closed = st.get("realized", 0.0), st.get("n_closed", 0)
+        self.total_pnl = st.get("total_pnl", self.realized)               # total de la început: nu se reseteaza cu /reset
+        self.history = st.get("history", {})
+        self.since = st.get("since") or msg.ro_dt(self.now_fn()).strftime("%Y-%m-%d")
+        self.report_day = st.get("report_day", "")
         self.day, self.day_pnl = st.get("day", ""), st.get("day_pnl", 0.0)
         self.seen_bar = {k: v for k, v in st.get("seen", {}).items() if k in self.inst}      # nu re-propun aceeasi bara dupa o repornire
         cont = os.getenv("CONTINUED") == "1"
@@ -876,6 +908,8 @@ class Assistant:
                     t_hb = now
                     n = self.now_fn()
                     self.tg.send(msg.heartbeat(msg.ro_hm(n), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
+                if self.unlocked and self.report_due(utc):
+                    self.daily_report()
                 self.remind_pending()
                 self.expire_pending()
                 if not warned and remaining <= 0 and end - now < 20 * 60:
