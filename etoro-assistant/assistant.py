@@ -267,6 +267,32 @@ class Assistant:
         elif radar and report:
             self.tg.send(msg.radar(report, msg.ro_hm(now)), silent=True)
 
+    def reconcile(self) -> bool:
+        """Recalculeaza profitul pe zile si totalul din istoricul REAL al pozitiilor inchise de la eToro (nu din estimari). Doar pe real."""
+        if not (self.real and hasattr(self.broker, "closed_trades")):
+            return False
+        since = self.since or msg.ro_dt(self.now_fn()).strftime("%Y-%m-%d")
+        try:
+            trades = self.broker.closed_trades((datetime.fromisoformat(since) - timedelta(days=1)).strftime("%Y-%m-%d"))
+        except Exception:  # noqa: BLE001
+            return False
+        hist: dict[str, dict] = {}
+        for t in trades:
+            d = msg.ro_dt(t["close_time"])
+            day = d.strftime("%Y-%m-%d") if d else None
+            if day is None or day < since:
+                continue
+            h = hist.setdefault(day, {"pnl": 0.0, "n": 0})
+            h["pnl"] = round(h["pnl"] + t["net"], 2)
+            h["n"] += 1
+        if not hist and self.history:                     # raspuns gol (eroare/intarziere): nu stergem ce stim
+            return False
+        self.history = hist
+        self.total_pnl = round(sum(v["pnl"] for v in hist.values()), 2)
+        self.n_total = sum(v["n"] for v in hist.values())
+        self.save_state()
+        return True
+
     def profit_text(self) -> str:
         """Aceleasi doua randuri peste tot: profit AZI (data Romaniei) si profit TOTAL de la inceput."""
         today = msg.ro_dt(self.now_fn()).strftime("%Y-%m-%d")
@@ -281,6 +307,7 @@ class Assistant:
         return (now.hour, now.minute) >= cutoff and msg.ro_dt(now).strftime("%Y-%m-%d") != self.report_day and now.hour < 23
 
     def daily_report(self, final: bool = True) -> None:
+        self.reconcile()                                  # cifrele din raport vin din istoricul real eToro
         now = self.now_fn()
         today = msg.ro_dt(now).strftime("%Y-%m-%d")
         d = self.history.get(today, {"pnl": 0.0, "n": 0})
@@ -940,6 +967,8 @@ class Assistant:
                 self.adopt.append({**r, "before": set(r.get("before", [])), "at": t})
         self.unlocked = (bool(st.get("unlocked")) and cont) if self.real else True        # pe real: confirmare la fiecare pornire noua
         self.refresh_real()
+        if self.reconcile():
+            self.tg.send("🧮 Am recalculat profitul din istoricul real de la eToro (nu din estimări):\n" + self.profit_text())
         try:
             for p in self.broker.positions(fresh=True):
                 if p["name"] in self.inst and (not self.real or str(p["id"]) in self.bot_pids):
