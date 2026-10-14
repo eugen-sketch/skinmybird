@@ -62,7 +62,7 @@ class Assistant:
         self.sleep = sleep
         self.inst = {i["name"]: i for i in cfg["instruments"]}
         self.pending: dict[int, dict] = {}
-        self.total_pnl, self.history, self.since, self.report_day = 0.0, {}, "", ""
+        self.total_pnl, self.history, self.since, self.report_day, self.n_total = 0.0, {}, "", "", 0
         self.report_hour = ""            # ora la care am trimis ultimul raport orar de scanare
         self.seen_bar: dict[str, str] = {}
         self.known: dict[str, dict] = {}        # pozitii urmarite: pid -> {..., last_pnl}
@@ -170,6 +170,7 @@ class Assistant:
         self.day_pnl += pnl
         self.n_closed += 1
         self.total_pnl += pnl
+        self.n_total += 1
         h = self.history.setdefault(msg.ro_dt(self.now_fn()).strftime("%Y-%m-%d"), {"pnl": 0.0, "n": 0})   # ziua dupa ora Romaniei
         h["pnl"] = round(h["pnl"] + pnl, 2)
         h["n"] += 1
@@ -178,7 +179,7 @@ class Assistant:
     def save_state(self) -> None:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
-                        "total_pnl": self.total_pnl, "history": self.history, "since": self.since, "report_day": self.report_day,
+                        "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
                         "bot_pids": sorted(self.bot_pids), "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
@@ -266,6 +267,12 @@ class Assistant:
         elif radar and report:
             self.tg.send(msg.radar(report, msg.ro_hm(now)), silent=True)
 
+    def profit_text(self) -> str:
+        """Aceleasi doua randuri peste tot: profit AZI (data Romaniei) si profit TOTAL de la inceput."""
+        today = msg.ro_dt(self.now_fn()).strftime("%Y-%m-%d")
+        d = self.history.get(today, {"pnl": 0.0, "n": 0})
+        return msg.profit_block(today, d["pnl"], d["n"], self.total_pnl, self.n_total, self.since or today)
+
     def report_due(self, now: datetime) -> bool:
         """Raportul zilei: cu ~30 min inainte de inchiderea pietei (vineri 20:00 UTC, in rest 21:00 UTC), o data pe zi (data Romaniei)."""
         if now.weekday() >= 5:
@@ -279,8 +286,7 @@ class Assistant:
         d = self.history.get(today, {"pnl": 0.0, "n": 0})
         unreal = sum(p.get("last_pnl", 0.0) for p in self.known.values())
         days = [(k, v) for k, v in sorted(self.history.items()) if k != today][-5:]
-        n_total = sum(v["n"] for v in self.history.values())
-        self.tg.send(msg.daily_report(today, d["pnl"], d["n"], unreal, len(self.known), days, self.total_pnl, self.since, n_total, final))
+        self.tg.send(msg.daily_report(today, d["pnl"], d["n"], unreal, len(self.known), days, self.total_pnl, self.since, self.n_total, final))
         if final:
             self.report_day = today
             self.save_state()
@@ -601,7 +607,7 @@ class Assistant:
             self.bot_pids.discard(str(pid))
             self.add_realized(pnl)
             self.refresh_real()
-            self.tg.send(msg.closed(old["name"], kind, pnl, self.realized, self.equity() if self.cfg.get("progressive") else None))
+            self.tg.send(msg.closed(old["name"], kind, pnl, self.profit_text(), self.equity() if self.cfg.get("progressive") else None))
         for pid, pos in current.items():
             self.known[pid] = {**self.known.get(pid, {}), **pos}          # pastram tinta/plasa in $ si ora deschiderii
             if not self.known[pid].get("opened_at"):
@@ -736,7 +742,7 @@ class Assistant:
         warn = ""
         if self.real and (self.last_ok is None or time.time() - self.last_ok > 120):
             warn = "⚠️ Nu am putut citi soldul de la eToro în ultimele minute; cifrele de buget pot fi vechi."
-        self.tg.send(msg.status(rows, total, self.free_margin(), self.equity(), self.realized, self.n_closed, self.autotrade, warn),
+        self.tg.send(msg.status(rows, total, self.free_margin(), self.equity(), self.profit_text(), self.autotrade, warn),
                      buttons or None)
         for r, p in zip(rows, self.known.values()):                      # un grafic pe fiecare pozitie, cu intrarea, tinta si plasa
             self.send_chart(p["name"], r["advice"].get("scan", {}), p["side"], p.get("open_rate"), p.get("tp") or None, p.get("sl") or None,
@@ -884,9 +890,12 @@ class Assistant:
         st = state_mod.load()
         self.realized, self.n_closed = st.get("realized", 0.0), st.get("n_closed", 0)
         self.total_pnl = st.get("total_pnl", self.realized)               # total de la început: nu se reseteaza cu /reset
+        self.n_total = st.get("n_total", max(self.n_closed, sum(v.get("n", 0) for v in st.get("history", {}).values())))
         self.history = st.get("history", {})
         self.since = st.get("since") or msg.ro_dt(self.now_fn()).strftime("%Y-%m-%d")
         self.report_day = st.get("report_day", "")
+        if self.real and self.cfg.get("since_real"):                      # primul meu rulaj pe contul real: totalul include deja ce era înainte
+            self.since = min(self.since, self.cfg["since_real"])
         self.day, self.day_pnl = st.get("day", ""), st.get("day_pnl", 0.0)
         self.seen_bar = {k: v for k, v in st.get("seen", {}).items() if k in self.inst}      # nu re-propun aceeasi bara dupa o repornire
         for k, v in self.seen_bar.items():                                                    # nici acelasi val dupa o repornire

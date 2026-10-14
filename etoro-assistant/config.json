@@ -230,5 +230,6 @@
     "max_sl_usd": 25,
     "autotrade_daily_loss_usd": 22,
     "signal_cooldown_min": 12
-  }
+  },
+  "since_real": "2026-10-12"
 }
