@@ -195,7 +195,8 @@ class Assistant:
                 report.append({"name": name, "rsi": 50.0, "thr": 25, "bar": "?", "note": "în afara programului de tranzacționare", "skip": True})
                 continue
             try:
-                s = signals.scan(self.fetch(inst["yahoo"], "1h", "90d"), inst["signals"], pd.Timestamp(now))
+                s = signals.scan(self.fetch(inst["yahoo"], "1h", "90d"), inst["signals"], pd.Timestamp(now),
+                                 self.cfg.get("wave_atr", 1.6), self.cfg.get("wave_bars", 3))
             except Exception as e:  # noqa: BLE001
                 self.report_error(f"nu pot citi datele pentru {msg.pair(name)} ({type(e).__name__})")
                 continue
@@ -206,13 +207,15 @@ class Assistant:
                 print(f"{name}: semnal={s['side']:+d} rsi={s['rsi']:.0f}")
             thr = next((int(n[7:]) for n in inst["signals"] if n.startswith("rsi_rev")), 25)
             report.append({"name": name, "rsi": s["rsi"], "thr": thr, "asia": s.get("asia_pos"), "bar": msg.hour_range(s["bar"]),
-                           "trend": s.get("trend"), "rsi_live": s.get("rsi_live"), "tick": s.get("tick"),
+                           "trend": s.get("trend"), "rsi_live": s.get("rsi_live"), "tick": s.get("tick"), "move_atr": s.get("move_atr", 0.0),
+                           "side": s["side"],
                            "rsi_rule": any(n.startswith("rsi_rev") for n in inst["signals"])})
-            if s["side"] == 0 or self.seen_bar.get(name) == s["bar"]:
+            key = s.get("sig_key", s["bar"])
+            if s["side"] == 0 or self.seen_bar.get(name) == key:
                 continue
             if not self.unlocked:                        # cont real neconfirmat: doar urmaresc, nu propun si nu deschid nimic
                 continue
-            self.seen_bar[name] = s["bar"]
+            self.seen_bar[name] = key
             self.save_state()
             if len(self.known) + len(self.pending) >= self.max_pos():
                 overflow.append(name)
@@ -224,15 +227,17 @@ class Assistant:
                          f"{self.max_pos()} poziții/semnale în așteptare. Dacă te interesează, spune-mi /scan după ce se eliberează un loc.")
             for n in overflow:
                 self.seen_bar.pop(n, None)               # le re-evaluam la urmatoarea scanare
-        hour_key = now.strftime("%Y%m%d%H")
-        hourly = hour_key != self.report_hour
-        if hourly:
-            self.report_hour = hour_key
-        if (manual or hourly) and not found:
+        every = int(self.cfg.get("radar_every_h", 4))
+        slot_key = f"{now:%Y%m%d}-{now.hour // every}"
+        radar = slot_key != self.report_hour and not found
+        if radar:
+            self.report_hour = slot_key
+        if manual and not found:
             for n in sorted(open_names | {p["name"] for p in self.pending.values()}):
                 report.append({"name": n, "rsi": 50.0, "thr": 25, "bar": report[0]["bar"] if report else "?", "note": "ai deja poziție/semnal"})
-            self.tg.send(msg.scan_report(report, time.time() - t_scan0) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.",
-                         silent=not manual)
+            self.tg.send(msg.scan_report(report, time.time() - t_scan0) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.")
+        elif radar and report:
+            self.tg.send(msg.radar(report, now.strftime("%H:%M")), silent=True)
 
     ALIASES = {"AUR": "GOLD", "PETROL": "OIL", "SP500": "SPX500", "SP": "SPX500", "SPX": "SPX500", "NASDAQ": "NSDQ100", "NSDQ": "NSDQ100",
                "NDX": "NSDQ100", "DOW": "DJ30", "DJ": "DJ30", "DAX": "GER40", "GER": "GER40"}
@@ -840,6 +845,8 @@ class Assistant:
         end = start + this_run * 3600
         t_scan = t_mon = t_upd = 0.0
         t_hb = time.time()
+        slot_min = int(c.get("scan_slot_min", 15))
+        last_sent = {"t": 0.0, "total": 0.0}
         warned = False
         sig_mod.signal(sig_mod.SIGTERM, lambda *a: setattr(self, "stop_reason", "GitHub a oprit sesiunea"))
         sig_mod.signal(sig_mod.SIGINT, lambda *a: setattr(self, "stop_reason", "GitHub a oprit sesiunea"))
@@ -849,7 +856,7 @@ class Assistant:
                     self.handle(ev)
                 now = time.time()
                 utc = self.now_fn()
-                slot = (utc.date(), utc.hour, utc.minute // 15)
+                slot = (utc.date(), utc.hour, utc.minute // slot_min)
                 if slot != self.last_slot and (self.last_slot is None or utc.second >= 20):   # la :00/:15/:30/:45 (+20s), cand apare ora noua
                     self.last_slot = slot
                     self.scan()
@@ -858,10 +865,12 @@ class Assistant:
                     self.monitor()
                 if now - t_upd >= c["scan_every_min"] * 60 and self.known:
                     t_upd = now
-                    self.tg.send(msg.update([{"name": p["name"], "pnl": p["last_pnl"]} for p in self.known.values()],
-                                            sum(p["last_pnl"] for p in self.known.values())))
+                    total = sum(p["last_pnl"] for p in self.known.values())
+                    if now - last_sent["t"] >= c.get("update_every_min", 60) * 60 or abs(total - last_sent["total"]) >= c.get("update_delta_usd", 1.0):
+                        last_sent.update(t=now, total=total)
+                        self.tg.send(msg.update([{"name": p["name"], "pnl": p["last_pnl"]} for p in self.known.values()], total), silent=True)
                     self.advice_tick()
-                if now - t_hb >= 3600 and not self.market_open(self.now_fn()):
+                if now - t_hb >= 6 * 3600 and not self.market_open(self.now_fn()):
                     t_hb = now
                     n = self.now_fn()
                     self.tg.send(msg.heartbeat(n.strftime("%H:%M"), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)

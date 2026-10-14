@@ -71,7 +71,7 @@ def make(now=T0):
 
 
 def fake_scan(monkeypatch, sides):
-    def scan(df, names, now=None):
+    def scan(df, names, now=None, *wa):
         return {"side": sides.get(tuple(names), 0), "why": "a spart intervalul din noaptea asiatică", "rsi": 50.0, "price": 1.1, "bar": "bar1"}
     monkeypatch.setattr(signals, "scan", scan)
 
@@ -82,7 +82,7 @@ def press(a, data, mid=1):
 
 def test_signal_asks_first_and_opens_nothing_without_ok(monkeypatch):
     a, tg, br = make()
-    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev30", "pullback45", "donchian24_trend"): 1})
     a.scan()
     assert not br.pos and a.pending                       # nimic deschis fara OK
     text, buttons, _ = tg.sent[0]
@@ -91,7 +91,7 @@ def test_signal_asks_first_and_opens_nothing_without_ok(monkeypatch):
 
 def test_ok_opens_with_target_and_stop(monkeypatch):
     a, tg, br = make()
-    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev30", "pullback45", "donchian24_trend"): 1})
     a.scan()
     sid = next(iter(a.pending))
     press(a, f"open:{sid}")
@@ -105,7 +105,7 @@ def test_ok_opens_with_target_and_stop(monkeypatch):
 
 def test_no_button_means_nothing_opened(monkeypatch):
     a, tg, br = make()
-    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): -1})
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev30", "pullback45", "donchian24_trend"): -1})
     a.scan()
     assert len(a.pending) == 3                              # maxim 3 semnale in asteptare, restul intr-un singur mesaj
     assert sum("Semnal pe" in t for t in tg.texts) == 3 and any("Mai sunt semnale" in t for t in tg.texts)
@@ -116,7 +116,7 @@ def test_no_button_means_nothing_opened(monkeypatch):
 
 def test_expired_signal_is_not_executed(monkeypatch):
     a, tg, br = make()
-    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev30", "pullback45", "donchian24_trend"): 1})
     a.scan()
     sid = next(iter(a.pending))
     a.now_fn = lambda: T0 + timedelta(minutes=45)
@@ -128,7 +128,7 @@ def test_oil_needs_big_margin_and_blocks_others(monkeypatch):
     a, tg, br = make()
     amount, lev, notional = a.sizing(a.inst["OIL"])
     assert lev == 10 and 100 <= amount <= 102 and notional >= 1000
-    fake_scan(monkeypatch, {("rsi_rev20",): 1})
+    fake_scan(monkeypatch, {("rsi_rev25", "pullback45", "donchian24_trend"): 1})
     a.scan()
     sid = next(iter(a.pending))
     press(a, f"open:{sid}")
@@ -187,7 +187,7 @@ def test_status_lists_positions_with_close_buttons():
 
 def test_no_scan_on_weekend_and_stop_command(monkeypatch):
     a, tg, br = make(datetime(2026, 10, 10, 9, 0, tzinfo=timezone.utc))
-    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev30", "pullback45", "donchian24_trend"): 1})
     a.scan()
     assert not a.pending
     a.handle({"kind": "text", "text": "/stop"})
@@ -228,7 +228,7 @@ def test_menu_buttons_work_and_close_all_asks_for_confirmation():
 
 def test_manual_scan_explains_what_it_checked(monkeypatch):
     a, tg, br = make()
-    monkeypatch.setattr(signals, "scan", lambda df, names, now=None: {"side": 0, "why": "", "rsi": 61.0, "price": 1.1, "bar": "2026-10-09T07:00:00+00:00",
+    monkeypatch.setattr(signals, "scan", lambda df, names, now=None, *wa: {"side": 0, "why": "", "rsi": 61.0, "price": 1.1, "bar": "2026-10-09T07:00:00+00:00",
                                                            "asia_pos": "în interior", "n_bars": 700})
     a.scan(manual=True)
     text = tg.texts[-1]
@@ -268,7 +268,7 @@ def test_long_sessions_are_chained_in_two_runs():
 
 def test_unanswered_signal_is_repeated_until_answered(monkeypatch):
     a, tg, br = make()
-    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev30", "pullback45", "donchian24_trend"): 1})
     a.scan()
     sid = next(iter(a.pending))
     n0 = len(tg.texts)
@@ -284,17 +284,35 @@ def test_unanswered_signal_is_repeated_until_answered(monkeypatch):
     assert br.pos                                    # raspunsul OK deschide in continuare
 
 
-def test_hourly_scan_report_sent_once_per_hour_and_silent(monkeypatch):
+def test_radar_is_rare_and_silent(monkeypatch):
     a, tg, br = make()
     fake_scan(monkeypatch, {})
     a.scan()
-    assert sum("Am scanat acum" in x for x in tg.texts) == 1     # primul raport al orei
-    a.now_fn = lambda: T0 + timedelta(minutes=15)
-    a.scan()
-    assert sum("Am scanat acum" in x for x in tg.texts) == 1     # aceeasi ora: nu se repeta
+    assert sum("Radar" in x for x in tg.texts) == 1              # primul radar
     a.now_fn = lambda: T0 + timedelta(minutes=60)
     a.scan()
-    assert sum("Am scanat acum" in x for x in tg.texts) == 2     # ora urmatoare: raport nou
+    assert sum("Radar" in x for x in tg.texts) == 1              # nu se repeta la fiecare ora
+    a.now_fn = lambda: T0 + timedelta(hours=4)
+    a.scan()
+    assert sum("Radar" in x for x in tg.texts) == 2              # abia dupa 4 ore
+    assert not any("Am scanat acum" in x for x in tg.texts)
+
+
+def test_wave_signal_rides_a_big_move():
+    import pandas as pd, numpy as np
+    idx = pd.date_range("2026-10-01", periods=300, freq="1h", tz="UTC")
+    rng = np.random.default_rng(1)
+    c = 100 + np.cumsum(rng.normal(0, 0.2, 300))
+    df = pd.DataFrame({"open": c, "high": c + 0.15, "low": c - 0.15, "close": c, "volume": 1}, index=idx)
+    now = idx[-1] + pd.Timedelta(minutes=10)
+    done = signals.completed(df, now)
+    w, mv = signals.wave(df, done, "lateral")
+    assert w == 0
+    df2 = df.copy()
+    df2.iloc[-1, df2.columns.get_loc("close")] += 0.5               # salt mare in sus pe ora in curs
+    w, mv = signals.wave(df2, signals.completed(df2, now), "lateral")
+    assert w == 1 and mv > 1.6
+    assert signals.wave(df2, signals.completed(df2, now), "jos")[0] == 0     # nu mergem impotriva trendului
 
 
 def test_progressive_budget_grows_with_profit_and_shrinks_with_loss():
@@ -318,7 +336,7 @@ def test_atr_levels_small_tp_wide_sl_clamped():
 
 def test_autotrade_opens_without_asking_and_stops_at_daily_loss(monkeypatch):
     a, tg, br = make()
-    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev30", "pullback45", "donchian24_trend"): 1})
     a.handle({"kind": "text", "text": "🤖 Autotrading"})
     assert not a.autotrade and any("Pornesc autotrading" in x for x in tg.texts)         # cere confirmare
     press(a, "autoon")
@@ -336,7 +354,7 @@ def test_autotrade_opens_without_asking_and_stops_at_daily_loss(monkeypatch):
 
 def test_hold_alert_after_two_hours(monkeypatch):
     a, tg, br = make()
-    fake_scan(monkeypatch, {("rsi_rev20",): 1})
+    fake_scan(monkeypatch, {("rsi_rev25", "pullback45", "donchian24_trend"): 1})
     a.scan()
     sid = next(iter(a.pending))
     press(a, f"open:{sid}")
@@ -369,7 +387,7 @@ def test_index_outside_its_hours_is_skipped(monkeypatch):
     a, tg, br = make()                                      # 08:15 UTC: indicii americani nu sunt in program
     calls = []
 
-    def scan(df, names, now=None):
+    def scan(df, names, now=None, *wa):
         calls.append(names)
         return {"side": 0, "why": "", "rsi": 50.0, "price": 1.1, "bar": "2026-10-09T07:00:00+00:00", "age_min": 15.0}
     monkeypatch.setattr(signals, "scan", scan)
@@ -491,7 +509,7 @@ def make_real(balance, now=T0):
 
 def test_real_is_locked_until_confirmed(monkeypatch):
     a, tg, br = make_real(500.0)
-    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev30", "pullback45", "donchian24_trend"): 1})
     a.scan()
     assert not a.pending and not br.pos                  # blocat: nu propune nimic
     a.handle({"kind": "text", "text": "🤖 Autotrading"})
@@ -527,7 +545,7 @@ def test_real_only_tracks_positions_opened_by_the_bot(monkeypatch):
     a.monitor()
     assert "999" not in a.known                          # nu o ating si nu o includ in cos
     a.close_all = None
-    fake_scan(monkeypatch, {("rsi_rev20",): 1})
+    fake_scan(monkeypatch, {("rsi_rev25", "pullback45", "donchian24_trend"): 1})
     a.scan()
     sid = next(iter(a.pending))
     press(a, f"open:{sid}")
@@ -562,7 +580,7 @@ def test_second_position_uses_remaining_money_and_third_is_refused_under_150():
 def test_below_minimum_signal_message_explains_the_50_rule(monkeypatch):
     a, tg, br = make_real(30.0)
     a.unlocked = True
-    fake_scan(monkeypatch, {("london_breakout", "rsi_rev25"): 1})
+    fake_scan(monkeypatch, {("london_breakout", "rsi_rev30", "pullback45", "donchian24_trend"): 1})
     a.scan()
     assert any("eToro cere minim $50.00" in x for x in tg.texts) and not a.pending
 
@@ -843,7 +861,7 @@ def test_status_gives_advice_per_position():
     a.status()
     text = tg.texts[-1]
     assert "Sfat:" in text and "ȚINE-O" in text or "ÎNCHIDE-O" in text
-    assert "până la țintă" in text and "deschisă de 3 h" in text and "nu garantează" in text
+    assert "până la țintă" in text and "deschisă de 3 h" in text
 
 
 def test_advice_tick_warns_once_per_hour_with_close_button(monkeypatch):
@@ -883,7 +901,7 @@ def test_signal_comes_with_a_chart_and_context_line(monkeypatch):
     tg, br = PhotoTG(), FakeBroker()
     a = A.Assistant(CFG, tg, br, fetch=lambda *x, **k: None, now_fn=lambda: T0, sleep=lambda s: None)
     df = _synthetic_df()
-    monkeypatch.setattr(signals, "scan", lambda d, names, now=None: {"side": 1 if names == ["rsi_rev20"] else 0, "why": "test", "rsi": 18.0,
+    monkeypatch.setattr(signals, "scan", lambda d, names, now=None, *wa: {"side": 1 if names[0] == "london_breakout" else 0, "why": "test", "rsi": 18.0,
         "price": 1.1, "bar": "b1", "age_min": 5.0, "atr_pct": 0.0008, "trend": "jos", "trend4h": "jos", "support": 1.095, "resistance": 1.105, "_df": df})
     a.scan()
     assert tg.photos and tg.photos[0][0] == b"\x89PNG\r\n\x1a\n"

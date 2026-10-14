@@ -19,7 +19,9 @@
       "lev_cap": 30,
       "signals": [
         "london_breakout",
-        "rsi_rev25"
+        "rsi_rev30",
+        "pullback45",
+        "donchian24_trend"
       ]
     },
     {
@@ -30,7 +32,9 @@
       "lev_cap": 30,
       "signals": [
         "london_breakout",
-        "rsi_rev25"
+        "rsi_rev30",
+        "pullback45",
+        "donchian24_trend"
       ]
     },
     {
@@ -41,7 +45,9 @@
       "lev_cap": 30,
       "signals": [
         "london_breakout",
-        "rsi_rev25"
+        "rsi_rev30",
+        "pullback45",
+        "donchian24_trend"
       ]
     },
     {
@@ -52,7 +58,9 @@
       "lev_cap": 30,
       "signals": [
         "london_breakout",
-        "rsi_rev25"
+        "rsi_rev30",
+        "pullback45",
+        "donchian24_trend"
       ]
     },
     {
@@ -63,7 +71,9 @@
       "lev_cap": 30,
       "signals": [
         "london_breakout",
-        "rsi_rev25"
+        "rsi_rev30",
+        "pullback45",
+        "donchian24_trend"
       ]
     },
     {
@@ -74,7 +84,9 @@
       "lev_cap": 30,
       "signals": [
         "london_breakout",
-        "rsi_rev25"
+        "rsi_rev30",
+        "pullback45",
+        "donchian24_trend"
       ]
     },
     {
@@ -85,7 +97,9 @@
       "lev_cap": 30,
       "signals": [
         "london_breakout",
-        "rsi_rev25"
+        "rsi_rev30",
+        "pullback45",
+        "donchian24_trend"
       ]
     },
     {
@@ -95,7 +109,9 @@
       "cost": 0.06,
       "lev_cap": 10,
       "signals": [
-        "rsi_rev20"
+        "rsi_rev25",
+        "pullback45",
+        "donchian24_trend"
       ]
     },
     {
@@ -105,7 +121,9 @@
       "cost": 0.04,
       "lev_cap": 20,
       "signals": [
-        "pullback40",
+        "london_breakout",
+        "rsi_rev30",
+        "pullback45",
         "donchian24_trend"
       ],
       "hours_utc": [
@@ -120,7 +138,7 @@
       "cost": 0.05,
       "lev_cap": 20,
       "signals": [
-        "pullback40",
+        "pullback45",
         "donchian24_trend"
       ],
       "hours_utc": [
@@ -135,7 +153,7 @@
       "cost": 0.05,
       "lev_cap": 20,
       "signals": [
-        "pullback40",
+        "pullback45",
         "donchian24_trend"
       ],
       "hours_utc": [
@@ -150,7 +168,7 @@
       "cost": 0.05,
       "lev_cap": 20,
       "signals": [
-        "pullback40",
+        "pullback45",
         "donchian24_trend"
       ],
       "hours_utc": [
@@ -165,7 +183,7 @@
       "cost": 0.05,
       "lev_cap": 20,
       "signals": [
-        "pullback40",
+        "pullback45",
         "donchian24_trend"
       ]
     }
@@ -185,5 +203,11 @@
   "max_bar_age_min": 100,
   "min_margin_usd": 50,
   "small_account_usd": 150,
-  "max_positions_small": 2
+  "max_positions_small": 2,
+  "scan_slot_min": 5,
+  "wave_atr": 1.6,
+  "wave_bars": 3,
+  "radar_every_h": 4,
+  "update_every_min": 60,
+  "update_delta_usd": 1.0
 }

@@ -95,7 +95,7 @@ def status(rows: list[dict], total: float, free: float, budget: float, realized:
     icon = "📈" if total >= 0 else "📉"
     return ("📊 Pozițiile deschise acum:\n" + "\n".join(lines) + f"\n\n{icon} Total acum: {signed(total)}\n"
             f"👛 Buget liber: {usd(free)} din {usd(budget)}\n📒 Închise: {n_closed}, rezultat estimat {signed(realized)}{tail}\n"
-            f"ℹ️ Sfaturile vin din reguli simple (trend orar, RSI, timp, cât a mers spre țintă/plasă), nu garantează nimic; decizia e a ta.")
+            f"ℹ️ Sfaturile vin din reguli simple (trend orar, RSI, timp, cât a mers spre țintă/plasă).")
 
 
 VERDICT = {"TINE": "✋ ȚINE-O", "INCHIDE": "🔒 ÎNCHIDE-O", "ATENTIE": "⚠️ ATENȚIE"}
@@ -231,6 +231,19 @@ def scan_report(rows: list[dict], took: float | None = None) -> str:
     return (f"🔎 Am scanat acum {len(scanned)} instrumente{tail} (ultima oră încheiată: {bar}).\n" + "\n".join(lines) +
             f"\n\nNiciun semnal nou. Cumpăr/vând doar când văd semnal clar (revenire după retragere în trend, spargere de maxim/minim, RSI extrem, spargerea intervalului de noapte pe forex).{close}"
             f"{stamp}\n\n👉 Recomandare acum: HOLD ⏸️ — nu cumpăra și nu vinde nimic, așteptăm.")
+
+
+def radar(rows: list[dict], hhmm: str) -> str:
+    """Raport rar (silentios): doar ce s-a miscat cel mai mult; nu repet lista completa."""
+    sc = [r for r in rows if not r.get("skip") and not r.get("note")]
+    top = sorted(sc, key=lambda r: -abs(r.get("move_atr") or 0))[:3]
+    arrow = {"sus": "↗️", "jos": "↘️", "lateral": "↔️"}
+    lines = [f"• {pair(r['name']).split(' ')[0]} {arrow.get(r.get('trend'), '')} {'+' if (r.get('move_atr') or 0) >= 0 else '−'}{abs(r.get('move_atr') or 0):.1f}× "
+             f"(RSI {r['rsi']:.0f})" for r in top]
+    quiet = max((abs(r.get("move_atr") or 0) for r in sc), default=0) < 0.8
+    head = "piața e liniștită" if quiet else "ce s-a mișcat cel mai mult în ultimele 3 ore (în multipli de volatilitate normală)"
+    return (f"📡 Radar {hhmm} UTC – {head}:\n" + "\n".join(lines) +
+            "\n\nSupraveghez la fiecare 5 minute; când apare un val mare sau un semnal clar, te anunț imediat.")
 
 
 def heartbeat(hhmm: str, scans: int, last_scan: str, open_n: int, market_open: bool) -> str:
