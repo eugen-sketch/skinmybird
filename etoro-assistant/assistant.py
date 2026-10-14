@@ -286,7 +286,9 @@ class Assistant:
         d = self.history.get(today, {"pnl": 0.0, "n": 0})
         unreal = sum(p.get("last_pnl", 0.0) for p in self.known.values())
         days = [(k, v) for k, v in sorted(self.history.items()) if k != today][-5:]
-        self.tg.send(msg.daily_report(today, d["pnl"], d["n"], unreal, len(self.known), days, self.total_pnl, self.since, self.n_total, final))
+        open_rows = [{"name": p["name"], "side": p["side"], "pnl": p.get("last_pnl", 0.0), "tp_usd": p.get("tp_usd", self.cfg["tp_usd"]),
+                      "sl_usd": p.get("sl_usd", self.cfg["sl_usd"])} for p in self.known.values()]
+        self.tg.send(msg.daily_report(today, d["pnl"], d["n"], unreal, open_rows, days, self.total_pnl, self.since, self.n_total, final))
         if final:
             self.report_day = today
             self.save_state()
@@ -734,7 +736,7 @@ class Assistant:
     def status(self) -> None:
         self.monitor()
         self.refresh_real()
-        rows = [{"name": p["name"], "side": p["side"], "pnl": p["last_pnl"], "advice": self.advice_for(p)} for p in self.known.values()]
+        rows = [{"name": p["name"], "side": p["side"], "pnl": p["last_pnl"], "tp_usd": p.get("tp_usd"), "advice": self.advice_for(p)} for p in self.known.values()]
         total = sum(r["pnl"] for r in rows)
         buttons = [[(f"🔒 Închide {msg.pair(r['name']).split(' ')[0]}", f"close:{p['id']}")] for r, p in zip(rows, self.known.values())]
         if len(rows) >= 2:
@@ -965,7 +967,7 @@ class Assistant:
                     total = sum(p["last_pnl"] for p in self.known.values())
                     if now - last_sent["t"] >= c.get("update_every_min", 60) * 60 or abs(total - last_sent["total"]) >= c.get("update_delta_usd", 1.0):
                         last_sent.update(t=now, total=total)
-                        self.tg.send(msg.update([{"name": p["name"], "pnl": p["last_pnl"]} for p in self.known.values()], total), silent=True)
+                        self.tg.send(msg.update([{"name": p["name"], "pnl": p["last_pnl"], "tp_usd": p.get("tp_usd")} for p in self.known.values()], total), silent=True)
                     self.advice_tick()
                 if now - t_hb >= 6 * 3600 and not self.market_open(self.now_fn()):
                     t_hb = now

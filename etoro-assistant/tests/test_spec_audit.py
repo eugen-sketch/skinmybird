@@ -146,3 +146,21 @@ def test_profit_today_vs_total_are_clearly_separated_everywhere():
     assert "PROFIT AZI (09.10)" in rep and "PROFIT TOTAL de la început (12.10)" in rep
     assert "Profit azi: +$1.50" in rep and "Profit total: +$8.50" in rep and "Poziții închise azi: 1" in rep and "Poziții închise în total: 4" in rep
     assert "Zilele dinainte" in rep and "12.10" in rep
+
+
+def test_daily_report_shows_target_in_dollars_for_open_positions():
+    a, tg, br = make()
+    a.known["p1"] = {"id": "p1", "name": "EURUSD", "side": 1, "last_pnl": 0.80, "tp_usd": 2.25, "sl_usd": 3.90, "amount": 50, "leverage": 30}
+    a.daily_report(final=False)
+    rep = tg.texts[-1]
+    assert "Poziții deschise acum: 1" in rep and "+$0.80 nerealizat" in rep
+    assert "EUR/USD (cumpărat): acum +$0.80 · ținta e +$2.25 (mai are $1.45 până la țintă) · plasa −$3.90" in rep
+
+
+def test_target_in_dollars_in_update_and_status_too():
+    a, tg, br = make()
+    a.known["p1"] = {"id": "p1", "name": "EURUSD", "side": 1, "last_pnl": 0.80, "tp_usd": 2.25, "sl_usd": 3.90, "amount": 50,
+                     "leverage": 30, "open_rate": 1.1, "tp": 1.1017, "sl": 1.097, "opened_at": T0}
+    assert "EUR/USD +$0.80 (ținta +$2.25)" in M.update([{"name": "EURUSD", "pnl": 0.8, "tp_usd": 2.25}], 0.8)
+    a.status()
+    assert "ținta e +$2.25" in tg.texts[-1]
