@@ -12,6 +12,9 @@ on:
       mode:
         description: "demo (implicit) sau real (bani adevărați, doar la cererea ta)"
         default: "demo"
+      aggressive:
+        description: "true = AGGRESSIVE_MODE (mai multe semnale, expunere mai mare); implicit false. Pe real se aplică doar dacă variabila AGGRESSIVE_REAL_OK=1"
+        default: "false"
 
 permissions:
   contents: read
@@ -51,6 +54,8 @@ jobs:
           ETORO_REAL_API_KEY: ${{ secrets.ETORO_REAL_API_KEY }}
           ETORO_REAL_USER_KEY: ${{ secrets.ETORO_REAL_USER_KEY }}
           TRADING_MODE: ${{ inputs.mode }}
+          AGGRESSIVE_MODE: ${{ inputs.aggressive }}
+          AGGRESSIVE_REAL_OK: ${{ vars.AGGRESSIVE_REAL_OK }}
           QUIET_LOGS: "1"
           SESSION_HOURS: ${{ inputs.hours }}
           CONTINUED: ${{ inputs.continued }}
@@ -70,5 +75,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ -f handover.txt ]; then
-            gh workflow run assistant.yml --ref master -f hours="$(cat handover.txt)" -f continued=1 -f mode="${{ inputs.mode }}"
+            gh workflow run assistant.yml --ref master -f hours="$(cat handover.txt)" -f continued=1 -f mode="${{ inputs.mode }}" -f aggressive="${{ inputs.aggressive }}"
           fi

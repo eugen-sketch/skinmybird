@@ -48,6 +48,9 @@ def digits_for(name: str, px: float) -> int:
 class Assistant:
     def __init__(self, cfg: dict, tg, broker, fetch=ta.fetch_ohlc, now_fn=None, sleep=time.sleep, real: bool = False):
         self.cfg, self.tg, self.broker, self.fetch = cfg, tg, broker, fetch
+        self.aggr = bool(cfg.get("_aggressive"))  # AGGRESSIVE_MODE activ (vezi modes.py)
+        self.wave_n: dict[tuple, int] = {}        # cate propuneri a primit deja fiecare val (instrument, cheie val)
+        self.last_prop: dict[str, datetime] = {}  # cand am propus ultima oara pe fiecare instrument (pauza intre propuneri)
         self.real = real                          # cont REAL (bani adevarati): decizia utilizatorului, TRADING_MODE=real
         self.unlocked = not real                  # pe real, nimic nu se deschide pana nu confirmi din Telegram
         self.miss: dict[str, int] = {}            # de cate ori la rand o pozitie urmarita lipseste din portofoliu
@@ -124,7 +127,7 @@ class Assistant:
         c = self.cfg
         return c["max_positions"] if self.equity() >= c["small_account_usd"] else c["max_positions_small"]
 
-    def sizing(self, inst: dict) -> tuple[float, int, float]:
+    def sizing(self, inst: dict, boost: bool = False) -> tuple[float, int, float]:
         """(marja $, levier, expunere $). Impart bugetul la nr. de pozitii posibile (minim 50$ pe pozitie, expunere minima 1.000$);
         daca felia nu mai incape din banii liberi, folosesc tot ce e liber, cat timp ramane peste minimele eToro."""
         c = self.cfg
@@ -132,6 +135,8 @@ class Assistant:
         eq, mm = self.equity(), c["min_margin_usd"]
         n = max(1, min(self.max_pos(), int(eq // mm)))
         margin = max(math.floor(eq / n * 100) / 100, mm)
+        if boost and c.get("boost_alloc"):                                       # AGGRESSIVE: val + RSI extrem => pana la 40% din cont
+            margin = max(margin, math.floor(eq * c["boost_alloc"] * 100) / 100)
         if margin * lev < c["min_notional"] * 1.005:
             margin = math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100       # minimul eToro pentru expunere
         free = self.free_margin()
@@ -203,7 +208,7 @@ class Assistant:
                 continue
             try:
                 s = signals.scan(self.fetch(inst["yahoo"], "1h", "90d"), inst["signals"], pd.Timestamp(now),
-                                 self.cfg.get("wave_atr", 1.6), self.cfg.get("wave_bars", 3))
+                                 self.cfg.get("wave_atr", 1.6), self.cfg.get("wave_bars", 3), self.cfg.get("wave_opts"))
             except Exception as e:  # noqa: BLE001
                 self.report_error(f"nu pot citi datele pentru {msg.pair(name)} ({type(e).__name__})")
                 continue
@@ -218,22 +223,37 @@ class Assistant:
                            "side": s["side"],
                            "rsi_rule": any(n.startswith("rsi_rev") for n in inst["signals"])})
             key = s.get("sig_key", s["bar"])
-            if s["side"] == 0 or self.seen_bar.get(name) == key:
+            is_wave = str(key).startswith("wave")
+            if s["side"] == 0:
+                continue
+            if is_wave:                                  # un val poate primi cel mult N propuneri (1 normal, 2 in modul agresiv)
+                if self.wave_n.get((name, key), 0) >= self.cfg.get("wave_max_proposals", 1):
+                    continue
+            elif self.seen_bar.get(name) == key:
                 continue
             if not self.unlocked:                        # cont real neconfirmat: doar urmaresc, nu propun si nu deschid nimic
                 continue
+            cool = self.cfg.get("signal_cooldown_min", 0)
+            last = self.last_prop.get(name)
+            if cool and last and (now - last).total_seconds() < cool * 60:
+                continue                                 # pauza intre propuneri pe acelasi instrument (modul agresiv)
             self.seen_bar[name] = key
+            if is_wave:
+                self.wave_n[(name, key)] = self.wave_n.get((name, key), 0) + 1
             self.save_state()
             if len(self.known) + len(self.pending) >= self.max_pos():
-                overflow.append(name)
+                overflow.append((name, key, is_wave))
                 continue
             if self.propose(name, s):
+                self.last_prop[name] = now
                 found += 1
         if overflow:
-            self.tg.send(f"ℹ️ Mai sunt semnale pe {', '.join(msg.pair(n).split(' ')[0] for n in overflow)}, dar am deja "
+            self.tg.send(f"ℹ️ Mai sunt semnale pe {', '.join(msg.pair(n).split(' ')[0] for n, _, _ in overflow)}, dar am deja "
                          f"{self.max_pos()} poziții/semnale în așteptare. Dacă te interesează, spune-mi /scan după ce se eliberează un loc.")
-            for n in overflow:
+            for n, k, w in overflow:
                 self.seen_bar.pop(n, None)               # le re-evaluam la urmatoarea scanare
+                if w:
+                    self.wave_n[(n, k)] = max(0, self.wave_n.get((n, k), 1) - 1)
         every = int(self.cfg.get("radar_every_h", 4))
         slot_key = f"{now:%Y%m%d}-{now.hour // every}"
         radar = slot_key != self.report_hour and not found
@@ -330,7 +350,8 @@ class Assistant:
         except Exception:  # noqa: BLE001
             px = s["price"]
         side = s["side"]
-        amount, lev, notional = self.sizing(inst)
+        boost = self.is_boost(name, s)
+        amount, lev, notional = self.sizing(inst, boost)
         atr_pct = s.get("atr_pct")
         sl_px, tp_px, tp_usd, sl_usd = self.levels(side, px, notional, atr_pct)
         d = digits_for(name, px)
@@ -340,6 +361,9 @@ class Assistant:
                   if free < self.cfg["min_margin_usd"] else msg.no_free_margin(amount, free))
         ctx = self.context_line(s)
         text = msg.signal(name, side, s["why"] + ctx, px, d, amount, lev, notional, tp_px, tp_usd, sl_px, sl_usd, free, can, reason)
+        tag = self.aggr_tag(name, s, boost)
+        if tag:
+            text = tag + "\n" + text
         if not can:
             self.tg.send(text)
             return False
@@ -351,21 +375,44 @@ class Assistant:
             self.tg.send(msg.autotrade_limit(self.cfg["autotrade_daily_loss_usd"] * self.scale()))
         if self.autotrade:
             self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": None, "amount": amount,
-                                 "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct}
+                                 "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost}
             self.send_chart(name, s, side, px, tp_px, sl_px, f"{msg.pair(name)}: autotrading, intrare, țintă și plasă")
-            self.tg.send(msg.auto_signal(name, side, s["why"], px, d))
+            self.tg.send((tag + " " if tag else "") + msg.auto_signal(name, side, s["why"], px, d))
             self.open_pending(sid)
             return True
         self.send_chart(name, s, side, px, tp_px, sl_px, f"{msg.pair(name)}: așa arată piața acum și unde ar sta ținta și plasa")
         mid = self.tg.send(text, [[("✅ OK, deschide", f"open:{sid}"), ("❌ NU", f"skip:{sid}")]])
         self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": mid, "amount": amount,
-                             "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct}
+                             "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost}
         ok = [k for k, v in self.pending.items()]
         if len(ok) >= 2:
             ids = ",".join(str(k) for k in ok)
             self.tg.send(f"📦 Ai {len(ok)} semnale în așteptare. Le deschid pe toate dintr-o dată?",
                          [[(f"✅ OK la toate ({len(ok)})", f"openall:{ids}"), ("❌ NU la toate", f"skipall:{ids}")]])
         return True
+
+    def is_boost(self, name: str, s: dict) -> bool:
+        """AGGRESSIVE: val (surfer) SI RSI extrem in aceeasi directie => alocare mai mare (pana la 40% din cont, cat incape din banii liberi)."""
+        if not (self.aggr and str(s.get("sig_key", "")).startswith("wave")) or s.get("rsi_live") is None:
+            return False
+        thr = next((int(n[7:]) for n in self.inst[name]["signals"] if n.startswith("rsi_rev")), None)
+        if thr is None:
+            return False
+        r = s["rsi_live"]
+        return (s["side"] == 1 and r >= 100 - thr) or (s["side"] == -1 and r <= thr)
+
+    def aggr_tag(self, name: str, s: dict, boost: bool) -> str:
+        """Prefix pentru mesajele din modul agresiv, ex. «[AGGRESSIVE] RSI 64 + SURFER 1.3×»."""
+        if not self.aggr:
+            return ""
+        parts = []
+        thr = next((int(n[7:]) for n in self.inst[name]["signals"] if n.startswith("rsi_rev")), None)
+        r = s.get("rsi_live", s.get("rsi"))
+        if thr is not None and r is not None and (r <= thr or r >= 100 - thr):
+            parts.append(f"RSI {r:.0f}")
+        if str(s.get("sig_key", "")).startswith("wave"):
+            parts.append(f"SURFER {abs(s.get('move_atr', 0)):.1f}×")
+        return "[AGGRESSIVE] " + (" + ".join(parts) if parts else "reguli clasice") + (" · alocare mărită" if boost else "")
 
     def day_pnl_today(self) -> float:
         return self.day_pnl if self.day == self.now_fn().strftime("%Y-%m-%d") else 0.0
@@ -389,7 +436,7 @@ class Assistant:
         if any(k["name"] == name for k in self.known.values()):
             self.tg.send(f"ℹ️ Ai deja o poziție deschisă pe {msg.pair(name)}, nu deschid încă una.")
             return
-        amount, lev, notional = self.sizing(inst)
+        amount, lev, notional = self.sizing(inst, bool(p.get("boost")))
         free = self.free_margin()
         if amount > free + 0.001 or amount < self.cfg["min_margin_usd"] - 0.001:
             self.tg.send(f"🚫 Nu pot deschide {msg.pair(name)}: " + (
@@ -842,6 +889,9 @@ class Assistant:
         self.report_day = st.get("report_day", "")
         self.day, self.day_pnl = st.get("day", ""), st.get("day_pnl", 0.0)
         self.seen_bar = {k: v for k, v in st.get("seen", {}).items() if k in self.inst}      # nu re-propun aceeasi bara dupa o repornire
+        for k, v in self.seen_bar.items():                                                    # nici acelasi val dupa o repornire
+            if str(v).startswith("wave"):
+                self.wave_n[(k, v)] = self.cfg.get("wave_max_proposals", 1)
         cont = os.getenv("CONTINUED") == "1"
         self.autotrade = bool(st.get("autotrade")) and cont                               # sesiune noua pornita de tine: autotrading oprit
         self.bot_pids = set(st.get("bot_pids", [])) if self.real else set()
@@ -862,6 +912,10 @@ class Assistant:
             self.tg.send(msg.continued(hours), menu=msg.MENU)
         else:
             self.tg.send(msg.started(hours, self.equity(), c["scan_every_min"], c["basket_target_usd"], real=self.real), menu=msg.MENU)
+        if self.aggr:
+            self.tg.send("⚡ AGGRESSIVE_MODE activ: mai multe semnale, expunere mai mare. Siguranțele rămân (SL+TP pe fiecare ordin, oprire la pierdere zilnică).")
+        if c.get("_mode_note"):
+            self.tg.send(c["_mode_note"])
         if self.real and not self.unlocked:
             bal = "necunoscut (nu pot citi soldul!)" if self.real_balance is None else msg.usd(self.real_balance)
             mm = c["min_margin_usd"]
@@ -931,9 +985,10 @@ def main() -> int:
     from broker import EToroBroker
     from etoro import EToroDemo
     from telegram_bot import Telegram
-    cfg = json.loads((HERE / "config.json").read_text())
+    import modes
     hours = float(os.getenv("SESSION_HOURS", "5"))
     real = os.getenv("TRADING_MODE") == "real"
+    cfg = modes.apply(json.loads((HERE / "config.json").read_text()), real)
     tg, api = Telegram(), EToroDemo(real=real)
     ids = {}
     for inst in cfg["instruments"]:
