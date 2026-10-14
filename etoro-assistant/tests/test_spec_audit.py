@@ -143,5 +143,6 @@ def test_profit_today_vs_total_are_clearly_separated_everywhere():
     assert "PROFIT AZI" in tg.texts[-1] and "PROFIT TOTAL" in tg.texts[-1]
     a.daily_report(final=False)
     rep = tg.texts[-1]
-    assert "PROFIT AZI" in rep and "PROFIT TOTAL" in rep and "+$8.50" in rep and "+$1.50" in rep
+    assert "PROFIT AZI (09.10)" in rep and "PROFIT TOTAL de la început (12.10)" in rep
+    assert "Profit azi: +$1.50" in rep and "Profit total: +$8.50" in rep and "Poziții închise azi: 1" in rep and "Poziții închise în total: 4" in rep
     assert "Zilele dinainte" in rep and "12.10" in rep
