@@ -377,7 +377,7 @@ def test_state_roundtrip(tmp_path):
 
 def test_stale_bar_never_becomes_a_signal(monkeypatch):
     a, tg, br = make()
-    monkeypatch.setattr(signals, "scan", lambda df, names, now=None: {"side": 1, "why": "x", "rsi": 20.0, "price": 1.1, "bar": "2026-10-08T15:00:00+00:00",
+    monkeypatch.setattr(signals, "scan", lambda df, names, now=None, *wa: {"side": 1, "why": "x", "rsi": 20.0, "price": 1.1, "bar": "2026-10-08T15:00:00+00:00",
                                                                      "age_min": 900.0, "atr_pct": 0.001, "trend": "sus"})
     a.scan()
     assert not a.pending and not br.pos                    # ultima bara are 15 ore: nu se propune nimic
@@ -589,7 +589,7 @@ def test_manual_sell_asks_with_buttons_and_opens(monkeypatch):
     a, tg, br = make_real(60.0)
     br.prices["NZDUSD"] = 0.56
     a.unlocked = True
-    monkeypatch.setattr(signals, "scan", lambda df, names, now=None: {"side": 0, "why": "", "rsi": 50.0, "price": 0.56, "bar": "b",
+    monkeypatch.setattr(signals, "scan", lambda df, names, now=None, *wa: {"side": 0, "why": "", "rsi": 50.0, "price": 0.56, "bar": "b",
                                                                      "age_min": 5.0, "atr_pct": 0.0009})
     a.handle({"kind": "text", "text": "vinde nzdusd"})
     text, buttons, _ = tg.sent[-1]
@@ -639,7 +639,7 @@ def test_unconfirmed_order_gets_adopted_when_it_appears(monkeypatch):
     a, tg, br = make_real(80.0)
     a.unlocked = True
     br.prices["NZDUSD"] = 0.56
-    monkeypatch.setattr(signals, "scan", lambda df, names, now=None: {"side": 0, "why": "", "rsi": 50.0, "price": 0.56, "bar": "b",
+    monkeypatch.setattr(signals, "scan", lambda df, names, now=None, *wa: {"side": 0, "why": "", "rsi": 50.0, "price": 0.56, "bar": "b",
                                                                      "age_min": 5.0, "atr_pct": 0.0009})
     orig = br.open
 
@@ -869,7 +869,7 @@ def test_advice_tick_warns_once_per_hour_with_close_button(monkeypatch):
     a.unlocked = True
     a.known["1"] = {"id": "1", "name": "EURUSD", "side": 1, "open_rate": 1.1000, "units": 1000.0, "amount": 50.0, "leverage": 30,
                     "sl": 1.0900, "tp": 1.1050, "last_pnl": 2.0, "px_now": 1.1020, "opened_at": T0 - timedelta(hours=4)}
-    monkeypatch.setattr(signals, "scan", lambda df, names, now=None: {"trend": "jos", "rsi_live": 55.0})
+    monkeypatch.setattr(signals, "scan", lambda df, names, now=None, *wa: {"trend": "jos", "rsi_live": 55.0})
     a.advice_tick()
     msgs = [x for x in tg.sent if "💡" in x[0]]
     assert len(msgs) == 1 and msgs[0][1][0][0][1] == "close:1" and "ÎNCHIDE-O" in msgs[0][0]
