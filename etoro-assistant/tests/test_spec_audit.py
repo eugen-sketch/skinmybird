@@ -164,3 +164,33 @@ def test_target_in_dollars_in_update_and_status_too():
     assert "EUR/USD +$0.80 (ținta +$2.25)" in M.update([{"name": "EURUSD", "pnl": 0.8, "tp_usd": 2.25}], 0.8)
     a.status()
     assert "ținta e +$2.25" in tg.texts[-1]
+
+
+def test_get_is_retried_on_rate_limit_but_orders_are_never_retried(monkeypatch):
+    import etoro
+    calls = []
+
+    class R:
+        def __init__(self, code, body="{}"):
+            self.status_code, self.text, self.headers = code, body, {}
+
+        def json(self):
+            return {"clientPortfolio": {"credit": 12.5, "positions": []}}
+
+    seq = [R(429, "slow down"), R(503, "x"), R(200)]
+    monkeypatch.setattr(etoro.time, "sleep", lambda s: None)
+
+    def fake(method, url, **k):
+        calls.append(method)
+        return seq.pop(0)
+
+    monkeypatch.setattr(etoro.requests, "request", fake)
+    api = etoro.EToroDemo(api_key="k", user_key="u", real=True)
+    assert api.credit(fresh=True) == 12.5 and calls == ["GET", "GET", "GET"]          # 429 si 503 trecatoare, a treia reuseste
+    calls.clear()
+    seq[:] = [R(429, "slow down")]
+    try:
+        api._req("POST", "/api/v1/trading/execution/market-open-orders/by-amount", body={}, trading=True)
+        assert False
+    except etoro.EToroHTTPError as e:
+        assert e.status == 429 and calls == ["POST"]                                   # ordinul NU se reia

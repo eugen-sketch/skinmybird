@@ -65,6 +65,20 @@ class EToroDemo:
                 headers["x-request-id"] = str(uuid.uuid4())
         if self.verbose:
             print(f"[eToro] {method} {path} {params or ''} {json.dumps(body) if body else ''} -> {r.status_code} {r.text[:2500] if 'portfolio' in path else r.text[:600]}")
+        if method == "GET" and r.status_code in (429, 500, 502, 503, 504):          # citirile se reiau (limita de apeluri / eroare trecatoare)
+            for wait in (1.5, 4.0):
+                try:
+                    wait = min(float(r.headers.get("Retry-After", wait)), 10.0)
+                except (TypeError, ValueError):
+                    pass
+                time.sleep(wait)
+                headers["x-request-id"] = str(uuid.uuid4())
+                try:
+                    r = requests.request(method, BASE + path, headers=headers, params=params, timeout=60)
+                except requests.RequestException as ex:
+                    raise EToroNetworkError(f"{method} {path}: {type(ex).__name__}") from ex
+                if r.status_code not in (429, 500, 502, 503, 504):
+                    break
         if r.status_code >= 400:
             raise EToroHTTPError(f"{method} {path} -> {r.status_code}: {r.text[:200]}", r.status_code)
         try:

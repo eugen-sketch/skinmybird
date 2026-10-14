@@ -101,7 +101,7 @@ class Assistant:
                 self.real_balance = c
                 self.last_ok = time.time()
         except Exception as e:  # noqa: BLE001
-            self.report_error(f"nu pot citi soldul real ({type(e).__name__})")
+            self.report_error(f"nu pot citi soldul real ({type(e).__name__}{' ' + str(e.status) if getattr(e, 'status', None) else ''})")
 
     def fx(self, name: str) -> float:
         """Cursul pentru a trece in $ valoarea unui instrument cotat in EUR (altfel 1)."""
