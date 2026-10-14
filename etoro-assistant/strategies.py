@@ -20,7 +20,7 @@ def all_signals(df: pd.DataFrame) -> dict[str, pd.Series]:
     adx = ta.adx(df)
     S: dict[str, pd.Series] = {}
 
-    for ext in (20, 25, 30):
+    for ext in (20, 25, 30, 36):
         S[f"rsi_rev{ext}"] = _s(np.where(r14 < ext, 1, np.where(r14 > 100 - ext, -1, 0)), idx)
     for ext in (5, 10):
         S[f"rsi2_trend{ext}"] = _s(np.where((r2 < ext) & (c > e200), 1, np.where((r2 > 100 - ext) & (c < e200), -1, 0)), idx)
@@ -28,7 +28,7 @@ def all_signals(df: pd.DataFrame) -> dict[str, pd.Series]:
     for n in (24, 48, 96):
         hh, ll = h.rolling(n).max().shift(), l.rolling(n).min().shift()
         S[f"donchian{n}_trend"] = _s(np.where((c > hh) & up, 1, np.where((c < ll) & dn, -1, 0)), idx)
-    for lo in (35, 40, 45):
+    for lo in (35, 40, 45, 50):
         S[f"pullback{lo}"] = _s(np.where(up & (r14.shift() < lo) & (r14 >= lo), 1,
                                          np.where(dn & (r14.shift() > 100 - lo) & (r14 <= 100 - lo), -1, 0)), idx)
     mid, sd = c.rolling(20).mean(), c.rolling(20).std()
