@@ -13,10 +13,14 @@ try:
     out = []
     if oid:
         try:
-            out.append("Ordin " + oid + ": " + json.dumps(api.order_status(int(oid)), ensure_ascii=False)[:900])
+            st = api.order_status(int(oid))
+            out.append("Ordin " + oid + ": " + json.dumps(st, ensure_ascii=False)[:900])
+            if isinstance(st, dict):                                  # starea si eroarea nu sunt date de cont: le afisam si in log
+                print("statusID:", st.get("statusID"), "| eroare:", st.get("errorMessage"), "| chei:", sorted(st.keys()))
         except EToroError as e:
             out.append(f"Ordin {oid}: nu pot citi starea ({str(e)[:200]})")
     pos = api.positions(fresh=True)
+    print("nr pozitii:", len(pos))
     out.append(f"Poziții acum: {len(pos)}")
     for x in pos:
         out.append("• " + ", ".join(f"{k}={x.get(k)}" for k in ("positionID", "instrumentID", "isBuy", "amount", "leverage", "openDateTime") if k in x))
