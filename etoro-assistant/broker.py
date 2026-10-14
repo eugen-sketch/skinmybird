@@ -72,6 +72,16 @@ class EToroBroker:
                         "time": p.get("openDateTime", "")})
         return out
 
+    def closed_trade(self, position_id: str, min_date: str) -> dict | None:
+        """Pozitia inchisa din istoricul eToro: {net, close_rate, close_time, open_rate, sl, tp, side, fees} sau None daca nu e (inca) acolo."""
+        for x in self.api.trade_history(min_date):
+            if str(x.get("positionId") or x.get("positionID") or "") == str(position_id):
+                return {"net": float(x.get("netProfit") or 0.0), "close_rate": float(x.get("closeRate") or 0.0),
+                        "close_time": x.get("closeTimestamp", ""), "open_rate": float(x.get("openRate") or 0.0),
+                        "sl": float(x.get("stopLossRate") or 0.0), "tp": float(x.get("takeProfitRate") or 0.0),
+                        "side": 1 if x.get("isBuy") else -1, "fees": float(x.get("fees") or 0.0)}
+        return None
+
     @staticmethod
     def _order_id(r) -> str | None:
         """Id-ul ordinului din raspuns (cheia difera intre versiunile API): cautam in raspuns si in sub-obiecte."""

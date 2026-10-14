@@ -149,6 +149,12 @@ class EToroDemo:
             pos = p
         return [x for x in pos if isinstance(x, dict)]
 
+    def trade_history(self, min_date: str, page_size: int = 100) -> list[dict]:
+        """Pozitiile INCHISE de la min_date (YYYY-MM-DD): rezultat real (netProfit), pret de inchidere, plasa/tinta puse. Aceeasi ruta pe real."""
+        d = self._req("GET", "/api/v1/trading/info/trade/history", params={"minDate": min_date, "page": 1, "pageSize": page_size}, trading=True)
+        items = d if isinstance(d, list) else (d.get("items") or d.get("trades") or d.get("history") or []) if isinstance(d, dict) else []
+        return [x for x in items if isinstance(x, dict)]
+
     # ------------------------------------------------------------- ordine
     def open_market(self, instrument_id: int, is_buy: bool, amount: float, leverage: int,
                     stop_loss: float, take_profit: float) -> dict:
