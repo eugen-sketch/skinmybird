@@ -43,10 +43,9 @@ def test_aggressive_values_from_the_patch(monkeypatch):
     assert {i["name"]: i["lev_cap"] for i in c["instruments"]} == {i["name"]: i["lev_cap"] for i in RAW["instruments"]}
 
 
-def test_real_account_ignores_aggressive_without_explicit_ok(monkeypatch):
+def test_aggressive_applies_on_real_account_too(monkeypatch):
     c = agg(monkeypatch, real=True)
-    assert c["_aggressive"] is False and "demo" in c["_mode_note"] and c["wave_atr"] == 1.6
-    assert agg(monkeypatch, real=True, ok=True)["_aggressive"] is True
+    assert c["_aggressive"] is True and c["_mode_note"] == "" and c["wave_atr"] == 1.3
 
 
 def test_strategies_support_new_thresholds():
