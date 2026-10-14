@@ -126,3 +126,22 @@ def test_real_uses_real_order_status_route_and_refuses_demo_paths():
 def test_launcher_defaults_to_real():
     src = (ROOT / "launcher.py").read_text()
     assert re.search(r'"demo" if re\.search\(r"\\bdemo\\b"', src)
+
+
+def test_profit_today_vs_total_are_clearly_separated_everywhere():
+    a, tg, br = make()
+    a.since = "2026-10-12"
+    a.history = {"2026-10-12": {"pnl": 4.0, "n": 2}, "2026-10-13": {"pnl": 3.0, "n": 1}}
+    a.total_pnl, a.n_total = 7.0, 3
+    a.add_realized(+1.5)                                   # azi (09.10 in test): 1 poziție, +1.5 ; total: 4 poziții, +8.5
+    block = a.profit_text()
+    assert "PROFIT AZI (09.10): +$1.50 · 1 poziții închise azi" in block
+    assert "PROFIT TOTAL de la început (12.10): +$8.50 · 4 poziții închise în total" in block
+    closed = M.closed("EURUSD", "TP", 1.5, block, 150.0)
+    assert "PROFIT AZI" in closed and "PROFIT TOTAL" in closed
+    a.status()
+    assert "PROFIT AZI" in tg.texts[-1] and "PROFIT TOTAL" in tg.texts[-1]
+    a.daily_report(final=False)
+    rep = tg.texts[-1]
+    assert "PROFIT AZI" in rep and "PROFIT TOTAL" in rep and "+$8.50" in rep and "+$1.50" in rep
+    assert "Zilele dinainte" in rep and "12.10" in rep

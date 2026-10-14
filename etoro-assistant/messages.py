@@ -94,16 +94,24 @@ def opened(name: str, side: int, px: float, digits: int, amount: float, lev: int
             f"Te țin la curent. Poți închide oricând cu /inchide.")
 
 
-def status(rows: list[dict], total: float, free: float, budget: float, realized: float, n_closed: int, auto: bool = False, warn: str = "") -> str:
+def profit_block(day: str, today: float, today_n: int, total: float, total_n: int, since: str) -> str:
+    """Doua randuri CLARE, mereu la fel peste tot: profitul de AZI si profitul TOTAL de la inceput (doar pozitii inchise)."""
+    def dmy(s: str) -> str:
+        return f"{s[8:10]}.{s[5:7]}" if len(s) >= 10 else "?"
+    return (f"📅 PROFIT AZI ({dmy(day)}): {signed(today)} · {today_n} poziții închise azi\n"
+            f"💼 PROFIT TOTAL de la început ({dmy(since)}): {signed(total)} · {total_n} poziții închise în total")
+
+
+def status(rows: list[dict], total: float, free: float, budget: float, profit: str, auto: bool = False, warn: str = "") -> str:
     tail = ("\n🤖 Autotrading: PORNIT" if auto else "") + (f"\n{warn}" if warn else "")
     if not rows:
         return (f"📭 Nu ai nicio poziție deschisă.\n👛 Buget liber: {usd(free)} din {usd(budget)}\n"
-                f"📒 Închise: {n_closed}, rezultat estimat {signed(realized)}{tail}")
+                f"\n{profit}{tail}")
     lines = [f"{'🟢' if r['pnl'] >= 0 else '🔴'} {pair(r['name'])} ({'cumpărat' if r['side'] == 1 else 'vândut'}): {signed(r['pnl'])}"
              + advice_block(r.get("advice")) for r in rows]
     icon = "📈" if total >= 0 else "📉"
     return ("📊 Pozițiile deschise acum:\n" + "\n".join(lines) + f"\n\n{icon} Total acum: {signed(total)}\n"
-            f"👛 Buget liber: {usd(free)} din {usd(budget)}\n📒 Închise: {n_closed}, rezultat estimat {signed(realized)}{tail}\n"
+            f"👛 Buget liber: {usd(free)} din {usd(budget)}\n\n{profit}{tail}\n"
             f"ℹ️ Sfaturile vin din reguli simple (trend orar, RSI, timp, cât a mers spre țintă/plasă).")
 
 
@@ -137,8 +145,8 @@ def update(rows: list[dict], total: float) -> str:
     return f"⏱️ Update: {parts} · total {signed(total)}"
 
 
-def closed(name: str, kind: str, pnl: float, total_closed: float, equity: float | None = None) -> str:
-    return _closed(name, kind, pnl) + (f"\n💼 Buget de lucru acum: {usd(equity)} (rezultat realizat {signed(total_closed)})" if equity else "")
+def closed(name: str, kind: str, pnl: float, profit: str, equity: float | None = None) -> str:
+    return _closed(name, kind, pnl) + f"\n\n{profit}" + (f"\n👛 Buget de lucru acum: {usd(equity)}" if equity else "")
 
 
 def _closed(name: str, kind: str, pnl: float) -> str:
@@ -244,22 +252,19 @@ def scan_report(rows: list[dict], took: float | None = None) -> str:
 
 def daily_report(day: str, pnl: float, n: int, unreal: float, n_open: int, days: list, total: float, since: str, n_total: int,
                  final: bool = True) -> str:
-    """Raportul zilei: rezultat realizat azi + pozitii deschise acum + ultimele zile + total de la inceput."""
+    """Raportul zilei: profit AZI si profit TOTAL (acelasi bloc ca peste tot), pozitii deschise acum, ultimele zile."""
     def dmy(s: str) -> str:
         return f"{s[8:10]}.{s[5:7]}"
     head = "🌙 Raportul zilei" if final else "📋 Raport până acum"
-    icon = "🟢" if pnl >= 0 else "🔴"
-    lines = [f"{head} ({dmy(day)})", "",
-             f"{icon} Azi, pozițiile închise: {n} · rezultat {signed(pnl)}"]
+    lines = [f"{head} ({dmy(day)})", "", profit_block(day, pnl, n, total, n_total, since), ""]
     if n_open:
-        lines.append(f"⏳ Deschise acum: {n_open} · {signed(unreal)} (încă nerealizat)")
+        lines.append(f"⏳ Deschise acum: {n_open} · {signed(unreal)} (nerealizat, NU intră în profit până nu se închid)")
     else:
         lines.append("📭 Nu rămâne nicio poziție deschisă.")
     if days:
-        lines += ["", "Ultimele zile:"] + [f"• {dmy(k)}: {signed(v['pnl'])} ({v['n']} poziții)" for k, v in days]
-    lines += ["", f"💼 TOTAL de la început ({dmy(since)}): {signed(total)} din {n_total} poziții închise"]
+        lines += ["", "Zilele dinainte:"] + [f"• {dmy(k)}: {signed(v['pnl'])} ({v['n']} poziții)" for k, v in days]
     if final:
-        lines.append("Piața se închide în curând; le păstrez pe cele deschise cu Stop Loss și Take Profit.")
+        lines += ["", "Piața se închide în curând; cele deschise rămân pe eToro cu Stop Loss și Take Profit."]
     return "\n".join(lines)
 
 
