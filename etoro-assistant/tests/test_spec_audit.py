@@ -232,3 +232,42 @@ def test_vanished_position_not_in_history_falls_back_to_estimate_near_stop():
     assert kind == "SL" and pnl == -7.5 and br.calls == 3          # a incercat istoricul de 3 ori
     kind2, _ = a.classify_vanished(_old(last_pnl=-1.0), -1.0)
     assert kind2 == "OTHER"
+
+
+class TradesBroker(FakeBroker):
+    def __init__(self, trades):
+        super().__init__()
+        self.trades = trades
+
+    def closed_trades(self, min_date):
+        return self.trades
+
+
+def test_profit_is_recalculated_from_real_etoro_history():
+    trades = [  # (ora UTC; in Romania +3): 12.10 si 13.10 si azi (09.10 in test = T0)
+        {"id": "1", "net": 4.0, "close_time": "2026-10-12T10:00:00Z"}, {"id": "2", "net": -1.5, "close_time": "2026-10-12T11:00:00Z"},
+        {"id": "3", "net": 3.0, "close_time": "2026-10-13T10:00:00Z"},
+        {"id": "4", "net": 2.5, "close_time": "2026-10-09T05:00:00Z"}, {"id": "5", "net": -7.6, "close_time": "2026-10-09T06:00:00Z"}]
+    tg, br = FakeTG(), TradesBroker(trades)
+    a = A.Assistant(CFG, tg, br, fetch=lambda *x, **k: None, now_fn=lambda: T0, sleep=lambda s: None, real=True)
+    a.since = "2026-10-09"
+    a.total_pnl, a.n_total, a.history = 99.0, 99, {"2026-10-09": {"pnl": 50.0, "n": 9}}     # cifre vechi, estimate gresit
+    assert a.reconcile()
+    assert a.total_pnl == 0.4 and a.n_total == 5                              # 4.0 - 1.5 + 3.0 + 2.5 - 7.6
+    assert a.history["2026-10-09"] == {"pnl": -5.1, "n": 2} and a.history["2026-10-12"] == {"pnl": 2.5, "n": 2}
+    a.daily_report(final=False)
+    rep = tg.texts[-1]
+    assert "Profit azi: -$5.10" in rep and "Profit total: +$0.40" in rep and "Poziții închise în total: 5" in rep
+
+
+def test_reconcile_keeps_old_numbers_when_history_is_empty_or_fails():
+    class Bad(FakeBroker):
+        def closed_trades(self, d):
+            raise RuntimeError("x")
+    tg = FakeTG()
+    a = A.Assistant(CFG, tg, Bad(), fetch=lambda *x, **k: None, now_fn=lambda: T0, sleep=lambda s: None, real=True)
+    a.total_pnl, a.history = 5.0, {"2026-10-09": {"pnl": 5.0, "n": 1}}
+    assert not a.reconcile() and a.total_pnl == 5.0
+    a2 = A.Assistant(CFG, tg, TradesBroker([]), fetch=lambda *x, **k: None, now_fn=lambda: T0, sleep=lambda s: None, real=True)
+    a2.total_pnl, a2.history = 5.0, {"2026-10-09": {"pnl": 5.0, "n": 1}}
+    assert not a2.reconcile() and a2.total_pnl == 5.0                             # istoric gol: nu stergem totalul
