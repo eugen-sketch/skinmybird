@@ -1,6 +1,5 @@
 """AGGRESSIVE_MODE: aceleasi reguli de siguranta, mai multe semnale si expunere mai mare. Implicit OPRIT.
-Se activeaza cu config.json "aggressive_mode": true sau variabila AGGRESSIVE_MODE=1. Pe contul REAL se aplica doar daca
-AGGRESSIVE_REAL_OK=1 (test pe demo cel putin 5 zile inainte de a lua in calcul bani reali); altfel ramane modul normal."""
+Se activeaza cu config.json "aggressive_mode": true sau variabila AGGRESSIVE_MODE=1, pe demo si pe real (decizia utilizatorului)."""
 from __future__ import annotations
 
 import copy
@@ -17,10 +16,6 @@ def apply(cfg: dict, real: bool) -> dict:
     out["_aggressive"], out["_mode_note"] = False, ""
     asked = on(os.getenv("AGGRESSIVE_MODE", "")) or on(cfg.get("aggressive_mode", False))
     if not asked:
-        return out
-    if real and not on(os.getenv("AGGRESSIVE_REAL_OK", "")):
-        out["_mode_note"] = ("⚡ AGGRESSIVE_MODE e cerut, dar contul e REAL: rămân pe modul normal. "
-                             "Modul agresiv se testează întâi pe demo (minim 5 zile).")
         return out
     a = cfg["aggressive"]
     for inst in out["instruments"]:

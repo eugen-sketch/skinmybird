@@ -13,7 +13,7 @@ on:
         description: "demo (implicit) sau real (bani adevărați, doar la cererea ta)"
         default: "demo"
       aggressive:
-        description: "true = AGGRESSIVE_MODE (mai multe semnale, expunere mai mare); implicit false. Pe real se aplică doar dacă variabila AGGRESSIVE_REAL_OK=1"
+        description: "true = AGGRESSIVE_MODE (mai multe semnale, expunere mai mare); implicit false."
         default: "false"
 
 permissions:
@@ -55,7 +55,6 @@ jobs:
           ETORO_REAL_USER_KEY: ${{ secrets.ETORO_REAL_USER_KEY }}
           TRADING_MODE: ${{ inputs.mode }}
           AGGRESSIVE_MODE: ${{ inputs.aggressive }}
-          AGGRESSIVE_REAL_OK: ${{ vars.AGGRESSIVE_REAL_OK }}
           QUIET_LOGS: "1"
           SESSION_HOURS: ${{ inputs.hours }}
           CONTINUED: ${{ inputs.continued }}
