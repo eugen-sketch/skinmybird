@@ -384,9 +384,11 @@ class Assistant:
             self.adopt.append({"name": name, "side": side, "before": set(e.before), "at": e.sent_at or self.now_fn(),
                                "atr_pct": p.get("atr_pct"), "px": px})
             self.save_state()
-            self.tg.send(f"⏳ Ordinul pe {msg.pair(name)}: {e}. NU repet ordinul.\nRăspuns eToro: {str(e.response)[:250]}\n"
-                         f"Cauză frecventă: sold prea mic (eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție). "
-                         f"Verifică în eToro. Dacă poziția apare, o preiau automat în următoarele 15 minute și o urmăresc.")
+            low = free < self.cfg["min_margin_usd"] + 0.01
+            cause = (f"Cauză probabilă: bani liberi sub minimul eToro ({msg.usd(self.cfg['min_margin_usd'])} pe poziție)." if low else
+                     "Banii liberi sunt suficienți; ordinul pare încă în procesare la eToro (sau a fost refuzat acolo).")
+            self.tg.send(f"⏳ Ordinul pe {msg.pair(name)} a fost trimis, dar nu apare încă în portofoliu. NU repet ordinul.\n{cause}\n"
+                         f"Dacă poziția apare, o preiau automat în următoarele 15 minute și o urmăresc.")
             return
         except (OrderRejected, EToroError, Exception) as e:  # noqa: BLE001
             self.tg.send(f"⚠️ Ordinul pe {msg.pair(name)} n-a mers (respins): {str(e)[:250]}\nNu am deschis nimic.")
