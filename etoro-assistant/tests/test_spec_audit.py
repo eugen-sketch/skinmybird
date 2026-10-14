@@ -194,3 +194,41 @@ def test_get_is_retried_on_rate_limit_but_orders_are_never_retried(monkeypatch):
         assert False
     except etoro.EToroHTTPError as e:
         assert e.status == 429 and calls == ["POST"]                                   # ordinul NU se reia
+
+
+class HistBroker(FakeBroker):
+    def __init__(self, trades):
+        super().__init__()
+        self.trades = trades
+        self.calls = 0
+
+    def closed_trade(self, pid, min_date):
+        self.calls += 1
+        return self.trades.get(str(pid))
+
+
+def _old(**k):
+    return {"id": "77", "name": "USDCHF", "side": 1, "tp": 0.8100, "sl": 0.7990, "tp_usd": 2.25, "sl_usd": 7.5, "last_pnl": -7.04,
+            "units": 5000.0, "open_rate": 0.8040, "amount": 50.0, "leverage": 30, **k}
+
+
+def test_vanished_position_uses_real_result_from_etoro_history():
+    tr = {"77": {"net": -7.60, "close_rate": 0.7990, "close_time": "x", "open_rate": 0.8040, "sl": 0.7990, "tp": 0.8100, "side": 1, "fees": 0.1}}
+    tg, br = FakeTG(), HistBroker(tr)
+    a = A.Assistant(CFG, tg, br, fetch=lambda *x, **k: None, now_fn=lambda: T0, sleep=lambda s: None)
+    kind, pnl = a.classify_vanished(_old(), -7.04)                 # pretul a revenit intre timp (-7.04), dar eToro a inchis la plasa
+    assert kind == "SL" and pnl == -7.60                           # rezultatul REAL, nu estimarea
+    tr["77"].update(close_rate=0.8100)
+    assert a.classify_vanished(_old(), 1.0) == ("TP", -7.60)       # (net luat din istoric, oricare ar fi)
+    tr["77"].update(close_rate=0.8060, net=0.9)
+    assert a.classify_vanished(_old(), 1.0) == ("OTHER", 0.9)      # nici tinta, nici plasa: inchis in alt fel
+
+
+def test_vanished_position_not_in_history_falls_back_to_estimate_near_stop():
+    tg, br = FakeTG(), HistBroker({})
+    a = A.Assistant(CFG, tg, br, fetch=lambda *x, **k: None, now_fn=lambda: T0, sleep=lambda s: None)
+    br.prices["USDCHF"] = 0.8030
+    kind, pnl = a.classify_vanished(_old(last_pnl=-7.0), -7.0)     # era la 93% din plasa => cel mai probabil plasa
+    assert kind == "SL" and pnl == -7.5 and br.calls == 3          # a incercat istoricul de 3 ori
+    kind2, _ = a.classify_vanished(_old(last_pnl=-1.0), -1.0)
+    assert kind2 == "OTHER"

@@ -160,7 +160,8 @@ def _closed(name: str, kind: str, pnl: float) -> str:
         return f"🎯 {p}: închisă împreună cu celelalte. Rezultat {signed(pnl)}."
     if kind == "YOU":
         return f"✋ {p}: am închis la cererea ta. Rezultat ≈ {signed(pnl)}."
-    return f"👋 {p}: poziția s-a închis (probabil ai închis-o tu din eToro). Rezultat ≈ {signed(pnl)}."
+    return (f"👋 {p}: poziția s-a închis în afara țintei și a plasei (nu am închis-o eu). Rezultat {signed(pnl)}.\n"
+            f"Dacă nu ai închis-o tu din eToro, spune-mi ca să verific.")
 
 
 def basket(n: int, total: float) -> str:

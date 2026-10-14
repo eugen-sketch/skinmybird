@@ -650,8 +650,16 @@ class Assistant:
                              f"verifică în eToro (ordine în așteptare).")
 
     def classify_vanished(self, old: dict, last_pnl: float) -> tuple[str, float]:
-        """O pozitie a disparut fara sa o fi inchis eu: TP, SL sau a inchis-o altcineva? Decid dupa pretul de iesire de acum fata de
-        nivelurile puse pe eToro. TP/SL se noteaza la valoarea nivelului (estimare); inchiderile manuale la profitul de acum."""
+        """O pozitie a disparut fara sa o fi inchis eu: TP, SL sau altceva? Intai intreb eToro (istoricul pozitiilor inchise: rezultat REAL
+        si pretul la care s-a inchis); doar daca nu o gasesc acolo, estimez dupa pretul de acum si dupa cat se apropiase de plasa/tinta."""
+        real = self.history_of(old)
+        if real:
+            tol = 0.0004 * (real["open_rate"] or 1.0)                              # inchiderea cade pe nivel (cu mici alunecari)
+            if real["tp"] and abs(real["close_rate"] - real["tp"]) <= tol:
+                return "TP", real["net"]
+            if real["sl"] and abs(real["close_rate"] - real["sl"]) <= tol:
+                return "SL", real["net"]
+            return "OTHER", real["net"]
         tp_usd, sl_usd = old.get("tp_usd", self.cfg["tp_usd"]), old.get("sl_usd", self.cfg["sl_usd"])
         px = None
         try:
@@ -665,7 +673,27 @@ class Assistant:
                 return "TP", tp_usd
             if old.get("sl") and side * (old["sl"] - px) >= 0:
                 return "SL", -sl_usd
+        if last_pnl <= -0.8 * sl_usd:                                               # era aproape de plasa: cel mai probabil a prins-o
+            return "SL", -sl_usd
+        if last_pnl >= 0.9 * tp_usd:
+            return "TP", tp_usd
         return "OTHER", self.fresh_pnl(old) if px is not None else last_pnl
+
+    def history_of(self, old: dict) -> dict | None:
+        """Rezultatul real al unei pozitii inchise, din istoricul eToro (cu 2 reincercari: istoricul poate intarzia cateva secunde)."""
+        if not hasattr(self.broker, "closed_trade"):
+            return None
+        day = (self.now_fn() - timedelta(days=2)).strftime("%Y-%m-%d")
+        for i in range(3):
+            try:
+                r = self.broker.closed_trade(str(old["id"]), day)
+            except Exception:  # noqa: BLE001
+                r = None
+            if r:
+                return r
+            if i < 2:
+                self.sleep(4)
+        return None
 
     def hold_alert(self) -> None:
         """O pozitie care nu si-a atins ținta in ~2 ore: te intreb daca vrei sa o inchizi tu."""
