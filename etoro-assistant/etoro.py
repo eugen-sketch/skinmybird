@@ -170,4 +170,5 @@ class EToroDemo:
 
     def order_status(self, order_id: int) -> dict:
         """Starea unui ordin: statusID 3 = executat, 4 = respins (cu errorMessage)."""
-        return self._req("GET", self.tp(f"/api/v1/trading/info/demo/orders/{order_id}"), trading=True)
+        path = f"/api/v1/trading/info/real/orders/{order_id}" if self.real else f"/api/v1/trading/info/demo/orders/{order_id}"   # pe real ruta are '/real/'
+        return self._req("GET", path, trading=True)
