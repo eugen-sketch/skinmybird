@@ -7,20 +7,38 @@ from __future__ import annotations
 MIN_GREEN_USD = 1.0          # peste atat, e deja "in verde" si merita incasat cand miscarea slabeste
 
 
+NEW_MIN = 15                 # sub atatea minute pozitia e „noua”: minusul mic de la inceput e doar costul de intrare (spread)
+
+
+def against_trend(side: int, trend: str | None) -> bool:
+    """Intrare contra trendului orar (de ex. cumpar cand trendul e in jos): asta face regulile de revenire (RSI extrem)."""
+    return (trend == "jos" and side == 1) or (trend == "sus" and side == -1)
+
+
 def advise(side: int, open_rate: float, price: float | None, tp: float | None, sl: float | None, pnl: float,
-           age_h: float, trend: str | None, rsi: float | None) -> dict:
-    """Returneaza {'verdict': 'TINE'|'INCHIDE'|'ATENTIE', 'reasons': [...], 'to_tp': % sau None, 'to_sl': % sau None}."""
+           age_h: float, trend: str | None, rsi: float | None, counter: bool = False) -> dict:
+    """Returneaza {'verdict': 'TINE'|'INCHIDE'|'ATENTIE'|'NOU', 'reasons': [...], 'to_tp': % sau None, 'to_sl': % sau None}.
+    `counter` = pozitia a fost deschisa de bot PE REVENIRE, stiind de la inceput ca trendul e impotriva ei: nu o mai tratam ca pe o surpriza."""
     to_tp = to_sl = None
     if price and open_rate and tp and abs(tp - open_rate) > 0:
         to_tp = max(0.0, side * (price - open_rate)) / abs(tp - open_rate)
     if price and open_rate and sl and abs(sl - open_rate) > 0:
         to_sl = max(0.0, -side * (price - open_rate)) / abs(sl - open_rate)
     aligned = (trend == "sus" and side == 1) or (trend == "jos" and side == -1)
-    against = (trend == "jos" and side == 1) or (trend == "sus" and side == -1)
+    against_raw = against_trend(side, trend)
+    against = against_raw and not counter                    # trend impotriva e „surpriza” doar daca nu era planul
     tired = rsi is not None and ((side == 1 and rsi >= 70) or (side == -1 and rsi <= 30))
     reasons: list[str] = []
+    if age_h * 60 < NEW_MIN and not (to_sl is not None and to_sl >= 0.7):
+        # pozitie foarte noua: fara verdict dupa o pierdere mica (la deschidere minusul e spread-ul)
+        why = ["deschisă acum, minusul mic de la început e costul de intrare"]
+        if counter and against_raw:
+            why.append("în plan: am intrat pe revenire, deși trendul orar merge " + ("în jos" if trend == "jos" else "în sus"))
+        return {"verdict": "NOU", "reasons": why, "to_tp": to_tp, "to_sl": to_sl}
     if aligned:
         reasons.append("trendul pe oră merge în direcția ta")
+    elif counter and against_raw:
+        reasons.append("în plan: am intrat pe revenire, deși trendul orar merge " + ("în jos" if trend == "jos" else "în sus"))
     elif against:
         reasons.append("trendul pe oră merge ÎMPOTRIVA ta")
     elif trend == "lateral":
@@ -60,6 +78,8 @@ def advise(side: int, open_rate: float, price: float | None, tp: float | None, s
             reasons.insert(0, "ești pe minus și trendul e împotriva ta, urmărește-o")
         elif age_h >= 4 and (to_tp or 0) < 0.2:
             reasons.insert(0, "a stat mult pe loc; ține-o doar dacă vrei s-o lași să-și vadă de țintă sau de plasă")
+        elif counter and against_raw:
+            reasons.insert(0, "e pe minus mic, normal pentru o intrare pe revenire; așteptăm revenirea sau ținta/plasa")
         else:
             reasons.insert(0, "e pe minus mic, dar trendul nu e împotriva ta")
     return {"verdict": verdict, "reasons": reasons, "to_tp": to_tp, "to_sl": to_sl}

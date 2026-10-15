@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import signal as sig_mod
 import time
 from datetime import datetime, timedelta, timezone
@@ -58,6 +59,7 @@ class Assistant:
         self.last_ok: float | None = None         # ultima citire reusita a soldului real
         self.adopt: list[dict] = []               # ordine trimise dar neconfirmate: daca pozitia apare mai tarziu, o preiau
         self.bot_pids: set[str] = set()           # pozitiile deschise de asistent (pe real le urmarim doar pe acestea)
+        self.counter_pids: set[str] = set()       # pozitiile deschise pe revenire (contra trendului orar), planificat: sfatul le judeca dupa plan
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.sleep = sleep
@@ -78,6 +80,7 @@ class Assistant:
         self.news = news_mod.NewsFeed(cfg.get("news"))   # calendar economic: pauza in jurul stirilor importante
         self.hold_alerted: set[str] = set()
         self.advice_sent: dict[str, float] = {}   # cand ti-am dat ultima oara sfatul "inchide" pentru fiecare pozitie
+        self.advice_last: dict[str, tuple] = {}   # (verdict, motiv), ora ultimului sfat trimis: un sfat identic nu se repeta
         self.eurusd = 1.08                       # actualizat din eToro la fiecare verificare a pozitiilor
         self.last_slot = None                    # ultimul sfert de ora scanat
         self.stop_reason: str | None = None
@@ -183,7 +186,7 @@ class Assistant:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
                         "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
-                        "bot_pids": sorted(self.bot_pids), "unlocked": self.unlocked and self.real,
+                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
@@ -404,8 +407,10 @@ class Assistant:
         can = amount <= free + 0.001
         reason = (f"eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție și ai doar {msg.usd(free)} liber"
                   if free < self.cfg["min_margin_usd"] else msg.no_free_margin(amount, free))
+        counter = advisor.against_trend(side, s.get("trend"))                 # intrare pe revenire, contra trendului orar (planificata)
+        why_full = s["why"] + (f". Mă aștept la revenire, deși trendul orar e în {'jos' if s.get('trend') == 'jos' else 'sus'}" if counter else "")
         ctx = self.context_line(s)
-        text = msg.signal(name, side, s["why"] + ctx, px, d, amount, lev, notional, tp_px, tp_usd, sl_px, sl_usd, free, can, reason)
+        text = msg.signal(name, side, why_full + ctx, px, d, amount, lev, notional, tp_px, tp_usd, sl_px, sl_usd, free, can, reason)
         tag = self.aggr_tag(name, s, boost)
         if tag:
             text = tag + "\n" + text
@@ -420,20 +425,20 @@ class Assistant:
             self.tg.send(msg.autotrade_limit(self.cfg["autotrade_daily_loss_usd"] * self.scale()))
         if self.autotrade:
             self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": None, "amount": amount,
-                                 "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost}
+                                 "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost, "counter": counter}
             self.send_chart(name, s, side, px, tp_px, sl_px, f"{msg.pair(name)}: autotrading, intrare, țintă și plasă")
-            self.tg.send((tag + " " if tag else "") + msg.auto_signal(name, side, s["why"], px, d))
+            self.tg.send((tag + " " if tag else "") + msg.auto_signal(name, side, why_full, px, d))
             self.open_pending(sid)
             return True
         self.send_chart(name, s, side, px, tp_px, sl_px, f"{msg.pair(name)}: așa arată piața acum și unde ar sta ținta și plasa")
-        mid = self.tg.send(text, [[("✅ OK, deschide", f"open:{sid}"), ("❌ NU", f"skip:{sid}")]])
-        self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": mid, "amount": amount,
-                             "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost}
-        ok = [k for k, v in self.pending.items()]
-        if len(ok) >= 2:
+        buttons = [[("✅ OK, deschide", f"open:{sid}"), ("❌ NU", f"skip:{sid}")]]
+        ok = [*self.pending, sid]
+        if len(ok) >= 2:                                   # un singur mesaj: semnalul + butoanele „la toate”, nu un al doilea mesaj separat
             ids = ",".join(str(k) for k in ok)
-            self.tg.send(f"📦 Ai {len(ok)} semnale în așteptare. Le deschid pe toate dintr-o dată?",
-                         [[(f"✅ OK la toate ({len(ok)})", f"openall:{ids}"), ("❌ NU la toate", f"skipall:{ids}")]])
+            buttons.append([(f"✅ OK la toate ({len(ok)})", f"openall:{ids}"), ("❌ NU la toate", f"skipall:{ids}")])
+        mid = self.tg.send(text, buttons)
+        self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": mid, "amount": amount,
+                             "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost, "counter": counter}
         return True
 
     def is_boost(self, name: str, s: dict) -> bool:
@@ -535,6 +540,8 @@ class Assistant:
             self.tg.send(f"⚠️ Ordinul pe {msg.pair(name)} n-a mers (respins): {str(e)[:250]}\nNu am deschis nimic.")
             return
         self.bot_pids.add(str(pid))
+        if p.get("counter"):
+            self.counter_pids.add(str(pid))
         fill = getattr(self.broker, "last", None) or {}
         amount, lev = fill.get("amount", amount), fill.get("leverage", lev)
         if self.real and self.real_balance is not None:
@@ -543,7 +550,7 @@ class Assistant:
         sl, tp, tp_usd, sl_usd = self.levels(side, px, notional, p.get("atr_pct"))
         self.known[pid] = {"id": pid, "name": name, "side": side, "open_rate": px, "units": notional / (px * self.fx(name)) if name in USD_QUOTE_FACTOR_ONE else notional,
                            "amount": amount, "leverage": lev, "sl": sl, "tp": tp, "last_pnl": 0.0,
-                           "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": self.now_fn()}
+                           "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": self.now_fn(), "counter": bool(p.get("counter"))}
         self.tg.send(("🔴 CONT REAL\n" if self.real else "") + msg.opened(name, side, px, d, amount, lev, notional, tp, tp_usd, sl, sl_usd))
         self.save_state()
 
@@ -583,7 +590,7 @@ class Assistant:
             op = p["open_rate"]
             tp_usd = abs(p["tp"] - op) / op * notional if p.get("tp") and op else self.cfg["tp_usd"]
             sl_usd = abs(p["sl"] - op) / op * notional if p.get("sl") and op else self.cfg["sl_usd"]
-        self.known[p["id"]] = {**p, "last_pnl": 0.0, "tp_usd": tp_usd, "sl_usd": sl_usd,
+        self.known[p["id"]] = {**p, "last_pnl": 0.0, "tp_usd": tp_usd, "sl_usd": sl_usd, "counter": str(p["id"]) in self.counter_pids,
                                "opened_at": parse_time(p.get("time")) or self.now_fn()}
 
     def sync(self) -> None:
@@ -667,6 +674,7 @@ class Assistant:
             if kind is None:
                 kind, pnl = self.classify_vanished(old, pnl)
             self.bot_pids.discard(str(pid))
+            self.counter_pids.discard(str(pid))
             self.add_realized(pnl)
             self.refresh_real()
             self.tg.send(msg.closed(old["name"], kind, pnl, self.profit_text(), self.equity() if self.cfg.get("progressive") else None,
@@ -829,7 +837,7 @@ class Assistant:
         opened = pos.get("opened_at")
         age_h = (self.now_fn() - opened).total_seconds() / 3600 if opened else 0.0
         out = advisor.advise(pos["side"], pos["open_rate"], pos.get("px_now"), pos.get("tp"), pos.get("sl"),
-                             pos.get("last_pnl", 0.0), age_h, trend, rsi)
+                             pos.get("last_pnl", 0.0), age_h, trend, rsi, counter=bool(pos.get("counter")))
         out.update(trend=trend, rsi=rsi, age_h=age_h, trend4h=scan_res.get("trend4h"), scan=scan_res)
         return out
 
@@ -840,7 +848,12 @@ class Assistant:
             if now - self.advice_sent.get(pid, 0) < 3600:
                 continue
             adv = self.advice_for(p)
+            sig = (adv["verdict"], re.sub(r"[\d.,$+%-]+", "", adv["reasons"][0]) if adv.get("reasons") else "")   # fara cifre: motivul, nu valorile
+            last = self.advice_last.get(pid)
+            if adv["verdict"] == "INCHIDE" and last and last[0] == sig and now - last[1] < 4 * 3600:
+                continue                                  # acelasi sfat, acelasi motiv: nu-l repet (cel mult o data la 4 ore)
             if adv["verdict"] == "INCHIDE":
+                self.advice_last[pid] = (sig, now)
                 self.advice_sent[pid] = now
                 self.tg.send(f"💡 {msg.pair(p['name'])} ({'cumpărat' if p['side'] == 1 else 'vândut'}): {msg.signed(p.get('last_pnl', 0.0))}"
                              f"{msg.advice_block(adv)}", [[(f"🔒 Închide {msg.pair(p['name']).split(' ')[0]}", f"close:{pid}"), ("👍 Las-o", "cancel")]])
@@ -1018,6 +1031,7 @@ class Assistant:
         cont = os.getenv("CONTINUED") == "1"
         self.autotrade = bool(st.get("autotrade")) and cont                               # sesiune noua pornita de tine: autotrading oprit
         self.bot_pids = set(st.get("bot_pids", [])) if self.real else set()
+        self.counter_pids = set(st.get("counter_pids", []))
         for r in st.get("adopt", []) if self.real else []:
             t = parse_time(r.get("at"))
             if t:
