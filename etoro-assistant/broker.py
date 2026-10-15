@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 
 from etoro import EToroDemo, EToroError, EToroHTTPError, EToroNetworkError
 
+MAX_QUOTE_AGE_S = 120        # cotatiile eToro mai vechi de 2 minute nu se folosesc (pe 15.10 veneau cu ~40 min intarziere)
+
 
 def parse_time(txt) -> datetime | None:
     """Ora de la eToro (ISO, uneori cu fractii de secunda si 'Z'); None daca nu o pot citi."""
@@ -48,9 +50,14 @@ class EToroBroker:
         """Cotatii live pentru mai multe instrumente intr-un singur apel: {nume: {bid, ask, conv_bid, conv_ask}}."""
         by = self.api.rates([self.ids[n] for n in names])
         out = {}
+        now = datetime.now(timezone.utc)
         for n in names:
             x = by.get(self.ids[n])
             if x and x.get("bid") and x.get("ask"):
+                t = parse_time(x.get("date"))
+                if t is not None and (now - t).total_seconds() > MAX_QUOTE_AGE_S:
+                    print(f"[!] cotatie eToro veche pentru {n}: {int((now - t).total_seconds())} s, o ignor (folosesc lumanarea orara)")
+                    continue                                                      # cotatie intarziata: apelantii trec pe pretul lumanarii orare (la zi)
                 out[n] = {"bid": float(x["bid"]), "ask": float(x["ask"]),
                           "conv_bid": float(x.get("conversionRateBid") or 0), "conv_ask": float(x.get("conversionRateAsk") or 0)}
         return out

@@ -669,11 +669,13 @@ class Assistant:
             self.bot_pids.discard(str(pid))
             self.add_realized(pnl)
             self.refresh_real()
-            self.tg.send(msg.closed(old["name"], kind, pnl, self.profit_text(), self.equity() if self.cfg.get("progressive") else None))
+            self.tg.send(msg.closed(old["name"], kind, pnl, self.profit_text(), self.equity() if self.cfg.get("progressive") else None,
+                                    plan=old.get("tp_usd_plan") or old.get("tp_usd")))
         for pid, pos in current.items():
             self.known[pid] = {**self.known.get(pid, {}), **pos}          # pastram tinta/plasa in $ si ora deschiderii
             if not self.known[pid].get("opened_at"):
                 self.known[pid]["opened_at"] = parse_time(pos.get("time")) or self.now_fn()
+            self.sync_targets(self.known[pid])
         self.hold_alert()
         total = sum(r["last_pnl"] for r in rows)
         c = self.cfg
@@ -681,6 +683,28 @@ class Assistant:
             self.tg.send(msg.basket(len(rows), total))
             for pid in list(self.known):
                 self.close_one(pid, "BASKET")
+
+    def sync_targets(self, k: dict) -> None:
+        """Tinta/plasa in $ afisate = cele de PE eToro (nivelurile si pretul real de deschidere), nu planul. Daca difera mult de plan
+        (de ex. pretul vazut de mine la ordin era vechi), o singura data te anunt, iar planul ramane in `tp_usd_plan`."""
+        op, notional = k.get("open_rate"), (k.get("amount") or 0) * (k.get("leverage") or 0)
+        if not (op and notional):
+            return
+        real_tp = abs(k["tp"] - op) / op * notional if k.get("tp") else None
+        real_sl = abs(k["sl"] - op) / op * notional if k.get("sl") else None
+        plan = k.get("tp_usd_plan") or k.get("tp_usd")
+        if real_tp is None or not plan:
+            return
+        k.setdefault("tp_usd_plan", plan)
+        if abs(real_tp - plan) <= max(0.25 * plan, 0.30):
+            return                                                         # diferenta normala (spread, rotunjiri)
+        k["tp_usd"] = real_tp
+        if real_sl is not None:
+            k["sl_usd"] = real_sl
+        if not k.get("target_warned"):
+            k["target_warned"] = True
+            self.tg.send(msg.target_differs(k["name"], plan, real_tp, real_sl))
+            self.save_state()
 
     def try_adopt(self) -> None:
         """Pozitii pentru care ordinul a fost trimis dar neconfirmat: daca apar in portofoliu (in 15 min), le preiau."""
