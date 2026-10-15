@@ -116,13 +116,15 @@ def status(rows: list[dict], total: float, free: float, budget: float, profit: s
             f"ℹ️ Sfaturile vin din reguli simple (trend orar, RSI, timp, cât a mers spre țintă/plasă).")
 
 
-VERDICT = {"TINE": "✋ ȚINE-O", "INCHIDE": "🔒 ÎNCHIDE-O", "ATENTIE": "⚠️ ATENȚIE"}
+VERDICT = {"TINE": "✋ ȚINE-O", "INCHIDE": "🔒 ÎNCHIDE-O", "ATENTIE": "⚠️ ATENȚIE", "NOU": "🆕 DESCHISĂ ACUM"}
 
 
 def advice_block(adv: dict | None) -> str:
     """Sfatul pentru o pozitie, pe scurt si pe intelesul tuturor (fara grafice)."""
     if not adv:
         return ""
+    if adv.get("verdict") == "NOU":                       # sub ~15 min: fara verdict, doar cum stau lucrurile
+        return "\n   🆕 " + "; ".join(adv.get("reasons", []))
     bits = []
     if adv.get("to_tp") is not None:
         bits.append(f"până la țintă: {min(100, adv['to_tp'] * 100):.0f}% parcurs")
