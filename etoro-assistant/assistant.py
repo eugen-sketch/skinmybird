@@ -19,6 +19,7 @@ from pathlib import Path
 import advisor
 import chart as chart_mod
 import messages as msg
+import news as news_mod
 import pandas as pd
 import signals
 import state as state_mod
@@ -74,6 +75,7 @@ class Assistant:
         self.autotrade = False                   # pornit doar de tine, din buton
         self.day, self.day_pnl = "", 0.0
         self.profit_lock_day = ""                # ziua in care am anuntat blocajul de profit
+        self.news = news_mod.NewsFeed(cfg.get("news"))   # calendar economic: pauza in jurul stirilor importante
         self.hold_alerted: set[str] = set()
         self.advice_sent: dict[str, float] = {}   # cand ti-am dat ultima oara sfatul "inchide" pentru fiecare pozitie
         self.eurusd = 1.08                       # actualizat din eToro la fiecare verificare a pozitiilor
@@ -201,8 +203,13 @@ class Assistant:
         t_scan0 = time.time()
         found, overflow, report = 0, [], []
         open_names = {p["name"] for p in self.known.values()}
+        self.news_heads_up(now, open_names)
         for name, inst in self.inst.items():
             if name in open_names or any(p["name"] == name for p in self.pending.values()):
+                continue
+            ev = self.news.blocking(name, now)
+            if ev:                                                        # stire importanta chiar acum: nu propunem pe aceasta moneda
+                report.append({"name": name, "rsi": 50.0, "thr": 25, "bar": "?", "note": f"pauză știri: {ev['title']}", "skip": True})
                 continue
             lo, hi = inst.get("hours_utc", (0, 24))
             if not lo <= now.hour < hi:                                   # indicii: doar in programul lor
@@ -454,6 +461,17 @@ class Assistant:
 
     def day_pnl_today(self) -> float:
         return self.day_pnl if self.day == self.now_fn().strftime("%Y-%m-%d") else 0.0
+
+    def news_heads_up(self, now: datetime, open_names: set[str]) -> None:
+        """Cu ~1 ora inainte de o stire importanta pentru instrumentele urmarite: un singur mesaj pe eveniment."""
+        try:
+            relevant = [e for e in self.news.ahead(now) if any(e["cur"] in news_mod.currencies_for(n) for n in self.inst)]
+            if not relevant:
+                return
+            held = sorted(n for n in open_names if any(e["cur"] in news_mod.currencies_for(n) for e in relevant))
+            self.tg.send(msg.news_ahead(relevant, int(self.news.before.total_seconds() // 60), int(self.news.after.total_seconds() // 60), held))
+        except Exception as e:  # noqa: BLE001
+            print(f"[!] Anunt stiri: {type(e).__name__}")
 
     def profit_locked(self) -> bool:
         """Blocaj de profit: cand profitul REALIZAT de azi atinge `daily_profit_lock_usd` (scalat cu bugetul), nu mai propunem si nu mai
