@@ -146,13 +146,23 @@ def update(rows: list[dict], total: float) -> str:
     return f"⏱️ Update: {parts} · total {signed(total)}"
 
 
-def closed(name: str, kind: str, pnl: float, profit: str, equity: float | None = None) -> str:
-    return _closed(name, kind, pnl) + f"\n\n{profit}" + (f"\n👛 Buget de lucru acum: {usd(equity)}" if equity else "")
+def closed(name: str, kind: str, pnl: float, profit: str, equity: float | None = None, plan: float | None = None) -> str:
+    return _closed(name, kind, pnl, plan) + f"\n\n{profit}" + (f"\n👛 Buget de lucru acum: {usd(equity)}" if equity else "")
 
 
-def _closed(name: str, kind: str, pnl: float) -> str:
+def target_differs(name: str, plan: float, real_tp: float, real_sl: float | None) -> str:
+    """Tinta de pe eToro difera mult de cea planuita: cifra reala, ca mesajele sa nu mai spuna alta poveste decat se intampla."""
+    sl = f" Plasa reală: {usd(real_sl)}." if real_sl else ""
+    return (f"⚠️ {pair(name)}: ținta reală pe eToro este {usd(real_tp)}, nu {usd(plan)} cât planificasem "
+            f"(prețul de la care am calculat nu era cel de la deschidere).{sl} De aici încolo urmăresc cifrele reale.")
+
+
+def _closed(name: str, kind: str, pnl: float, plan: float | None = None) -> str:
     p = pair(name)
     if kind == "TP":
+        if plan and pnl < 0.6 * plan:                      # rezultat mult sub tinta planuita: nu spunem „ținta atinsă”
+            return (f"✅ {p}: ieșit la nivelul de profit setat pe eToro. Rezultat ≈ {signed(pnl)} după costuri "
+                    f"(ținta planificată era {usd(plan)}). Poziția e închisă.")
         return f"🎉💵 {p}: ținta a fost atinsă! Rezultat ≈ {signed(pnl)}. Poziția e închisă."
     if kind == "SL":
         return f"😕🛡️ {p}: s-a activat plasa de siguranță. Rezultat ≈ {signed(pnl)}. Poziția e închisă."
