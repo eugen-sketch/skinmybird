@@ -361,6 +361,17 @@ def profit_lock(day_pnl: float, lock: float) -> str:
             f"ca să păstrăm câștigul. Pozițiile deschise își păstrează ținta și plasa. Dacă vrei, deschizi tu manual.")
 
 
+def news_ahead(events: list[dict], before_min: int, after_min: int, held: list[str]) -> str:
+    """Anunt cu ~1 ora inainte de evenimentele importante (ora Romaniei), cu pauza de semnale pe monedele afectate."""
+    lines = [f"• {ro_hm(e['time'])} – {e['title']} ({e['cur']})" for e in events]
+    txt = ("🗓️ Știri importante în curând (ora României):\n" + "\n".join(lines) +
+           f"\n⏸️ Pe monedele afectate nu propun și nu deschid nimic de la {before_min} min înainte până la {after_min} min după eveniment, "
+           f"fiindcă piața sare imprevizibil.")
+    if held:
+        txt += f"\n⚠️ Ai deja poziții deschise pe: {', '.join(pair(n) for n in held)}. Se pot mișca puternic la știre."
+    return txt
+
+
 def autotrade_limit(daily_loss: float) -> str:
     return (f"🤖🛑 Am oprit autotrading: pierderea realizată azi a ajuns la {usd(daily_loss)}. "
             f"Nu mai deschid singur nimic azi. Dacă vrei, îl pornești din nou din meniu.")
