@@ -356,6 +356,11 @@ def autotrade_off() -> str:
     return "🤖⏸️ Autotrading OPRIT. De acum te întreb din nou la fiecare semnal. Pozițiile deschise rămân urmărite."
 
 
+def profit_lock(day_pnl: float, lock: float) -> str:
+    return (f"🔒 Profit bun azi: {usd(day_pnl)} realizat (țintă {usd(lock)}). Nu mai deschid și nu mai propun nimic până mâine, "
+            f"ca să păstrăm câștigul. Pozițiile deschise își păstrează ținta și plasa. Dacă vrei, deschizi tu manual.")
+
+
 def autotrade_limit(daily_loss: float) -> str:
     return (f"🤖🛑 Am oprit autotrading: pierderea realizată azi a ajuns la {usd(daily_loss)}. "
             f"Nu mai deschid singur nimic azi. Dacă vrei, îl pornești din nou din meniu.")
