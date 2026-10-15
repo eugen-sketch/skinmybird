@@ -73,6 +73,7 @@ def test_restart_does_not_repropose_same_wave(monkeypatch, tmp_path):
     cfg = modes.apply(RAW, False)
     monkeypatch.setenv("AGGRESSIVE_MODE", "1")
     cfg = modes.apply(RAW, False)
+    cfg["wave_max_proposals"] = 2                            # testul verifică mecanismul „val”, indiferent de valoarea din config
     a, tg = build(cfg, FakeBroker(), df=wave_df(3.0, 0.00002, T1), real=False)
     a.unlocked = True
     a.scan()
