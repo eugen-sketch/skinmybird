@@ -73,6 +73,7 @@ class Assistant:
         self.total_pnl, self.history, self.since, self.report_day = 0.0, {}, "", ""     # câștig total de la început, pe zile
         self.autotrade = False                   # pornit doar de tine, din buton
         self.day, self.day_pnl = "", 0.0
+        self.profit_lock_day = ""                # ziua in care am anuntat blocajul de profit
         self.hold_alerted: set[str] = set()
         self.advice_sent: dict[str, float] = {}   # cand ti-am dat ultima oara sfatul "inchide" pentru fiecare pozitie
         self.eurusd = 1.08                       # actualizat din eToro la fiecare verificare a pozitiilor
@@ -234,7 +235,9 @@ class Assistant:
                 continue
             if not self.unlocked:                        # cont real neconfirmat: doar urmaresc, nu propun si nu deschid nimic
                 continue
-            cool = self.cfg.get("signal_cooldown_min", 0)
+            if self.profit_locked():                     # profitul zilei a atins tinta: nu mai deschidem nimic pana maine
+                continue
+            cool =self.cfg.get("signal_cooldown_min", 0)
             last = self.last_prop.get(name)
             if cool and last and (now - last).total_seconds() < cool * 60:
                 continue                                 # pauza intre propuneri pe acelasi instrument (modul agresiv)
@@ -451,6 +454,18 @@ class Assistant:
 
     def day_pnl_today(self) -> float:
         return self.day_pnl if self.day == self.now_fn().strftime("%Y-%m-%d") else 0.0
+
+    def profit_locked(self) -> bool:
+        """Blocaj de profit: cand profitul REALIZAT de azi atinge `daily_profit_lock_usd` (scalat cu bugetul), nu mai propunem si nu mai
+        deschidem nimic pana maine. Pozitiile deschise isi pastreaza tinta si plasa. 0 = oprit. Te anunta o singura data pe zi."""
+        lock = self.cfg.get("daily_profit_lock_usd", 0) * self.scale()
+        if not lock or self.day_pnl_today() < lock:
+            return False
+        today = self.now_fn().strftime("%Y-%m-%d")
+        if self.profit_lock_day != today:
+            self.profit_lock_day = today
+            self.tg.send(msg.profit_lock(self.day_pnl_today(), lock))
+        return True
 
     # ------------------------------------------------------------------ executie (doar la OK)
     def open_pending(self, sid: int) -> None:

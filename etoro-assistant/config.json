@@ -1,5 +1,6 @@
 {
   "budget_usd": 150,
+  "daily_profit_lock_usd": 15,
   "scan_every_min": 15,
   "pl_check_every_sec": 30,
   "signal_valid_min": 30,
