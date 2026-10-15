@@ -14,7 +14,7 @@ import strategies
 import ta
 
 EXPO, TP_USD, SL_USD, MAX_BARS = 1400.0, 2.75, 6.0, 24
-cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 
 
 def confirmations(df: pd.DataFrame) -> np.ndarray:

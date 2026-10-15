@@ -14,7 +14,7 @@ import signals
 import strategies
 import ta
 
-cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 now = pd.Timestamp(datetime.now(timezone.utc))
 print = functools.partial(print, flush=True)
 print(f"Acum: {now:%Y-%m-%d %H:%M} UTC ({now:%A})\n")

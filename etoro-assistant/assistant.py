@@ -1043,7 +1043,7 @@ class Assistant:
                 self.report_error(f"{type(e).__name__}: {str(e)[:150]}")
                 self.sleep(10)
         if self.stop_reason == "handover":
-            (HERE / "handover.txt").write_text(f"{remaining:g}")          # pasul urmator din workflow porneste sesiunea noua
+            (HERE / "handover.txt").write_text(f"{remaining:g}", encoding="utf-8")          # pasul urmator din workflow porneste sesiunea noua
             self.tg.send(msg.handover(remaining, len(self.known)), silent=True)
         else:
             self.tg.send(msg.stopped(self.stop_reason, len(self.known)))
@@ -1056,7 +1056,7 @@ def main() -> int:
     import modes
     hours = float(os.getenv("SESSION_HOURS", "5"))
     real = os.getenv("TRADING_MODE") == "real"
-    cfg = modes.apply(json.loads((HERE / "config.json").read_text()), real)
+    cfg = modes.apply(json.loads((HERE / "config.json").read_text(encoding="utf-8")), real)
     tg, api = Telegram(), EToroDemo(real=real)
     ids = {}
     for inst in cfg["instruments"]:

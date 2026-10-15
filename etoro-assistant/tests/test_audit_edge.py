@@ -11,7 +11,7 @@ import state as state_mod  # noqa: E402
 from test_assistant import CFG, FakeBroker, FakeTG, T0  # noqa: E402
 from test_spec_audit import T1, wave_df  # noqa: E402
 
-RAW = json.loads((Path(__file__).parent.parent / "config.json").read_text())
+RAW = json.loads((Path(__file__).parent.parent / "config.json").read_text(encoding="utf-8"))
 
 
 class RealBroker(FakeBroker):
@@ -73,6 +73,7 @@ def test_restart_does_not_repropose_same_wave(monkeypatch, tmp_path):
     cfg = modes.apply(RAW, False)
     monkeypatch.setenv("AGGRESSIVE_MODE", "1")
     cfg = modes.apply(RAW, False)
+    cfg["wave_max_proposals"] = 2                            # testul verifică mecanismul „val”, indiferent de valoarea din config
     a, tg = build(cfg, FakeBroker(), df=wave_df(3.0, 0.00002, T1), real=False)
     a.unlocked = True
     a.scan()

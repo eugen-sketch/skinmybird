@@ -21,7 +21,7 @@ try:
         v = cp.get(k) if isinstance(cp, dict) else None
         if v is not None:
             print(f"{k}:", len(v), "campuri:", sorted(v[0].keys()) if v and isinstance(v[0], dict) else "-")
-    cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+    cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
     nzd = api.find_instrument_id("NZDUSD")
     lines = []
     for x in pos:

@@ -216,7 +216,7 @@
     "rsi_oil": 30,
     "pullback": 50,
     "wave_atr": 1.3,
-    "wave_max_proposals": 2,
+    "wave_max_proposals": 0,
     "wave_cooldown_min": 90,
     "wave_rsi_buy_max": 90,
     "wave_rsi_sell_min": 10,
@@ -227,8 +227,8 @@
     "tp_atr": 1.1,
     "max_tp_usd": 10,
     "sl_atr": 3.5,
-    "max_sl_usd": 25,
-    "autotrade_daily_loss_usd": 22,
+    "max_sl_usd": 12,
+    "autotrade_daily_loss_usd": 10,
     "signal_cooldown_min": 12
   },
   "since_real": "2026-10-12"

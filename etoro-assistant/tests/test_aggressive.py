@@ -10,7 +10,7 @@ import signals  # noqa: E402
 from test_assistant import CFG, FakeBroker, FakeTG, T0  # noqa: E402
 from test_spec_audit import T1, make, wave_df  # noqa: E402
 
-RAW = json.loads((Path(__file__).parent.parent / "config.json").read_text())
+RAW = json.loads((Path(__file__).parent.parent / "config.json").read_text(encoding="utf-8"))
 
 
 def agg(monkeypatch, real=False, ok=False, flag="1"):
@@ -34,11 +34,11 @@ def test_aggressive_values_from_the_patch(monkeypatch):
     assert "rsi_rev36" in by["EURUSD"] and "pullback50" in by["EURUSD"] and "pullback50" in by["SPX500"]
     assert "rsi_rev30" in by["OIL"] and "rsi_rev36" not in by["OIL"]
     assert by["GOLD"] == ["pullback50", "donchian24_trend"]                 # fara regula RSI noua pe aur/indici
-    assert (c["wave_atr"], c["wave_max_proposals"], c["wave_opts"]["cooldown_min"]) == (1.3, 2, 90)
+    assert (c["wave_atr"], c["wave_max_proposals"], c["wave_opts"]["cooldown_min"]) == (1.3, 0, 90)      # 0 = regula „val” oprită (pierde pe 1 an de date)
     assert (c["wave_opts"]["rsi_buy_max"], c["wave_opts"]["rsi_sell_min"]) == (90, 10)
     assert (c["max_positions_small"], c["max_positions"], c["min_margin_usd"]) == (3, 4, 50)
-    assert (c["tp_atr"], c["max_tp_usd"], c["sl_atr"], c["max_sl_usd"], c["min_tp_usd"]) == (1.1, 10, 3.5, 25, 2.25)
-    assert c["autotrade_daily_loss_usd"] == 22 and c["signal_cooldown_min"] == 12 and c["boost_alloc"] == 0.40
+    assert (c["tp_atr"], c["max_tp_usd"], c["sl_atr"], c["max_sl_usd"], c["min_tp_usd"]) == (1.1, 10, 3.5, 12, 2.25)
+    assert c["autotrade_daily_loss_usd"] == 10 and c["signal_cooldown_min"] == 12 and c["boost_alloc"] == 0.40
     assert c["scan_slot_min"] == 5                                           # cadenta neschimbata
     assert {i["name"]: i["lev_cap"] for i in c["instruments"]} == {i["name"]: i["lev_cap"] for i in RAW["instruments"]}
 
@@ -64,6 +64,7 @@ def test_wave_lateral_trend_can_be_blocked():
 
 def build(monkeypatch, df, now=T1, only=("EURUSD",)):
     cfg = agg(monkeypatch)
+    cfg["wave_max_proposals"] = 2                            # testele verifică mecanismul „val”, indiferent de valoarea din config
     tg, br = FakeTG(), FakeBroker()
     a = A.Assistant(cfg, tg, br, fetch=lambda *x, **k: df, now_fn=lambda: now, sleep=lambda s: None)
     a.inst = {k: v for k, v in a.inst.items() if k in only}

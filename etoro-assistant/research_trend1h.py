@@ -17,7 +17,7 @@ FAMILIES = ["pullback35", "pullback40", "pullback45", "donchian24_trend", "donch
 TPS, SLS, MBS = [0.3, 0.5, 0.75, 1.0, 1.5], [2.0, 3.0, 4.0, 6.0], [2, 3, 6]
 GROUPS = {"indici+aur": ["SPX500", "NSDQ100", "DJ30", "GER40", "GOLD"],
           "forex+petrol": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "OIL"]}
-cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 
 
 def main() -> None:

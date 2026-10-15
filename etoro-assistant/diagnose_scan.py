@@ -9,7 +9,7 @@ import signals
 import ta
 from telegram_bot import Telegram
 
-cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 rows, t0 = [], time.time()
 for inst in cfg["instruments"]:
     t1 = time.time()
