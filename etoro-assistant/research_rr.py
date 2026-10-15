@@ -17,7 +17,7 @@ EXPO = 1400.0
 TPS = [2.75, 4.0, 6.0, 9.0]
 SLS = [2.0, 3.0, 4.5, 6.0, 9.0]
 MBS = [12, 24, 72]
-cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 
 
 def main() -> None:

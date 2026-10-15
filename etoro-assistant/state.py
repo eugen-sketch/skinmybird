@@ -32,7 +32,7 @@ def loads(txt: str) -> dict:
 
 def load(path: Path | None = None) -> dict:
     try:
-        return loads((path or PATH).read_text())
+        return loads((path or PATH).read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001 - fara fisier / fisier stricat: pornim de la zero
         return {}
 
@@ -42,7 +42,7 @@ def save(d: dict, path: Path | None = None) -> None:
     p = path or PATH
     try:
         tmp = p.with_name(p.name + ".tmp")
-        tmp.write_text(dumps(d))
+        tmp.write_text(dumps(d), encoding="utf-8")
         os.replace(tmp, p)
     except OSError:
         pass

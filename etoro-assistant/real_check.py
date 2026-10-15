@@ -12,7 +12,7 @@ try:
     api = EToroDemo(real=True)
     credit = api.credit()
     n = len(api.positions())
-    cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+    cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
     ids = {i["name"]: api.find_instrument_id(i["etoro"]) for i in cfg["instruments"]}
     px = api.last_price(ids["EURUSD"])
     tg.send(f"🔴 Verificare cont REAL (doar citire, nimic tranzacționat):\n• sold disponibil: "

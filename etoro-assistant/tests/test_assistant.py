@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import assistant as A  # noqa: E402
 import signals  # noqa: E402
 
-CFG = json.loads((Path(__file__).parent.parent / "config.json").read_text())
+CFG = json.loads((Path(__file__).parent.parent / "config.json").read_text(encoding="utf-8"))
 T0 = datetime(2026, 10, 9, 8, 15, tzinfo=timezone.utc)      # vineri 08:15 UTC
 
 
@@ -371,7 +371,7 @@ def test_state_roundtrip(tmp_path):
     import state
     p = tmp_path / "s.json"
     state.save({"realized": 12.5, "autotrade": True}, p)
-    assert "12.5" not in p.read_text() and state.load(p) == {"realized": 12.5, "autotrade": True}
+    assert "12.5" not in p.read_text(encoding="utf-8") and state.load(p) == {"realized": 12.5, "autotrade": True}
     assert state.load(tmp_path / "missing") == {}
 
 

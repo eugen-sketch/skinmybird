@@ -11,7 +11,7 @@ import signals
 import strategies
 import ta
 
-cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 inst = next(i for i in cfg["instruments"] if i["name"] == "EURUSD")
 df = ta.fetch_ohlc("EURUSD=X", "1h", "30d")
 df = df[(df.index.minute == 0) & (df.index.second == 0)]

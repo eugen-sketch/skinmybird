@@ -10,7 +10,7 @@ import signals  # noqa: E402
 from test_assistant import CFG, FakeBroker, FakeTG, T0  # noqa: E402
 from test_spec_audit import T1, make, wave_df  # noqa: E402
 
-RAW = json.loads((Path(__file__).parent.parent / "config.json").read_text())
+RAW = json.loads((Path(__file__).parent.parent / "config.json").read_text(encoding="utf-8"))
 
 
 def agg(monkeypatch, real=False, ok=False, flag="1"):

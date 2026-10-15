@@ -104,7 +104,7 @@ def test_daily_report_is_timed_before_close_and_romanian_time():
 
 
 def test_no_repeated_disclaimers_in_messages():
-    src = (ROOT / "messages.py").read_text() + (ROOT / "assistant.py").read_text()
+    src = (ROOT / "messages.py").read_text(encoding="utf-8") + (ROOT / "assistant.py").read_text(encoding="utf-8")
     for bad in ("decizia e a ta", "nu garantează nimic", "Nu este sfat"):
         assert bad not in src
 
@@ -124,7 +124,7 @@ def test_real_uses_real_order_status_route_and_refuses_demo_paths():
 
 
 def test_launcher_defaults_to_real():
-    src = (ROOT / "launcher.py").read_text()
+    src = (ROOT / "launcher.py").read_text(encoding="utf-8")
     assert re.search(r'"demo" if re\.search\(r"\\bdemo\\b"', src)
 
 

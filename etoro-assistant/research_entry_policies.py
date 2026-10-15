@@ -13,7 +13,7 @@ import signals
 import strategies
 import ta
 
-cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 RNG = sys.argv[1] if len(sys.argv) > 1 else "365d"
 HOLD = 6                         # ore maxim cat tinem o pozitie in simulare
 PROFILES = {"normal": (0.75, 4.0), "agresiv": (1.1, 3.5)}

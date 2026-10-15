@@ -6,7 +6,7 @@ from pathlib import Path
 from etoro import EToroDemo
 
 api = EToroDemo()
-cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 ids = {i["name"]: api.find_instrument_id(i["etoro"]) for i in cfg["instruments"]}
 d = api._req("GET", "/api/v1/market-data/instruments/rates", params={"instrumentIds": ",".join(str(v) for v in ids.values())})
 items = d.get("rates") if isinstance(d, dict) else d

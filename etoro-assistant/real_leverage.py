@@ -7,7 +7,7 @@ from etoro import EToroDemo
 from telegram_bot import Telegram
 
 api = EToroDemo(real=True)
-cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 ids = {api.find_instrument_id(i["etoro"]): i["name"] for i in cfg["instruments"]}
 pos = api.positions(fresh=True)
 lines, levs = [], []

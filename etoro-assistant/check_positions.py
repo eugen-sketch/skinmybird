@@ -11,7 +11,7 @@ from etoro import EToroDemo
 from telegram_bot import Telegram
 
 signal.alarm(150)          # nu lasam scriptul sa atarne
-cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+cfg = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 api = EToroDemo()
 ids = {i["name"]: api.find_instrument_id(i["etoro"]) for i in cfg["instruments"]}
 br = EToroBroker(api, ids)
