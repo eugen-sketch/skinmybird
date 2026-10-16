@@ -362,10 +362,14 @@ def test_hold_alert_after_two_hours(monkeypatch):
     assert br.pos
     a.now_fn = lambda: T0 + timedelta(minutes=125)
     a.monitor()
-    assert any("nu și-a atins încă ținta" in x for x in tg.texts)
-    n = sum("nu și-a atins încă ținta" in x for x in tg.texts)
+    assert not any("deschisă de" in x and "ore" in x for x in tg.texts)                      # alerta vine abia dupa 5 ore (hold_alert_min=300)
+    a.now_fn = lambda: T0 + timedelta(minutes=305)
+    br.prices["OIL"] = 82.0 + 0.0
     a.monitor()
-    assert sum("nu și-a atins încă ținta" in x for x in tg.texts) == n                     # o singura data
+    assert any("nu și-a atins încă ținta" in x or "acum pe minus" in x for x in tg.texts)
+    n = sum(("nu și-a atins încă ținta" in x or "acum pe minus" in x) for x in tg.texts)
+    a.monitor()
+    assert sum(("nu și-a atins încă ținta" in x or "acum pe minus" in x) for x in tg.texts) == n          # o singura data
 
 
 def test_state_roundtrip(tmp_path):
@@ -840,8 +844,10 @@ def test_advisor_rules():
     assert r["verdict"] == "INCHIDE" and any("+$2.00" in x for x in r["reasons"])
     # in plus de 2$ dar aproape de tinta -> tine
     assert AD.advise(1, 1.1000, 1.1040, 1.1050, 1.0900, 2.0, 1.0, "sus", 55)["verdict"] == "TINE"
-    # pe minus, trend impotriva si aproape de plasa -> inchide
-    assert AD.advise(-1, 1.1000, 1.1080, 1.0950, 1.1100, -4.0, 1.0, "sus", 60)["verdict"] == "INCHIDE"
+    # Regula 1: pe minus NU mai sfatuim «inchide», chiar daca trendul e impotriva si suntem aproape de plasa
+    r = AD.advise(-1, 1.1000, 1.1080, 1.0950, 1.1100, -4.0, 1.0, "sus", 60)
+    assert r["verdict"] == "ATENTIE" and not any("tai pierderea" in x for x in r["reasons"])
+    assert AD.advise(-1, 1.1000, 1.1030, 1.0950, 1.1100, -2.0, 20.0, "sus", 60)["verdict"] != "INCHIDE"        # nici dupa 20 de ore pe minus
     # pe minus mic, trend in directia ta -> tine
     assert AD.advise(-1, 1.1000, 1.1003, 1.0950, 1.1100, -0.5, 1.0, "jos", 45)["verdict"] == "TINE"
     # profit mic, de ore pe loc, fara trend favorabil -> poti iesi in verde

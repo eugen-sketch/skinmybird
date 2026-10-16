@@ -67,6 +67,7 @@ class Assistant:
         self.acct_eq: float | None = None         # totalul contului la ultima verificare (bani liberi + marja pozitiilor): se schimba doar cu profitul/pierderea si cu banii intrati/iesiti
         self.realized_acc = 0.0                   # profitul/pierderea inchise de la ultima verificare
         self.money_cand: tuple[float, float] | None = None   # o schimbare mare de total, asteptata sa se confirme la urmatoarea verificare
+        self.time_stop_tried: dict[str, datetime] = {}   # cand am incercat ultima oara sa inchid o pozitie dupa limita de timp
         self.counter_pids: set[str] = set()       # pozitiile deschise pe revenire (contra trendului orar), planificat: sfatul le judeca dupa plan
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
@@ -248,6 +249,12 @@ class Assistant:
             is_wave = str(key).startswith("wave")
             if s["side"] == 0:
                 continue
+            rej = signals.gate(s, self.cfg.get("entry_gate"))
+            if rej:                                      # nu e „semnal”, e doar o părere: nu propunem nimic
+                report[-1].update(note=msg.gate_reason(*rej, self.cfg["entry_gate"]), skip=True)
+                continue
+            if self.cfg.get("entry_gate", {}).get("enabled") and not is_wave:
+                s["quality_note"] = msg.gate_ok(s)
             if is_wave:                                  # un val poate primi cel mult N propuneri (1 normal, 2 in modul agresiv)
                 if self.wave_n.get((name, key), 0) >= self.cfg.get("wave_max_proposals", 1):
                     continue
@@ -426,6 +433,8 @@ class Assistant:
                   if free < self.cfg["min_margin_usd"] else msg.no_free_margin(amount, free))
         counter = advisor.against_trend(side, s.get("trend"))                 # intrare pe revenire, contra trendului orar (planificata)
         why_full = s["why"] + (f". Mă aștept la revenire, deși trendul orar e în {'jos' if s.get('trend') == 'jos' else 'sus'}" if counter else "")
+        if s.get("quality_note"):
+            why_full += ". " + s["quality_note"]
         ctx = self.context_line(s)
         text = msg.signal(name, side, why_full + ctx, px, d, amount, lev, notional, tp_px, tp_usd, sl_px, sl_usd, free, can, reason)
         tag = self.aggr_tag(name, s, boost)
@@ -709,9 +718,30 @@ class Assistant:
         total = sum(r["last_pnl"] for r in rows)
         c = self.cfg
         if check_basket and len(rows) >= c["basket_min_positions"] and total >= c["basket_target_usd"]:
-            self.tg.send(msg.basket(len(rows), total))
-            for pid in list(self.known):
-                self.close_one(pid, "BASKET")
+            green = [pid for pid, p in self.known.items() if p.get("last_pnl", 0.0) > 0]       # Regula 1: nu inchid niciodata pe rosu
+            if green:
+                self.tg.send(msg.basket(len(green), sum(self.known[p]["last_pnl"] for p in green), len(rows) - len(green)))
+                for pid in green:
+                    self.close_one(pid, "BASKET")
+        self.time_stop()
+
+    def time_stop(self) -> None:
+        """Limita de timp, DOAR pe plus (Regula 1): o pozitie deschisa de `max_hold_hours` ore sau mai mult si aflata pe profit (peste
+        `time_stop_min_profit_usd`) se inchide, ca sa nu mai astepti ore pentru cativa dolari. Cele pe minus raman pana la tinta sau plasa."""
+        limit = self.cfg.get("max_hold_hours", 0)
+        if not limit:
+            return
+        now = self.now_fn()
+        for pid, p in list(self.known.items()):
+            opened = p.get("opened_at")
+            if not opened or pid in self.expecting or (now - opened).total_seconds() < limit * 3600:
+                continue
+            if self.time_stop_tried.get(pid) and (now - self.time_stop_tried[pid]).total_seconds() < 600:
+                continue                                  # o incercare esuata nu se repeta mai des de 10 minute
+            if self.fresh_pnl(p) < self.cfg.get("time_stop_min_profit_usd", 0.30):
+                continue
+            self.time_stop_tried[pid] = now
+            self.close_one(pid, "TIME")
 
     def refresh_blocked(self, now: datetime) -> None:
         """Semnalele care nu se puteau deschide din lipsa de bani liberi: le reevaluez cu banii de ACUM. Daca acum incap, semnalul se propune din nou

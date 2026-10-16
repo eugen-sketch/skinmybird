@@ -50,8 +50,8 @@ def advise(side: int, open_rate: float, price: float | None, tp: float | None, s
 
     verdict = "TINE"
     if to_sl is not None and to_sl >= 0.7:
-        verdict = "INCHIDE" if against else "ATENTIE"
-        reasons.insert(0, f"prețul a parcurs {to_sl * 100:.0f}% din drumul spre plasa de siguranță")
+        verdict = "ATENTIE"                                  # Regula 1: nu sfatuim si nu facem inchideri pe minus; plasa de siguranta ramane
+        reasons.insert(0, f"prețul a parcurs {to_sl * 100:.0f}% din drumul spre plasa de siguranță (nu închid pe minus; decide plasa sau tu)")
     elif pnl >= MIN_GREEN_USD:
         if to_tp is not None and to_tp >= 0.75:
             reasons.insert(0, "e aproape de țintă, mai las-o puțin")
@@ -71,8 +71,8 @@ def advise(side: int, open_rate: float, price: float | None, tp: float | None, s
             reasons.insert(0, "profit mic, încă are timp să ajungă la țintă")
     else:
         if against and (to_sl or 0) >= 0.35:
-            verdict = "INCHIDE"
-            reasons.insert(0, "ești pe minus și trendul merge împotriva ta; mai bine tai pierderea mică")
+            verdict = "ATENTIE"
+            reasons.insert(0, "ești pe minus și trendul merge împotriva ta; nu închid pe minus, așteptăm țintă sau plasă")
         elif against:
             verdict = "ATENTIE"
             reasons.insert(0, "ești pe minus și trendul e împotriva ta, urmărește-o")
