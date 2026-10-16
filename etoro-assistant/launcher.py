@@ -10,7 +10,7 @@ import time
 
 import requests
 
-DEFAULT_HOURS, MAX_HOURS, FRESH_MIN = 12, 72, 60
+DEFAULT_HOURS, MAX_HOURS, FRESH_MIN = 0, 72, 60          # implicit 0 = fără limită de timp (se relansează singur până apeși «Oprește»)
 TG = f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN', '')}"
 GH = f"https://api.github.com/repos/{os.getenv('GITHUB_REPOSITORY', '')}"
 GH_HEAD = {"Authorization": f"Bearer {os.getenv('GH_TOKEN', '')}", "Accept": "application/vnd.github+json"}
@@ -61,9 +61,10 @@ def main() -> None:
     hours = hours_from(last_start["text"])
     mode = "demo" if re.search(r"\bdemo\b", plain(last_start["text"])) else "real"          # implicit REAL; demo doar daca scrii «pornește demo»
     d = requests.post(f"{GH}/actions/workflows/assistant.yml/dispatches", headers=GH_HEAD, timeout=30,
-                      json={"ref": "master", "inputs": {"hours": str(hours), "continued": "0", "mode": mode}})
+                      json={"ref": "master", "inputs": {"hours": str(hours), "continued": "0", "mode": mode,
+                                                    "aggressive": "true" if mode == "real" else "false"}})   # ca sesiunea care rulează acum
     if d.status_code == 204:
-        send(chat, f"▶️ Am primit. Pornesc asistentul pe contul {'REAL 🔴' if mode == 'real' else 'DEMO'} pentru {hours} ore, în 1–2 minute vezi mesajul de pornire.")
+        send(chat, f"▶️ Am primit. Pornesc asistentul pe contul {'REAL 🔴' if mode == 'real' else 'DEMO'} {'fără limită de timp (se relansează singur, îl oprești cu ⛔ Oprește)' if hours <= 0 else f'pentru {hours} ore'}, în 1–2 minute vezi mesajul de pornire.")
     else:
         send(chat, f"⚠️ N-am reușit să-l pornesc (cod {d.status_code}). Încearcă din nou peste câteva minute.")
 

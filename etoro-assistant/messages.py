@@ -43,7 +43,8 @@ def started(hours: float, budget: float, scan_min: int, basket: float, real: boo
             f"🤝 Dacă ai mai multe poziții și împreună ajung la ≈ {usd(basket)}, le închid eu.\n"
             f"📈 Sumele urmează soldul din cont (împart bugetul pe 2 sau 3 poziții, minim 50 $ pe poziție).\n"
             f"✋ Poți închide oricând, din eToro sau de aici.\n"
-            f"👛 Buget de lucru: {usd(budget)} · Sesiune: {hours:g} ore (apoi mă opresc singur)\n\n"
+            f"👛 Buget de lucru: {usd(budget)} · " + ("Rulez fără limită de timp, mă relansez singur (mă oprești cu ⛔ Oprește)" if hours <= 0
+                                                       else f"Sesiune: {hours:g} ore (apoi mă opresc singur)") + "\n\n"
             f"👇 Folosește butoanele din meniul de sub căsuța de scris.")
 
 
@@ -344,12 +345,14 @@ def hour_range(bar_iso: str) -> str:
 
 
 def continued(hours: float) -> str:
-    return (f"🔁 Am trecut într-o sesiune nouă (limita GitHub e ~6 ore pe sesiune). Mai sunt {hours:g} ore. Totul rămâne la fel: "
+    return (f"🔁 Am trecut într-o sesiune nouă (limita GitHub e ~6 ore pe sesiune). "
+            + ("Rulez fără limită de timp. " if hours <= 0 else f"Mai sunt {hours:g} ore. ") + "Totul rămâne la fel: "
             f"scanez la 15 minute și nu deschid nimic fără OK-ul tău. Pozițiile deschise le-am preluat de pe eToro.")
 
 
 def handover(remaining: float, open_n: int) -> str:
-    return f"🔁 Mă mut într-o sesiune nouă, rămân pornit încă {remaining:g} ore. (Poziții deschise: {open_n}, rămân urmărite.)"
+    stay = "rămân pornit, fără limită de timp" if remaining <= 0 or remaining == float("inf") else f"rămân pornit încă {remaining:g} ore"
+    return f"🔁 Mă mut într-o sesiune nouă, {stay}. (Poziții deschise: {open_n}, rămân urmărite.)"
 
 
 def auto_signal(name: str, side: int, why: str, px: float, digits: int) -> str:

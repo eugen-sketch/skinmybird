@@ -42,13 +42,13 @@ def setup(monkeypatch, running, texts, chat="42", age=60):
 def test_text_helpers():
     assert launcher.wants_start("▶️ Pornește") and launcher.wants_start("porneste 24") and launcher.wants_start("/start")
     assert not launcher.wants_start("status")
-    assert launcher.hours_from("pornește 24") == 24 and launcher.hours_from("▶️ Pornește") == 12 and launcher.hours_from("porneste 999") == 72
+    assert launcher.hours_from("pornește 24") == 24 and launcher.hours_from("▶️ Pornește") == 0 and launcher.hours_from("porneste 999") == 72
 
 
 def test_start_request_dispatches(monkeypatch):
     sent, disp = setup(monkeypatch, running=False, texts=["▶️ Pornește"])
     launcher.main()
-    assert disp == [{"ref": "master", "inputs": {"hours": "12", "continued": "0", "mode": "real"}}] and "REAL" in sent[0]
+    assert disp == [{"ref": "master", "inputs": {"hours": "0", "continued": "0", "mode": "real", "aggressive": "true"}}] and "REAL" in sent[0]
 
 
 def test_nothing_when_already_running_or_no_message(monkeypatch):
@@ -72,7 +72,7 @@ def test_old_message_ignored_and_other_text_gets_hint(monkeypatch):
 def test_real_only_when_explicitly_asked(monkeypatch):
     sent, disp = setup(monkeypatch, running=False, texts=["pornește real 24"])
     launcher.main()
-    assert disp[0]["inputs"] == {"hours": "24", "continued": "0", "mode": "real"} and "REAL" in sent[0]
+    assert disp[0]["inputs"] == {"hours": "24", "continued": "0", "mode": "real", "aggressive": "true"} and "REAL" in sent[0]
 
 
 def test_word_containing_real_does_not_switch_to_real(monkeypatch):

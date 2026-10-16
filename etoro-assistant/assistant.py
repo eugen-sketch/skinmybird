@@ -38,7 +38,10 @@ MAX_RUN_HOURS = 5.5          # GitHub opreste orice job dupa 6 ore: sesiunile lu
 
 
 def plan_session(hours: float) -> tuple[float, float]:
-    """(ore de rulat acum, ore ramase pentru sesiunea urmatoare)."""
+    """(ore de rulat acum, ore ramase pentru sesiunea urmatoare). hours <= 0 = fara limita: mereu mai ramane o sesiune (se relanseaza singur,
+    pana apesi «Opreste»)."""
+    if hours <= 0:
+        return MAX_RUN_HOURS, float("inf")
     this = min(hours, MAX_RUN_HOURS)
     return this, max(0.0, hours - this)
 
@@ -1153,7 +1156,7 @@ class Assistant:
                 self.report_error(f"{type(e).__name__}: {str(e)[:150]}")
                 self.sleep(10)
         if self.stop_reason == "handover":
-            (HERE / "handover.txt").write_text(f"{remaining:g}", encoding="utf-8")          # pasul urmator din workflow porneste sesiunea noua
+            (HERE / "handover.txt").write_text("0" if hours <= 0 else f"{remaining:g}", encoding="utf-8")          # pasul urmator din workflow porneste sesiunea noua
             self.tg.send(msg.handover(remaining, len(self.known)), silent=True)
         else:
             self.tg.send(msg.stopped(self.stop_reason, len(self.known)))
