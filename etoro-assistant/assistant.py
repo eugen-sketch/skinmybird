@@ -64,6 +64,9 @@ class Assistant:
         self.adopt: list[dict] = []               # ordine trimise dar neconfirmate: daca pozitia apare mai tarziu, o preiau
         self.bot_pids: set[str] = set()           # pozitiile deschise de asistent (pe real le urmarim doar pe acestea)
         self.blocked: dict[str, dict] = {}        # semnale propuse care nu s-au putut deschide (bani liberi): raportul de scanare nu le contrazice
+        self.acct_eq: float | None = None         # totalul contului la ultima verificare (bani liberi + marja pozitiilor): se schimba doar cu profitul/pierderea si cu banii intrati/iesiti
+        self.realized_acc = 0.0                   # profitul/pierderea inchise de la ultima verificare
+        self.money_cand: tuple[float, float] | None = None   # o schimbare mare de total, asteptata sa se confirme la urmatoarea verificare
         self.counter_pids: set[str] = set()       # pozitiile deschise pe revenire (contra trendului orar), planificat: sfatul le judeca dupa plan
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
@@ -178,6 +181,7 @@ class Assistant:
         if self.day != today:
             self.day, self.day_pnl = today, 0.0
         self.realized += pnl
+        self.realized_acc += pnl
         self.day_pnl += pnl
         self.n_closed += 1
         self.total_pnl += pnl
@@ -644,7 +648,8 @@ class Assistant:
         self.refresh_real()                               # soldul liber real, proaspat la fiecare verificare
         self.try_adopt()                                  # inainte de citirea pozitiilor, ca cele preluate sa fie incluse
         try:
-            current = {p["id"]: p for p in self.broker.positions()
+            allp = self.broker.positions()
+            current = {p["id"]: p for p in allp
                        if p["name"] in self.inst and (not self.real or str(p["id"]) in self.bot_pids)}
         except Exception as e:  # noqa: BLE001
             self.report_error(f"nu pot citi pozițiile de pe eToro ({type(e).__name__})")
@@ -700,6 +705,7 @@ class Assistant:
                 self.known[pid]["opened_at"] = parse_time(pos.get("time")) or self.now_fn()
             self.sync_targets(self.known[pid])
         self.hold_alert()
+        self.check_money(allp)
         total = sum(r["last_pnl"] for r in rows)
         c = self.cfg
         if check_basket and len(rows) >= c["basket_min_positions"] and total >= c["basket_target_usd"]:
@@ -726,6 +732,28 @@ class Assistant:
             else:
                 b["status"] = (f"eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție și ai doar {msg.usd(free)} liber"
                                if free < self.cfg["min_margin_usd"] else msg.no_free_margin(amount, free))
+
+    def check_money(self, allp: list[dict]) -> None:
+        """Bani intrati sau iesiti din cont (depunere/retragere): totalul contului = bani liberi + marja pozitiilor; el se schimba doar cu profitul/
+        pierderea inchise. O diferenta de cel putin `money_alert_usd` care se vede la DOUA verificari la rand te anunta o singura data."""
+        if not self.real or self.real_balance is None:
+            return
+        try:
+            eq = self.real_balance + sum(p["amount"] for p in allp)
+            if self.acct_eq is None:
+                self.acct_eq, self.realized_acc = eq, 0.0
+                return
+            delta = eq - self.acct_eq - self.realized_acc
+            if abs(delta) < self.cfg.get("money_alert_usd", 20.0):
+                self.acct_eq, self.realized_acc, self.money_cand = eq, 0.0, None
+                return
+            if self.money_cand and abs(self.money_cand[0] - eq) <= 2.0:          # confirmat a doua oara: nu e o citire gresita
+                self.tg.send(msg.money_moved(delta, self.equity()))
+                self.acct_eq, self.realized_acc, self.money_cand = eq, 0.0, None
+            else:
+                self.money_cand = (eq, delta)
+        except Exception as e:  # noqa: BLE001 - verificarea banilor nu are voie sa opreasca botul
+            print(f"[!] verificare bani: {type(e).__name__}")
 
     def sync_targets(self, k: dict) -> None:
         """Tinta/plasa in $ afisate = cele de PE eToro (nivelurile si pretul real de deschidere), nu planul. Daca difera mult de plan
