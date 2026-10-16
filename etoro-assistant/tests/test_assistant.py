@@ -532,6 +532,8 @@ def test_real_is_locked_until_confirmed(monkeypatch):
 def test_real_budget_has_no_cap_and_limits_scale():
     small, _, _ = make_real(150.0)
     big, _, _ = make_real(3000.0)
+    for x in (small, big):
+        x.cfg = {**x.cfg, "oil_reserve_usd": 0}                          # aici testam scalarea proportionala, fara rezerva de petrol
     assert abs(big.equity() - 3000.0) < 1e-6 and abs(small.equity() - 150.0) < 1e-6
     m_small = small.sizing(small.inst["EURUSD"])[0]
     m_big = big.sizing(big.inst["EURUSD"])[0]
