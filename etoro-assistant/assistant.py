@@ -134,8 +134,20 @@ class Assistant:
             return c["budget_usd"]
         return max(c["budget_usd"] * c.get("min_budget_frac", 0.5), c["budget_usd"] + self.realized)
 
-    def free_margin(self) -> float:
-        return self.equity() * (1.0 if self.real else 1.015) - self.used_margin()       # demo: 1.5% toleranta (3 pozitii de ~50.5$ in 150$)
+    def oil_reserve(self) -> float:
+        """Banii rezervati DOAR pentru petrol (doar pe real si doar cand bugetul ajunge pentru rezerva + 2 pozitii de forex): forexul nu-i poate folosi."""
+        r = self.cfg.get("oil_reserve_usd", 0)
+        if not (self.real and r):
+            return 0.0
+        return float(r) if self.equity() >= r + 2 * self.cfg["min_margin_usd"] else 0.0
+
+    def free_margin(self, name: str | None = None) -> float:
+        """Banii liberi. Pentru un instrument care NU e petrol se scade rezerva petrolului, cat timp nu e folosita de o pozitie sau o propunere pe petrol."""
+        free = self.equity() * (1.0 if self.real else 1.015) - self.used_margin()       # demo: 1.5% toleranta (3 pozitii de ~50.5$ in 150$)
+        if name and name != "OIL":
+            oil_used = sum(p["amount"] for p in self.known.values() if p["name"] == "OIL")      # marja petrolului deschis e deja scazuta din `free`
+            free -= max(0.0, self.oil_reserve() - oil_used)                                      # o propunere pe petrol inca neexecutata tine rezerva ocupata
+        return free
 
     def max_pos(self) -> int:
         """Cate pozitii deschise odata: 2 cat timp bugetul e sub 150$, 3 de la 150$ in sus (eToro cere minim 50$ pe pozitie)."""
@@ -148,13 +160,24 @@ class Assistant:
         c = self.cfg
         lev = min(inst["lev_cap"], c["max_leverage"])
         eq, mm = self.equity(), c["min_margin_usd"]
-        n = max(1, min(self.max_pos(), int(eq // mm)))
+        name, reserve = inst.get("name"), self.oil_reserve()
+        if reserve and name == "OIL":                                             # petrolul: toata rezerva lui (minim: expunerea de 1.000 $ ceruta de eToro)
+            margin = max(reserve, math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100)
+            free = self.free_margin(name)
+            if margin > free + 0.001:
+                fit = math.floor(free * 100) / 100
+                if fit >= mm and fit * lev >= c["min_notional"] * 1.001:
+                    margin = fit
+            return margin, lev, margin * lev
+        if reserve:                                                               # restul instrumentelor impart bugetul fara rezerva petrolului
+            eq -= reserve
+        n = max(1, min(self.max_pos() - (1 if reserve else 0), int(eq // mm)))
         margin = max(math.floor(eq / n * 100) / 100, mm)
         if boost and c.get("boost_alloc"):                                       # AGGRESSIVE: val + RSI extrem => pana la 40% din cont
             margin = max(margin, math.floor(eq * c["boost_alloc"] * 100) / 100)
         if margin * lev < c["min_notional"] * 1.005:
             margin = math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100       # minimul eToro pentru expunere
-        free = self.free_margin()
+        free = self.free_margin(name)
         if margin > free + 0.001:
             fit = math.floor(free * 100) / 100
             if fit >= mm and fit * lev >= c["min_notional"] * 1.001:
@@ -427,7 +450,7 @@ class Assistant:
         atr_pct = s.get("atr_pct")
         sl_px, tp_px, tp_usd, sl_usd = self.levels(side, px, notional, atr_pct)
         d = digits_for(name, px)
-        free = self.free_margin()
+        free = self.free_margin(name)
         can = amount <= free + 0.001
         reason = (f"eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție și ai doar {msg.usd(free)} liber"
                   if free < self.cfg["min_margin_usd"] else msg.no_free_margin(amount, free))
@@ -538,7 +561,7 @@ class Assistant:
             self.tg.send(f"ℹ️ Ai deja o poziție deschisă pe {msg.pair(name)}, nu deschid încă una.")
             return
         amount, lev, notional = self.sizing(inst, bool(p.get("boost")))
-        free = self.free_margin()
+        free = self.free_margin(name)
         if amount > free + 0.001 or amount < self.cfg["min_margin_usd"] - 0.001:
             self.tg.send(f"🚫 Nu pot deschide {msg.pair(name)}: " + (
                 f"eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție și ai {msg.usd(free)} liber."
@@ -753,7 +776,7 @@ class Assistant:
                 continue
             try:
                 amount, _, _ = self.sizing(self.inst[n])
-                free = self.free_margin()
+                free = self.free_margin(n)
             except Exception:  # noqa: BLE001
                 continue
             if amount <= free + 0.001 and amount >= self.cfg["min_margin_usd"] - 0.001:
@@ -962,6 +985,9 @@ class Assistant:
         warn = ""
         if self.real and (self.last_ok is None or time.time() - self.last_ok > 120):
             warn = "⚠️ Nu am putut citi soldul de la eToro în ultimele minute; cifrele de buget pot fi vechi."
+        rsv = self.oil_reserve()
+        if rsv and not any(p["name"] == "OIL" for p in self.known.values()):
+            warn = (warn + "\n" if warn else "") + f"🛢️ Rezervat pentru petrol: {msg.usd(rsv)} (forexul nu-l folosește)"
         if rows:
             buttons.append([("📈 Grafice", "charts")])
         self.tg.send(msg.status(rows, total, self.free_margin(), self.equity(), self.profit_text(), self.autotrade, warn),

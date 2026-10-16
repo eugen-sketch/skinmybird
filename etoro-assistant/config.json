@@ -1,6 +1,7 @@
 {
   "budget_usd": 150,
   "daily_profit_lock_usd": 15,
+  "oil_reserve_usd": 105,
   "max_hold_hours": 5,
   "time_stop_min_profit_usd": 0.3,
   "entry_gate": {"enabled": true, "exclude_prefix": ["pullback"], "hours_utc": [7, 16], "adx_min": 25, "vol_min": 0.33},

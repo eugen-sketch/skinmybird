@@ -15,7 +15,7 @@ def _blocked_assistant(monkeypatch):
     monkeypatch.setattr(signals, "scan", lambda df, names, now=None, *wa: {
         "side": 1 if str(df).startswith("GBP") else 0, "why": "trendul orar e clar și prețul a spart maximul", "rsi": 72.0 if str(df).startswith("GBP") else 62.0,
         "price": 1.3312, "bar": "2026-10-16T07:00:00+00:00", "trend": "sus", "trend4h": "sus", "asia_pos": "în interior"})
-    a.free_margin = lambda: 45.79                              # sub minimul eToro de 50 $
+    a.free_margin = lambda name=None: 45.79                              # sub minimul eToro de 50 $
     a.scan()
     return a, tg, br
 
@@ -70,7 +70,7 @@ def test_status_is_short_and_sends_charts_only_on_request(monkeypatch):
 def test_blocked_signal_is_reproposed_with_current_money_not_a_stale_reason(monkeypatch):
     a, tg, br = _blocked_assistant(monkeypatch)
     assert any("Nu pot deschide acum" in t for t in tg.texts)
-    a.free_margin = lambda: 110.42                                              # între timp ai mai mulți bani liberi
+    a.free_margin = lambda name=None: 110.42                                              # între timp ai mai mulți bani liberi
     n = len([t for t in tg.texts if "Semnal pe" in t])
     a.scan()
     sig = [t for t in tg.texts if "Semnal pe" in t]
@@ -80,7 +80,7 @@ def test_blocked_signal_is_reproposed_with_current_money_not_a_stale_reason(monk
 
 def test_blocked_reason_in_report_uses_current_free_money(monkeypatch):
     a, tg, br = _blocked_assistant(monkeypatch)
-    a.free_margin = lambda: 30.00                                               # tot sub minim, dar cifra s-a schimbat
+    a.free_margin = lambda name=None: 30.00                                               # tot sub minim, dar cifra s-a schimbat
     a.scan(manual=True)
     rep = tg.texts[-1]
     assert "$30.00" in rep and "$45.79" not in rep                              # cifra de ACUM, nu cea veche
