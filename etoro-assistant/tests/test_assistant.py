@@ -232,7 +232,7 @@ def test_manual_scan_explains_what_it_checked(monkeypatch):
                                                            "asia_pos": "în interior", "n_bars": 700})
     a.scan(manual=True)
     text = tg.texts[-1]
-    assert "Scanare" in text and "EUR/USD 61" in text and "Cel mai aproape" in text and "10:00–11:00" in text      # raport scurt, o linie pentru toate
+    assert "Scanare" in text and "EUR/USD: " in text and "RSI 61" in text and "Cel mai aproape" in text and "10:00–11:00" in text      # raport scurt, o linie pentru toate
     assert "HOLD" in text and "Semnale active" not in text                                                      # fara semnal activ: HOLD
 
 

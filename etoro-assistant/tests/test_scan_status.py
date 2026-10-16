@@ -84,3 +84,29 @@ def test_blocked_reason_in_report_uses_current_free_money(monkeypatch):
     a.scan(manual=True)
     rep = tg.texts[-1]
     assert "$30.00" in rep and "$45.79" not in rep                              # cifra de ACUM, nu cea veche
+
+
+def _row(name, price, rsi, adx, trend="lateral", thr=36, live=None):
+    return {"name": name, "price": price, "rsi": rsi, "rsi_live": live, "adx": adx, "trend": trend, "thr": thr, "rsi_rule": True, "bar": "10:00–11:00"}
+
+
+def test_scan_report_shows_every_instrument_with_numbers_and_oil_first():
+    import messages as M
+    gate = {"enabled": True, "adx_min": 25}
+    rows = [_row("EURUSD", 1.1244, 60, 29.0, "sus"), _row("OIL", 95.99, 51, 22.0, "sus", thr=30, live=53), _row("GOLD", 4178.5, 60, 17.0)]
+    rep = M.scan_report(rows, 2.4, [], gate)
+    lines = rep.splitlines()
+    assert "am descărcat date noi pentru 3 instrumente" in lines[0] and "în 2 s" in lines[0]
+    oil = next(i for i, l in enumerate(lines) if "Petrol" in l)
+    assert lines[oil].startswith("🛢️") and "95.99" in lines[oil] and "RSI 51 (acum 53)" in lines[oil] and "ADX 22✗" in lines[oil]
+    assert oil < next(i for i, l in enumerate(lines) if "EUR/USD:" in l)                         # petrolul e primul
+    assert "ADX 29✓" in rep and "ADX 17✗" in rep
+    assert "am verificat toate regulile" in rep
+
+
+def test_scan_report_does_not_contradict_itself_when_rsi_is_already_in_the_zone():
+    import messages as M
+    rep = M.scan_report([_row("NZDUSD", 0.5614, 66, 30.0, "sus", thr=36)], None, [], {"adx_min": 25})
+    assert "RSI 66 e deja în zona de SELL" in rep and "devine SELL peste" not in rep          # nu mai zice «devine SELL peste 64» la RSI 66
+    rep2 = M.scan_report([_row("NZDUSD", 0.5614, 55, 30.0, "sus", thr=36)], None, [], {"adx_min": 25})
+    assert "devine SELL peste 64" in rep2
