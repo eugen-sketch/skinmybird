@@ -16,7 +16,8 @@ KEY = Fernet.generate_key().decode()
 OTHER = Fernet.generate_key().decode()
 
 
-def test_encrypt_round_trip_and_wrong_key_or_tampering_fails():
+def test_encrypt_round_trip_and_wrong_key_or_tampering_fails(monkeypatch):
+    monkeypatch.delenv("HELGA_KEY", raising=False)                          # testul nu depinde de cheia reala din mediul PC-ului
     tok = channel.encrypt({"a": "Poziție EUR/USD +$2.50"}, KEY)
     assert "EUR/USD" not in tok and "2.50" not in tok                       # nimic citibil în text criptat
     assert channel.decrypt(tok, KEY) == {"a": "Poziție EUR/USD +$2.50"}

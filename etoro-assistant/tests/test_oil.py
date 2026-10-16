@@ -1,4 +1,4 @@
-"""Buget separat pentru petrol (cerere Eugen, test o saptamana pe real): 105 $ rezervati doar pentru petrol; forexul nu-i poate folosi."""
+"""Buget separat pentru petrol (cerere proprietar, test o saptamana pe real): 105 $ rezervati doar pentru petrol; forexul nu-i poate folosi."""
 import sys
 from pathlib import Path
 

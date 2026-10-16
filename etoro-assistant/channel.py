@@ -1,6 +1,6 @@
 """Jurnal CRIPTAT al botului (Fernet: AES + semnatura), pentru ca Helga sa poata vedea ce a trimis botul pe Telegram, fara sa-l faca public.
 
-Cheia (HELGA_KEY) e in GitHub Secrets si pe PC-ul lui Eugen, niciodata in repo. Fiecare mesaj trimis pe Telegram si fiecare buton apasat intra in
+Cheia (HELGA_KEY) e in GitHub Secrets si pe PC-ul proprietarului, niciodata in repo. Fiecare mesaj trimis pe Telegram si fiecare buton apasat intra in
 `journal.enc` (un token criptat pe linie). Fisierul se urca la sfarsitul sesiunii ca artefact; fara cheie continutul nu se poate citi.
 Fara cheie sau fara biblioteca `cryptography`: jurnalul e oprit si botul merge exact ca inainte. Nicio eroare de aici nu opreste botul."""
 from __future__ import annotations

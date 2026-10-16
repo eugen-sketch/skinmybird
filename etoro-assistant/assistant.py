@@ -68,6 +68,7 @@ class Assistant:
         self.realized_acc = 0.0                   # profitul/pierderea inchise de la ultima verificare
         self.money_cand: tuple[float, float] | None = None   # o schimbare mare de total, asteptata sa se confirme la urmatoarea verificare
         self.time_stop_tried: dict[str, datetime] = {}   # cand am incercat ultima oara sa inchid o pozitie dupa limita de timp
+        self.plans: dict[str, dict] = {}          # pentru fiecare pozitie: planul (pret, tinta, plasa) si ce a pus de fapt eToro, salvat in stare
         self.counter_pids: set[str] = set()       # pozitiile deschise pe revenire (contra trendului orar), planificat: sfatul le judeca dupa plan
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
@@ -219,7 +220,7 @@ class Assistant:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
                         "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
-                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "unlocked": self.unlocked and self.real,
+                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
@@ -570,6 +571,11 @@ class Assistant:
         px = sl = tp = None
         try:
             px = self.live_price(name, side)
+            bad = self.price_mismatch(name, px, p.get("atr_pct"))
+            if bad:                                                   # pret nesigur: nu trimitem ordinul (ar da tinta/plasa gresite)
+                self.seen_bar.pop(name, None)                         # semnalul se poate relua la urmatoarea scanare, cu un pret bun
+                self.tg.send(bad)
+                return
             sl, tp, _, _ = self.levels(side, px, notional, p.get("atr_pct"))
             d = digits_for(name, px)
             problem = self.order_problem(side, px, round(sl, d), round(tp, d))
@@ -602,8 +608,34 @@ class Assistant:
         self.known[pid] = {"id": pid, "name": name, "side": side, "open_rate": px, "units": notional / (px * self.fx(name)) if name in USD_QUOTE_FACTOR_ONE else notional,
                            "amount": amount, "leverage": lev, "sl": sl, "tp": tp, "last_pnl": 0.0,
                            "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": self.now_fn(), "counter": bool(p.get("counter"))}
+        self.plans[str(pid)] = {"px_plan": px, "tp_usd": round(tp_usd, 2), "sl_usd": round(sl_usd, 2), "at": self.now_fn().isoformat(timespec="seconds")}
+        self.log_event(f"deschis {name} {'BUY' if side == 1 else 'SELL'}: plan pret {px:g}, tinta {tp_usd:.2f}$, plasa {sl_usd:.2f}$")
         self.tg.send(("🔴 CONT REAL\n" if self.real else "") + msg.opened(name, side, px, d, amount, lev, notional, tp, tp_usd, sl, sl_usd))
         self.save_state()
+
+    def price_mismatch(self, name: str, px: float, atr_pct: float | None) -> str | None:
+        """Pretul de la eToro de la momentul ordinului trebuie sa se potriveasca cu lumanarea orara eToro (la zi). Altfel nu trimitem ordinul:
+        pe 14-15.10 un pret vechi a dat tinte de 0,30-1,55 $ in loc de >= 2,25 $ (si o pierdere de 10 $ cu tinta de 1,34 $)."""
+        try:
+            ref = self.broker.price(name)
+        except Exception:  # noqa: BLE001
+            return None
+        if not ref or not px:
+            return None
+        tol = max(0.0005, 0.6 * (atr_pct or 0.0))
+        diff = abs(px - ref) / ref
+        if diff <= tol:
+            return None
+        return (f"🛑 Nu deschid {msg.pair(name)}: prețul de la eToro ({px:g}) nu se potrivește cu lumânarea orară ({ref:g}), diferență {diff * 100:.2f}%. "
+                f"Nu trimit ordinul cu un preț nesigur; încerc din nou la următoarea scanare.")
+
+    def log_event(self, text: str) -> None:
+        """Un rand in jurnalul criptat (daca e pornit): planul si realitatea fiecarei pozitii, ca sa putem verifica si dupa ce s-a inchis."""
+        try:
+            import telegram_bot
+            telegram_bot._notify("ev", text)
+        except Exception:  # noqa: BLE001
+            pass
 
     def order_problem(self, side: int, px: float, sl: float, tp: float) -> str | None:
         """Verificari de bun-simt inainte sa trimit un ordin cu bani: SL/TP de partea corecta a pretului si la distanta rezonabila."""
@@ -720,6 +752,7 @@ class Assistant:
             if pid not in self.expecting and self.miss[pid] < 2:
                 continue
             old = self.known.pop(pid)
+            plan = self.plans.pop(str(pid), None)
             self.miss.pop(pid, None)
             kind = self.expecting.pop(pid, None)
             pnl = old.get("last_pnl", 0.0)
@@ -727,6 +760,8 @@ class Assistant:
                 kind, pnl = self.classify_vanished(old, pnl)
             self.bot_pids.discard(str(pid))
             self.counter_pids.discard(str(pid))
+            hrs = (self.now_fn() - old["opened_at"]).total_seconds() / 3600 if old.get("opened_at") else 0.0
+            self.log_event(f"inchis {old['name']} ({kind}): net {pnl:+.2f}$, durata {hrs:.1f}h, plan/real: {plan}")
             self.add_realized(pnl)
             self.refresh_real()
             self.tg.send(msg.closed(old["name"], kind, pnl, self.profit_text(), self.equity() if self.cfg.get("progressive") else None,
@@ -820,6 +855,9 @@ class Assistant:
         if real_tp is None or not plan:
             return
         k.setdefault("tp_usd_plan", plan)
+        pl = self.plans.setdefault(str(k["id"]), {})
+        pl.setdefault("tp_usd", round(plan, 2))
+        pl["real"] = {"open": op, "tp_usd": round(real_tp, 2), "sl_usd": round(real_sl, 2) if real_sl is not None else None}
         if abs(real_tp - plan) <= max(0.25 * plan, 0.30):
             return                                                         # diferenta normala (spread, rotunjiri)
         k["tp_usd"] = real_tp
@@ -1159,6 +1197,7 @@ class Assistant:
         self.autotrade = bool(st.get("autotrade")) and cont                               # sesiune noua pornita de tine: autotrading oprit
         self.bot_pids = set(st.get("bot_pids", [])) if self.real else set()
         self.counter_pids = set(st.get("counter_pids", []))
+        self.plans = st.get("plans", {})
         for r in st.get("adopt", []) if self.real else []:
             t = parse_time(r.get("at"))
             if t:
