@@ -266,6 +266,7 @@ class Assistant:
                 print(f"{name}: semnal={s['side']:+d} rsi={s['rsi']:.0f}")
             thr = next((int(n[7:]) for n in inst["signals"] if n.startswith("rsi_rev")), 25)
             report.append({"name": name, "rsi": s["rsi"], "thr": thr, "asia": s.get("asia_pos"), "bar": msg.hour_range(s["bar"]),
+                           "price": s.get("price_live") or s.get("price"), "adx": s.get("adx"), "vol_rank": s.get("vol_rank"),
                            "trend": s.get("trend"), "rsi_live": s.get("rsi_live"), "tick": s.get("tick"), "move_atr": s.get("move_atr", 0.0),
                            "side": s["side"],
                            "rsi_rule": any(n.startswith("rsi_rev") for n in inst["signals"])})
@@ -323,7 +324,7 @@ class Assistant:
             have = {a["name"] for a in active}
             for n in sorted(open_names - have):
                 report.append({"name": n, "rsi": 50.0, "thr": 25, "bar": "?", "note": "ai deja poziție", "skip": True})
-            self.tg.send(msg.scan_report(report, time.time() - t_scan0, active) if report or active
+            self.tg.send(msg.scan_report(report, time.time() - t_scan0, active, self.cfg.get("entry_gate")) if report or active
                          else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.")
         elif radar and report:
             self.tg.send(msg.radar(report, msg.ro_hm(now)), silent=True)
