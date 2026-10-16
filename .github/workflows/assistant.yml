@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install requests pandas numpy matplotlib tzdata
+      - run: pip install requests pandas numpy matplotlib tzdata cryptography
       - name: Restore state (castig realizat intre sesiuni)
         continue-on-error: true
         working-directory: etoro-assistant
@@ -53,6 +53,7 @@ jobs:
           ETORO_USER_KEY: ${{ secrets.ETORO_USER_KEY }}
           ETORO_REAL_API_KEY: ${{ secrets.ETORO_REAL_API_KEY }}
           ETORO_REAL_USER_KEY: ${{ secrets.ETORO_REAL_USER_KEY }}
+          HELGA_KEY: ${{ secrets.HELGA_KEY }}
           TRADING_MODE: ${{ inputs.mode }}
           AGGRESSIVE_MODE: ${{ inputs.aggressive }}
           QUIET_LOGS: "1"
@@ -67,6 +68,14 @@ jobs:
           path: etoro-assistant/state${{ inputs.mode == 'real' && '-real' || '' }}.json
           overwrite: true
           retention-days: 30
+          if-no-files-found: ignore
+      - name: Save journal (criptat, doar cu HELGA_KEY se poate citi)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assistant-journal-${{ github.run_id }}
+          path: etoro-assistant/journal.enc
+          retention-days: 3
           if-no-files-found: ignore
       - name: Continue in a new session if hours remain
         working-directory: etoro-assistant

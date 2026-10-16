@@ -8,7 +8,9 @@ import json
 import os
 from pathlib import Path
 
-PATH = Path(os.getenv("STATE_FILE", Path(__file__).parent / ("state-real.json" if os.getenv("TRADING_MODE") == "real" else "state.json")))
+import channel
+
+PATH =Path(os.getenv("STATE_FILE", Path(__file__).parent / ("state-real.json" if os.getenv("TRADING_MODE") == "real" else "state.json")))
 
 
 def _stream(n: int) -> bytes:
@@ -20,12 +22,23 @@ def _stream(n: int) -> bytes:
     return out[:n]
 
 
+PREFIX = "f1:"            # stare criptata cu Fernet (AES + semnatura, IV aleator); fara prefix = formatul vechi (ascuns usor)
+
+
 def dumps(d: dict) -> str:
     raw = json.dumps(d).encode()
+    f = channel.fernet()
+    if f:
+        return PREFIX + f.encrypt(raw).decode()
     return base64.b64encode(bytes(a ^ b for a, b in zip(raw, _stream(len(raw))))).decode()
 
 
 def loads(txt: str) -> dict:
+    if txt.startswith(PREFIX):
+        f = channel.fernet()
+        if not f:
+            raise ValueError("stare criptata, dar lipseste cheia")
+        return json.loads(f.decrypt(txt[len(PREFIX):].encode()))
     raw = base64.b64decode(txt)
     return json.loads(bytes(a ^ b for a, b in zip(raw, _stream(len(raw)))))
 

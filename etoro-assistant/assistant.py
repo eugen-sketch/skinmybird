@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import advisor
+import channel
 import chart as chart_mod
 import messages as msg
 import news as news_mod
@@ -1171,6 +1172,11 @@ def main() -> int:
     real = os.getenv("TRADING_MODE") == "real"
     cfg = modes.apply(json.loads((HERE / "config.json").read_text(encoding="utf-8")), real)
     tg, api = Telegram(), EToroDemo(real=real)
+    journal = channel.from_env(HERE / "journal.enc")          # jurnal criptat al mesajelor (doar cu HELGA_KEY); fara cheie: oprit
+    if journal:
+        import telegram_bot
+        telegram_bot.HOOKS.append(journal.on_telegram)
+        journal.add("start", f"sesiune noua, mod {'real' if real else 'demo'}, ore {hours:g}")
     ids = {}
     for inst in cfg["instruments"]:
         ids[inst["name"]] = api.find_instrument_id(inst["etoro"])

@@ -6,6 +6,17 @@ import os
 import requests
 
 
+HOOKS: list = []          # functii (kind, text, buttons) apelate la fiecare mesaj trimis/primit; folosite de jurnalul criptat
+
+
+def _notify(kind: str, text: str, buttons=None) -> None:
+    for h in HOOKS:
+        try:
+            h(kind, text, buttons)
+        except Exception:  # noqa: BLE001 - un jurnal stricat nu opreste Telegramul
+            pass
+
+
 class Telegram:
     def __init__(self, token: str | None = None, chat_id: str | None = None):
         self.token = token or os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -28,6 +39,7 @@ class Telegram:
                                        "is_persistent": True, "input_field_placeholder": "Alege un buton sau scrie /ajutor"}
         elif buttons:
             payload["reply_markup"] = {"inline_keyboard": [[{"text": t, "callback_data": d} for t, d in row] for row in buttons]}
+        _notify("out", text, buttons)
         try:
             res = self._call("sendMessage", **payload)
             return res.get("message_id") if res else None
@@ -37,6 +49,7 @@ class Telegram:
 
     def send_photo(self, png: bytes, caption: str = "", silent: bool = False) -> int | None:
         """Trimite o imagine (graficul). Esecul nu opreste restul: asistentul merge mai departe si fara grafic."""
+        _notify("photo", caption)
         try:
             r = requests.post(f"{self.base}/sendPhoto", data={"chat_id": self.chat, "caption": caption[:1000], "disable_notification": str(silent).lower()},
                               files={"photo": ("grafic.png", png, "image/png")}, timeout=60)
@@ -84,4 +97,6 @@ class Telegram:
                 out.append({"kind": "button", "id": cb["id"], "data": cb.get("data", ""), "msg_id": cb["message"]["message_id"]})
             elif m and str(m.get("chat", {}).get("id")) == self.chat and m.get("text"):
                 out.append({"kind": "text", "text": m["text"].strip()})
+        for e in out:
+            _notify("in", e.get("text") or f"buton: {e.get('data', '')}")
         return out
