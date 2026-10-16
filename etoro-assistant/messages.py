@@ -109,20 +109,23 @@ def status(rows: list[dict], total: float, free: float, budget: float, profit: s
                 f"\n{profit}{tail}")
     lines = [f"{'🟢' if r['pnl'] >= 0 else '🔴'} {pair(r['name'])} ({'cumpărat' if r['side'] == 1 else 'vândut'}): {signed(r['pnl'])}"
              + (f" · ținta e {signed(r['tp_usd'])}" if r.get("tp_usd") else "")
-             + advice_block(r.get("advice")) for r in rows]
+             + advice_block(r.get("advice"), short=True) for r in rows]
     icon = "📈" if total >= 0 else "📉"
     return ("📊 Pozițiile deschise acum:\n" + "\n".join(lines) + f"\n\n{icon} Total acum: {signed(total)}\n"
-            f"👛 Buget liber: {usd(free)} din {usd(budget)}\n\n{profit}{tail}\n"
-            f"ℹ️ Sfaturile vin din reguli simple (trend orar, RSI, timp, cât a mers spre țintă/plasă).")
+            f"👛 Buget liber: {usd(free)} din {usd(budget)}\n\n{profit}{tail}")
 
 
 VERDICT = {"TINE": "✋ ȚINE-O", "INCHIDE": "🔒 ÎNCHIDE-O", "ATENTIE": "⚠️ ATENȚIE", "NOU": "🆕 DESCHISĂ ACUM"}
 
 
-def advice_block(adv: dict | None) -> str:
-    """Sfatul pentru o pozitie, pe scurt si pe intelesul tuturor (fara grafice)."""
+def advice_block(adv: dict | None, short: bool = False) -> str:
+    """Sfatul pentru o pozitie, pe scurt si pe intelesul tuturor (fara grafice). short=True (in Status): doar verdictul si motivul principal."""
     if not adv:
         return ""
+    if short and adv.get("verdict") != "NOU":
+        why = (adv.get("reasons") or [""])[0]
+        extra = f" · {min(100, adv['to_tp'] * 100):.0f}% spre țintă" if adv.get("to_tp") else ""
+        return f"\n   👉 {VERDICT.get(adv['verdict'], adv['verdict'])}" + (f" — {why}" if why else "") + extra
     if adv.get("verdict") == "NOU":                       # sub ~15 min: fara verdict, doar cum stau lucrurile
         return "\n   🆕 " + "; ".join(adv.get("reasons", []))
     bits = []
@@ -225,43 +228,44 @@ def cancelled() -> str:
     return "👌 Bine, las totul cum era."
 
 
-def scan_report(rows: list[dict], took: float | None = None) -> str:
-    """rows: name, rsi, thr (prag RSI), asia (poz. fata de intervalul de noapte sau None), bar (ora ultimei bare), note,
-    trend, rsi_rule (are regula de RSI extrem), skip (n-am putut/nu trebuia sa-l scanez acum)."""
-    lines = []
-    for r in rows:
-        nm = pair(r["name"]).split(" ")[0]
-        note = f" ({r['note']})" if r.get("note") else ""
-        if r.get("skip"):
-            lines.append(f"• {nm}:{note}")
-            continue
-        extra = f" · fața de intervalul de noapte: {r['asia']}" if r.get("asia") and len(r["name"]) == 6 and r["name"].isalpha() else ""
-        trend = {"sus": " · trend orar: ↗️ sus", "jos": " · trend orar: ↘️ jos", "lateral": " · trend orar: ↔️ lateral"}.get(r.get("trend"), "")
-        live = r.get("rsi_live")
-        now_rsi = f" (acum {live:.0f})" if live is not None and abs(live - r["rsi"]) >= 1 else ""
-        lines.append(f"• {nm}: RSI {r['rsi']:.0f}{now_rsi}{trend}{extra}{note}")
-    scanned = [r for r in rows if not r.get("skip")]
-    bar = next((r["bar"] for r in scanned if r.get("bar") not in (None, "?")), "?")
-    near = sorted((r for r in scanned if r.get("rsi_rule", True) and not r.get("note")),
+def scan_report(rows: list[dict], took: float | None = None, active: list[dict] | None = None) -> str:
+    """Raportul de la «Caută semnale», scurt si coerent cu semnalele deja trimise.
+    rows: name, rsi, thr (prag RSI), trend, rsi_rule, note, skip. active: semnale propuse recent (name, side, until, status) – ele
+    ordona recomandarea: daca exista un semnal activ, nu mai spunem «HOLD, nu cumpara»."""
+    arrow = {"sus": "↗️", "jos": "↘️", "lateral": "↔️"}
+    active = active or []
+    act_names = {a["name"] for a in active}
+    scanned = [r for r in rows if not r.get("skip") and not r.get("note") and r["name"] not in act_names]
+    other = [r for r in rows if (r.get("skip") or r.get("note")) and r["name"] not in act_names]
+    bar = next((r["bar"] for r in rows if not r.get("skip") and r.get("bar") not in (None, "?")), "?")
+    out = [f"🔎 Scanare {ro_hm(datetime.now(timezone.utc))} (ultima oră încheiată: {bar})."]
+    if active:
+        out.append("📌 Semnale active acum:")
+        for a in active:
+            act = "CUMPĂR" if a["side"] == 1 else "VÂND"
+            out.append(f"• {pair(a['name']).split(' ')[0]} — {act} (valabil până la {ro_hm(a['until'])}): {a['status']}")
+    if scanned:
+        out.append("Fără semnal nou: " + " · ".join(f"{pair(r['name']).split(' ')[0]} {r['rsi']:.0f}{arrow.get(r.get('trend'), '')}" for r in scanned)
+                   + "  (RSI și trend orar)")
+    if other:
+        out.append("Nu scanez: " + "; ".join(f"{pair(r['name']).split(' ')[0]}" + (f" ({r['note']})" if r.get("note") else "") for r in other))
+    near = sorted((r for r in scanned if r.get("rsi_rule", True)),
                   key=lambda r: min(abs(r["rsi"] - r["thr"]), abs(r["rsi"] - (100 - r["thr"]))))
-    n = near[0] if near else None
-    if n:
+    if near and not active:
+        n = near[0]
         side = "BUY" if n["rsi"] < 50 else "SELL"
-        close = (f"\n\n🎯 Cel mai aproape de semnal (la RSI): {pair(n['name']).split(' ')[0]} (RSI {n['rsi']:.0f}). "
-                 f"Ar deveni {side} dacă RSI ajunge {'sub ' + str(n['thr']) if side == 'BUY' else 'peste ' + str(100 - n['thr'])}.")
+        out.append(f"🎯 Cel mai aproape: {pair(n['name']).split(' ')[0]} (RSI {n['rsi']:.0f}), devine {side} "
+                   f"{'sub ' + str(n['thr']) if side == 'BUY' else 'peste ' + str(100 - n['thr'])}.")
+    if active:
+        sides = "; ".join(f"{'BUY' if a['side'] == 1 else 'SELL'} {pair(a['name']).split(' ')[0]}" for a in active)
+        out.append(f"👉 Recomandare acum: {sides} (semnalele de mai sus încă valabile).")
     else:
-        close = ""
-    ticks = [r["tick"] for r in scanned if r.get("tick")]
-    stamp = ""
+        out.append("👉 Recomandare acum: HOLD ⏸️ — niciun semnal clar, aștept.")
     if took is not None:
-        last = ro_hm(max(ticks)) if ticks else "?"
-        stamp = (f"\n\n⏱️ Am citit datele proaspete acum, în {took:.1f} s (ultima cotație văzută: {last}). "
-                 f"RSI-ul fără paranteză e pe ultima oră ÎNCHEIATĂ (după el decid semnalele); „acum” e pe ora în curs, doar informativ.")
-    skipped = len(rows) - len(scanned)
-    tail = f", {skipped} în afara programului sau fără date proaspete" if skipped else ""
-    return (f"🔎 Am scanat acum {len(scanned)} instrumente{tail} (ultima oră încheiată: {bar}).\n" + "\n".join(lines) +
-            f"\n\nNiciun semnal nou. Cumpăr/vând doar când văd semnal clar (revenire după retragere în trend, spargere de maxim/minim, RSI extrem, spargerea intervalului de noapte pe forex).{close}"
-            f"{stamp}\n\n👉 Recomandare acum: HOLD ⏸️ — nu cumpăra și nu vinde nimic, așteptăm.")
+        ticks = [r["tick"] for r in rows if r.get("tick")]
+        if ticks:
+            out.append(f"⏱️ ultima cotație văzută: {ro_hm(max(ticks))}")
+    return "\n".join(out)
 
 
 def daily_report(day: str, pnl: float, n: int, unreal: float, open_rows: list, days: list, total: float, since: str, n_total: int,
