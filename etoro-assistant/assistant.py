@@ -59,6 +59,7 @@ class Assistant:
         self.last_ok: float | None = None         # ultima citire reusita a soldului real
         self.adopt: list[dict] = []               # ordine trimise dar neconfirmate: daca pozitia apare mai tarziu, o preiau
         self.bot_pids: set[str] = set()           # pozitiile deschise de asistent (pe real le urmarim doar pe acestea)
+        self.blocked: dict[str, dict] = {}        # semnale propuse care nu s-au putut deschide (bani liberi): raportul de scanare nu le contrazice
         self.counter_pids: set[str] = set()       # pozitiile deschise pe revenire (contra trendului orar), planificat: sfatul le judeca dupa plan
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
@@ -206,6 +207,7 @@ class Assistant:
         t_scan0 = time.time()
         found, overflow, report = 0, [], []
         open_names = {p["name"] for p in self.known.values()}
+        self.refresh_blocked(now)
         self.news_heads_up(now, open_names)
         for name, inst in self.inst.items():
             if name in open_names or any(p["name"] == name for p in self.pending.values()):
@@ -274,9 +276,16 @@ class Assistant:
         if radar:
             self.report_hour = slot_key
         if manual and not found:
-            for n in sorted(open_names | {p["name"] for p in self.pending.values()}):
-                report.append({"name": n, "rsi": 50.0, "thr": 25, "bar": report[0]["bar"] if report else "?", "note": "ai deja poziție/semnal"})
-            self.tg.send(msg.scan_report(report, time.time() - t_scan0) if report else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.")
+            valid = timedelta(minutes=self.cfg["signal_valid_min"])
+            active = [{"name": p["name"], "side": p["side"], "until": p["created"] + valid, "status": "așteaptă OK-ul tău pe butoanele de mai sus"}
+                      for p in self.pending.values() if now - p["created"] <= valid]
+            active += [{**b, "until": b["at"] + valid} for n, b in self.blocked.items()
+                       if n not in open_names and now - b["at"] <= valid and all(a["name"] != n for a in active)]
+            have = {a["name"] for a in active}
+            for n in sorted(open_names - have):
+                report.append({"name": n, "rsi": 50.0, "thr": 25, "bar": "?", "note": "ai deja poziție", "skip": True})
+            self.tg.send(msg.scan_report(report, time.time() - t_scan0, active) if report or active
+                         else "🔎 Am scanat acum: nu am putut citi datele, încerc din nou.")
         elif radar and report:
             self.tg.send(msg.radar(report, msg.ro_hm(now)), silent=True)
 
@@ -415,8 +424,10 @@ class Assistant:
         if tag:
             text = tag + "\n" + text
         if not can:
+            self.blocked[name] = {"name": name, "side": side, "at": self.now_fn(), "status": reason}
             self.tg.send(text)
             return False
+        self.blocked.pop(name, None)
         self.sid += 1
         sid = self.sid
         if self.autotrade and self.day_pnl_today() <= -self.cfg["autotrade_daily_loss_usd"] * self.scale():
@@ -692,6 +703,26 @@ class Assistant:
             for pid in list(self.known):
                 self.close_one(pid, "BASKET")
 
+    def refresh_blocked(self, now: datetime) -> None:
+        """Semnalele care nu se puteau deschide din lipsa de bani liberi: le reevaluez cu banii de ACUM. Daca acum incap, semnalul se propune din nou
+        (cu cifrele reale de acum); daca tot nu incap, retin motivul proaspat. Dupa valabilitate (signal_valid_min) dispar."""
+        valid = timedelta(minutes=self.cfg["signal_valid_min"])
+        for n, b in list(self.blocked.items()):
+            if now - b["at"] > valid or n not in self.inst:
+                self.blocked.pop(n, None)
+                continue
+            try:
+                amount, _, _ = self.sizing(self.inst[n])
+                free = self.free_margin()
+            except Exception:  # noqa: BLE001
+                continue
+            if amount <= free + 0.001 and amount >= self.cfg["min_margin_usd"] - 0.001:
+                self.blocked.pop(n, None)
+                self.seen_bar.pop(n, None)                 # scanarea de acum il propune din nou, cu cifrele reale de acum
+            else:
+                b["status"] = (f"eToro cere minim {msg.usd(self.cfg['min_margin_usd'])} pe poziție și ai doar {msg.usd(free)} liber"
+                               if free < self.cfg["min_margin_usd"] else msg.no_free_margin(amount, free))
+
     def sync_targets(self, k: dict) -> None:
         """Tinta/plasa in $ afisate = cele de PE eToro (nivelurile si pretul real de deschidere), nu planul. Daca difera mult de plan
         (de ex. pretul vazut de mine la ordin era vechi), o singura data te anunt, iar planul ramane in `tp_usd_plan`."""
@@ -869,10 +900,16 @@ class Assistant:
         warn = ""
         if self.real and (self.last_ok is None or time.time() - self.last_ok > 120):
             warn = "⚠️ Nu am putut citi soldul de la eToro în ultimele minute; cifrele de buget pot fi vechi."
+        if rows:
+            buttons.append([("📈 Grafice", "charts")])
         self.tg.send(msg.status(rows, total, self.free_margin(), self.equity(), self.profit_text(), self.autotrade, warn),
                      buttons or None)
-        for r, p in zip(rows, self.known.values()):                      # un grafic pe fiecare pozitie, cu intrarea, tinta si plasa
-            self.send_chart(p["name"], r["advice"].get("scan", {}), p["side"], p.get("open_rate"), p.get("tp") or None, p.get("sl") or None,
+
+    def status_charts(self) -> None:
+        """Graficele pozitiilor deschise, la cerere (butonul «Grafice» din Status), nu la fiecare Status."""
+        for p in list(self.known.values()):
+            adv = self.advice_for(p)
+            self.send_chart(p["name"], adv.get("scan", {}), p["side"], p.get("open_rate"), p.get("tp") or None, p.get("sl") or None,
                             f"{msg.pair(p['name'])}: {'cumpărat' if p['side'] == 1 else 'vândut'}, acum {msg.signed(p['last_pnl'])}")
 
     # ------------------------------------------------------------------ comenzi
@@ -900,6 +937,8 @@ class Assistant:
                 self.tg.send(msg.skipped())
             elif d.startswith("close:"):
                 self.close_one(d[6:], "YOU")
+            elif d == "charts":
+                self.status_charts()
             elif d == "closeall":
                 self.tg.clear_buttons(ev["msg_id"])
                 for pid in list(self.known):

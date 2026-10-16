@@ -232,7 +232,8 @@ def test_manual_scan_explains_what_it_checked(monkeypatch):
                                                            "asia_pos": "în interior", "n_bars": 700})
     a.scan(manual=True)
     text = tg.texts[-1]
-    assert "Am scanat acum 10 instrumente" in text and "RSI 61" in text and "Cel mai aproape de semnal" in text and "10:00–11:00" in text
+    assert "Scanare" in text and "EUR/USD 61" in text and "Cel mai aproape" in text and "10:00–11:00" in text      # raport scurt, o linie pentru toate
+    assert "HOLD" in text and "Semnale active" not in text                                                      # fara semnal activ: HOLD
 
 
 def test_scan_counter_and_heartbeat_text(monkeypatch):
@@ -860,8 +861,8 @@ def test_status_gives_advice_per_position():
     a.known["1"]["px_now"] = 1.3230
     a.status()
     text = tg.texts[-1]
-    assert "Sfat:" in text and "ȚINE-O" in text or "ÎNCHIDE-O" in text
-    assert "până la țintă" in text and "deschisă de 3 h" in text
+    assert "ȚINE-O" in text or "ÎNCHIDE-O" in text
+    assert "spre țintă" in text and "ℹ️ Sfaturile vin" not in text                       # Status scurt: sfat pe un rând, fără explicația repetată
 
 
 def test_advice_tick_warns_once_per_hour_with_close_button(monkeypatch):
