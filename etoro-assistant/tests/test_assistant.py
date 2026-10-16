@@ -568,9 +568,9 @@ def test_min_50_per_position_and_two_positions_below_150():
     c, _, _ = make_real(120.0)                                 # 120$: doua pozitii de cate 60$
     assert c.max_pos() == 2 and abs(c.sizing(c.inst["NZDUSD"])[0] - 60.0) < 0.01
     d, _, _ = make_real(150.0)                                 # 150$: trei pozitii de cate 50$
-    assert d.max_pos() == 3 and abs(d.sizing(d.inst["NZDUSD"])[0] - 50.0) < 0.01
+    assert d.max_pos() == 3 and abs(d.sizing(d.inst["NZDUSD"])[0] - 50.5) < 0.01          # NZD/USD: levier 20 => minimul de expunere cere 50,5$ marja
     e, _, _ = make_real(100.0)                                 # 100$: doua de cate 50$
-    assert abs(e.sizing(e.inst["NZDUSD"])[0] - 50.0) < 0.01
+    assert abs(e.sizing(e.inst["NZDUSD"])[0] - 50.5) < 0.01
 
 
 def test_second_position_uses_remaining_money_and_third_is_refused_under_150():
@@ -746,7 +746,7 @@ def test_leverage_retry_only_for_leverage_rejection_and_within_free_money(monkey
     B, br = _broker(api, monkeypatch)
     import pytest
     with pytest.raises(B.OrderRejected) as ei:
-        br.open("NZDUSD", -1, 73.0, 30, 0.562, 0.559, max_amount=80.0)       # lev 20 ar cere 109.5$ > 80$ liber
+        br.open("NZDUSD", -1, 40.0, 30, 0.562, 0.559, max_amount=45.0)       # la lev 20 expunerea minima (1.000 $) cere 50,5$ marja > 45$ liber
     assert len(api.opened) == 1 and "peste banii liberi" in str(ei.value)
 
 

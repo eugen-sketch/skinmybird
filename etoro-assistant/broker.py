@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import math
+import re
 import time
 
 from datetime import datetime, timedelta, timezone
 
 from etoro import EToroDemo, EToroError, EToroHTTPError, EToroNetworkError
 
+MIN_NOTIONAL = 1000          # expunerea minima cerita de eToro pe o pozitie (in $)
 MAX_QUOTE_AGE_S = 120        # cotatiile eToro mai vechi de 2 minute nu se folosesc (pe 15.10 veneau cu ~40 min intarziere)
 
 
@@ -121,13 +123,18 @@ class EToroBroker:
             self.last = {"amount": amount, "leverage": lev}
             return pid
         except OrderRejected as e:
-            if lev <= 20 or "leverage" not in str(e).lower():
+            if "leverage" not in str(e).lower():
                 raise
-            amount2 = math.ceil(amount * lev / 20 * 100) / 100
+            m = re.search(r"MaxLeverage setting \[(\d+)\]", str(e))
+            new_lev = int(m.group(1)) if m else 20                       # limita citita din raspunsul eToro (altfel 20)
+            if new_lev >= lev:
+                raise
+            # aceeasi marja, expunere mai mica (nu cerem bani in plus); marja creste doar daca expunerea ar cadea sub minimul eToro (1.000 $)
+            amount2 = max(amount, math.ceil(MIN_NOTIONAL * 1.01 / new_lev * 100) / 100)
             if max_amount is not None and amount2 > max_amount + 0.001:
-                raise OrderRejected(f"{e} (levier 20 ar cere {amount2:.2f}$ marja, peste banii liberi)") from e
-            pid = self._open(name, side, amount2, 20, sl, tp)
-            self.last = {"amount": amount2, "leverage": 20}
+                raise OrderRejected(f"{e} (levier {new_lev} ar cere {amount2:.2f}$ marja, peste banii liberi)") from e
+            pid = self._open(name, side, amount2, new_lev, sl, tp)
+            self.last = {"amount": amount2, "leverage": new_lev}
             return pid
 
     def _open(self, name, side, amount, lev, sl, tp) -> str:

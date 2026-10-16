@@ -70,6 +70,7 @@ class Assistant:
         self.time_stop_tried: dict[str, datetime] = {}   # cand am incercat ultima oara sa inchid o pozitie dupa limita de timp
         self.oil_pnl, self.oil_paused = 0.0, False   # experiment petrol: rezultatul realizat al petrolului si oprirea automata la pierderea maxima
         self.plans: dict[str, dict] = {}          # pentru fiecare pozitie: planul (pret, tinta, plasa) si ce a pus de fapt eToro, salvat in stare
+        self.lev_learned: dict[str, int] = {}     # limita de levier aflata dintr-o respingere eToro (ex. AUD/USD: 20), folosita la urmatoarele ordine
         self.counter_pids: set[str] = set()       # pozitiile deschise pe revenire (contra trendului orar), planificat: sfatul le judeca dupa plan
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
@@ -160,7 +161,7 @@ class Assistant:
         """(marja $, levier, expunere $). Impart bugetul la nr. de pozitii posibile (minim 50$ pe pozitie, expunere minima 1.000$);
         daca felia nu mai incape din banii liberi, folosesc tot ce e liber, cat timp ramane peste minimele eToro."""
         c = self.cfg
-        lev = min(inst["lev_cap"], c["max_leverage"])
+        lev = min(inst["lev_cap"], c["max_leverage"], self.lev_learned.get(inst.get("name"), 999))
         eq, mm = self.equity(), c["min_margin_usd"]
         name, reserve = inst.get("name"), self.oil_reserve()
         if reserve and name == "OIL":                                             # petrolul: toata rezerva lui (minim: expunerea de 1.000 $ ceruta de eToro)
@@ -605,6 +606,9 @@ class Assistant:
         if p.get("counter"):
             self.counter_pids.add(str(pid))
         fill = getattr(self.broker, "last", None) or {}
+        if fill.get("leverage", lev) < lev:
+            self.lev_learned[name] = fill["leverage"]
+            self.tg.send(f"ℹ️ eToro limitează {msg.pair(name)} la levier {fill['leverage']}. Am deschis așa și o țin minte pentru următoarele ordine.")
         amount, lev = fill.get("amount", amount), fill.get("leverage", lev)
         if self.real and self.real_balance is not None:
             self.real_balance = max(0.0, self.real_balance - amount)         # banii liberi scad imediat (citirea de la eToro vine la urmatoarea verificare)

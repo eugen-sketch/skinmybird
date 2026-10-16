@@ -62,7 +62,7 @@
       "yahoo": "AUDUSD=X",
       "etoro": "AUDUSD",
       "cost": 0.022,
-      "lev_cap": 30,
+      "lev_cap": 20,
       "signals": [
         "london_breakout",
         "rsi_rev30",
@@ -101,7 +101,7 @@
       "yahoo": "NZDUSD=X",
       "etoro": "NZDUSD",
       "cost": 0.03,
-      "lev_cap": 30,
+      "lev_cap": 20,
       "signals": [
         "london_breakout",
         "rsi_rev30",
