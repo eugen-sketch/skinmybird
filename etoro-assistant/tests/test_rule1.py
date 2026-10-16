@@ -1,4 +1,4 @@
-"""Regula 1 a lui Eugen: nu se inchide niciodata nimic pe rosu din initiativa botului. Plus: semnale doar „adevarate” (poarta de calitate) si limita de timp doar pe plus."""
+"""Regula 1 a proprietarului: nu se inchide niciodata nimic pe rosu din initiativa botului. Plus: semnale doar „adevarate” (poarta de calitate) si limita de timp doar pe plus."""
 import sys
 from datetime import timedelta
 from pathlib import Path
