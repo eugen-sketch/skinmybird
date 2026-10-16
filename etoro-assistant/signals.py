@@ -94,7 +94,7 @@ def wave(raw: pd.DataFrame, done: pd.DataFrame, trend: str, bars: int = 3, min_a
         return 0, 0.0
 
 
-def gate(s: dict, g: dict | None) -> tuple[str, str] | None:
+def gate(s: dict, g: dict | None, name: str | None = None) -> tuple[str, str] | None:
     """Poarta de calitate a semnalului. None = semnal acceptat; altfel (cod, detaliu) pentru care il respingem.
     Alese pe 8 luni de date si verificate pe 4 luni nefolosite la cautare: fara regula «pullback» (cea mai slaba), doar in orele bune (Londra+New York),
     doar cand piata are directie clara (ADX) si nu e prea linistita. Semnalele de «val» nu trec pe aici."""
@@ -102,7 +102,7 @@ def gate(s: dict, g: dict | None) -> tuple[str, str] | None:
     if not g.get("enabled") or str(s.get("sig_key", "")).startswith("wave"):
         return None
     fired = s.get("fired") or []
-    pref = tuple(g.get("exclude_prefix", []))
+    pref = tuple((g.get("per_instrument", {}).get(name, {})).get("exclude_prefix", g.get("exclude_prefix", [])))      # ex. petrolul: fara «revenire RSI», cu «pullback»
     if pref and fired and all(n.startswith(pref) for n in fired):
         return "regula", ", ".join(fired)
     lo, hi = g.get("hours_utc", [0, 24])

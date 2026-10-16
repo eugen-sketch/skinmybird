@@ -68,6 +68,7 @@ class Assistant:
         self.realized_acc = 0.0                   # profitul/pierderea inchise de la ultima verificare
         self.money_cand: tuple[float, float] | None = None   # o schimbare mare de total, asteptata sa se confirme la urmatoarea verificare
         self.time_stop_tried: dict[str, datetime] = {}   # cand am incercat ultima oara sa inchid o pozitie dupa limita de timp
+        self.oil_pnl, self.oil_paused = 0.0, False   # experiment petrol: rezultatul realizat al petrolului si oprirea automata la pierderea maxima
         self.plans: dict[str, dict] = {}          # pentru fiecare pozitie: planul (pret, tinta, plasa) si ce a pus de fapt eToro, salvat in stare
         self.counter_pids: set[str] = set()       # pozitiile deschise pe revenire (contra trendului orar), planificat: sfatul le judeca dupa plan
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
@@ -138,7 +139,7 @@ class Assistant:
     def oil_reserve(self) -> float:
         """Banii rezervati DOAR pentru petrol (doar pe real si doar cand bugetul ajunge pentru rezerva + 2 pozitii de forex): forexul nu-i poate folosi."""
         r = self.cfg.get("oil_reserve_usd", 0)
-        if not (self.real and r):
+        if not (self.real and r) or self.oil_paused:                              # petrol oprit: rezerva se elibereaza pentru forex
             return 0.0
         return float(r) if self.equity() >= r + 2 * self.cfg["min_margin_usd"] else 0.0
 
@@ -220,7 +221,7 @@ class Assistant:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
                         "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
-                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "unlocked": self.unlocked and self.real,
+                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
@@ -274,7 +275,10 @@ class Assistant:
             is_wave = str(key).startswith("wave")
             if s["side"] == 0:
                 continue
-            rej = signals.gate(s, self.cfg.get("entry_gate"))
+            if name == "OIL" and self.oil_paused:        # experimentul cu petrol s-a oprit singur la pierderea maxima
+                report[-1].update(note="petrol oprit: pierderea din test a atins limita; scrie «porneste petrol» ca să reiau", skip=True)
+                continue
+            rej = signals.gate(s, self.cfg.get("entry_gate"), name)
             if rej:                                      # nu e „semnal”, e doar o părere: nu propunem nimic
                 report[-1].update(note=msg.gate_reason(*rej, self.cfg["entry_gate"]), skip=True)
                 continue
@@ -614,6 +618,18 @@ class Assistant:
         self.tg.send(("🔴 CONT REAL\n" if self.real else "") + msg.opened(name, side, px, d, amount, lev, notional, tp, tp_usd, sl, sl_usd))
         self.save_state()
 
+    def oil_test(self, name: str, pnl: float) -> None:
+        """Experimentul cu petrol (varianta A): numaram rezultatul realizat al petrolului; la pierderea maxima (oil_loss_stop_usd) il oprim singur."""
+        if name != "OIL" or not self.cfg.get("oil_loss_stop_usd"):
+            return
+        self.oil_pnl += pnl
+        limit = self.cfg["oil_loss_stop_usd"]
+        if self.oil_pnl <= -limit and not self.oil_paused:
+            self.oil_paused = True
+            self.tg.send(f"🛢️⛔ Petrolul e oprit: în experiment a pierdut {msg.usd(-self.oil_pnl)} (limita {msg.usd(limit)}). Nu mai deschid petrol până nu decizi tu; "
+                         f"rezerva de petrol se eliberează pentru forex. Ca să reiau, scrie «porneste petrol».")
+        self.save_state()
+
     def price_mismatch(self, name: str, px: float, atr_pct: float | None) -> str | None:
         """Pretul de la eToro de la momentul ordinului trebuie sa se potriveasca cu lumanarea orara eToro (la zi). Altfel nu trimitem ordinul:
         pe 14-15.10 un pret vechi a dat tinte de 0,30-1,55 $ in loc de >= 2,25 $ (si o pierdere de 10 $ cu tinta de 1,34 $)."""
@@ -764,6 +780,7 @@ class Assistant:
             hrs = (self.now_fn() - old["opened_at"]).total_seconds() / 3600 if old.get("opened_at") else 0.0
             self.log_event(f"inchis {old['name']} ({kind}): net {pnl:+.2f}$, durata {hrs:.1f}h, plan/real: {plan}")
             self.add_realized(pnl)
+            self.oil_test(old["name"], pnl)
             self.refresh_real()
             self.tg.send(msg.closed(old["name"], kind, pnl, self.profit_text(), self.equity() if self.cfg.get("progressive") else None,
                                     plan=old.get("tp_usd_plan") or old.get("tp_usd")))
@@ -1090,7 +1107,11 @@ class Assistant:
             return
         t = ev["text"].lower().replace("î", "i").replace("â", "a").replace("ă", "a").replace("ș", "s").replace("ț", "t")
         words = t.replace("/", " ").split()
-        if words and words[0] in ("preia", "adopta"):
+        if len(words) >= 2 and words[0] in ("porneste", "reia", "start") and words[1] == "petrol":
+            self.oil_paused, self.oil_pnl = False, 0.0
+            self.save_state()
+            self.tg.send("🛢️✅ Petrolul e pornit din nou: contorul de pierdere pornește de la zero, rezerva de petrol e iar ținută deoparte.")
+        elif words and words[0] in ("preia", "adopta"):
             name = self.resolve_name(" ".join(words[1:]))
             if name is None:
                 self.tg.send("🤔 Pe ce instrument? Scrie de exemplu: preia nzdusd.")
@@ -1199,6 +1220,7 @@ class Assistant:
         self.bot_pids = set(st.get("bot_pids", [])) if self.real else set()
         self.counter_pids = set(st.get("counter_pids", []))
         self.plans = st.get("plans", {})
+        self.oil_pnl, self.oil_paused = float(st.get("oil_pnl", 0.0)), bool(st.get("oil_paused", False))
         for r in st.get("adopt", []) if self.real else []:
             t = parse_time(r.get("at"))
             if t:
