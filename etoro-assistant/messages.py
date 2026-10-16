@@ -156,6 +156,14 @@ def closed(name: str, kind: str, pnl: float, profit: str, equity: float | None =
     return _closed(name, kind, pnl, plan) + f"\n\n{profit}" + (f"\n👛 Buget de lucru acum: {usd(equity)}" if equity else "")
 
 
+def money_moved(delta: float, equity: float) -> str:
+    if delta > 0:
+        return (f"💰 Au intrat bani noi în cont: aproximativ {signed(delta)}. Buget de lucru acum: {usd(equity)}. "
+                f"Mărimea pozițiilor și limitele se adaptează singure.")
+    return (f"💸 Au ieșit bani din cont: aproximativ {signed(delta)}. Buget de lucru acum: {usd(equity)}. "
+            f"Mărimea pozițiilor și limitele se adaptează singure.")
+
+
 def target_differs(name: str, plan: float, real_tp: float, real_sl: float | None) -> str:
     """Tinta de pe eToro difera mult de cea planuita: cifra reala, ca mesajele sa nu mai spuna alta poveste decat se intampla."""
     sl = f" Plasa reală: {usd(real_sl)}." if real_sl else ""
