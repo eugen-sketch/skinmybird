@@ -1,6 +1,9 @@
 {
   "budget_usd": 150,
   "daily_profit_lock_usd": 15,
+  "max_hold_hours": 5,
+  "time_stop_min_profit_usd": 0.3,
+  "entry_gate": {"enabled": true, "exclude_prefix": ["pullback"], "hours_utc": [7, 16], "adx_min": 25, "vol_min": 0.33},
   "news": {"enabled": true, "impacts": ["High"], "before_min": 30, "after_min": 30, "heads_up_min": 60, "cache_min": 60},
   "scan_every_min": 15,
   "pl_check_every_sec": 30,
@@ -200,7 +203,7 @@
   "max_tp_usd": 6.0,
   "min_sl_pct": 0.15,
   "max_sl_usd": 20.0,
-  "hold_alert_min": 120,
+  "hold_alert_min": 300,
   "autotrade_daily_loss_usd": 15.0,
   "max_bar_age_min": 100,
   "min_margin_usd": 50,

@@ -94,6 +94,27 @@ def wave(raw: pd.DataFrame, done: pd.DataFrame, trend: str, bars: int = 3, min_a
         return 0, 0.0
 
 
+def gate(s: dict, g: dict | None) -> tuple[str, str] | None:
+    """Poarta de calitate a semnalului. None = semnal acceptat; altfel (cod, detaliu) pentru care il respingem.
+    Alese pe 8 luni de date si verificate pe 4 luni nefolosite la cautare: fara regula «pullback» (cea mai slaba), doar in orele bune (Londra+New York),
+    doar cand piata are directie clara (ADX) si nu e prea linistita. Semnalele de «val» nu trec pe aici."""
+    g = g or {}
+    if not g.get("enabled") or str(s.get("sig_key", "")).startswith("wave"):
+        return None
+    fired = s.get("fired") or []
+    pref = tuple(g.get("exclude_prefix", []))
+    if pref and fired and all(n.startswith(pref) for n in fired):
+        return "regula", ", ".join(fired)
+    lo, hi = g.get("hours_utc", [0, 24])
+    if s.get("bar_hour") is not None and not lo <= s["bar_hour"] < hi:
+        return "ora", f"{lo}-{hi}"
+    if s.get("adx") is not None and s["adx"] < g.get("adx_min", 0):
+        return "adx", f"{s['adx']:.0f}"
+    if s.get("vol_rank") is not None and s["vol_rank"] < g.get("vol_min", 0):
+        return "vol", f"{s['vol_rank'] * 100:.0f}"
+    return None
+
+
 def scan(df: pd.DataFrame, names: list[str], now: pd.Timestamp | None = None, wave_atr: float = 1.6, wave_bars: int = 3, wave_opts: dict | None = None) -> dict:
     """+1 BUY / -1 SELL / 0. Semnale contradictorii => 0. Se folosesc doar orele incheiate."""
     now = now or pd.Timestamp.now(tz="UTC")
@@ -117,7 +138,10 @@ def scan(df: pd.DataFrame, names: list[str], now: pd.Timestamp | None = None, wa
         side, sig_key = w_side, f"wave{w_side:+d}-{now:%Y%m%d}-{(now.hour * 60 + now.minute) // cool}"
         why = [f"val mare: {abs(w_mv):.1f}× volatilitatea normală în ultimele {wave_bars} ore, {'în sus' if w_side == 1 else 'în jos'}, "
                f"nu contrazice trendul orar – mă dau cu valul"]
+    vol = (ta.atr(df) / df["close"]).tail(500)
     return {"side": side, "why": "; ".join(dict.fromkeys(why)), "move_atr": w_mv, "sig_key": sig_key, "rsi": float(ta.rsi(df["close"], 14).iloc[-1]),
+            "fired": [n for n, v in votes.items() if side and v == side], "adx": float(ta.adx(df).iloc[-1]),
+            "vol_rank": float(vol.rank(pct=True).iloc[-1]) if len(vol) >= 100 else None, "bar_hour": df.index[-1].hour,
             "price": price, "bar": df.index[-1].isoformat(), "asia_pos": pos, "n_bars": len(df),
             "atr_pct": float(ta.atr(df).iloc[-1]) / price, "trend": trend,
             "age_min": (now - (df.index[-1] + timedelta(hours=1))).total_seconds() / 60,

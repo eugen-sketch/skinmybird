@@ -180,6 +180,8 @@ def _closed(name: str, kind: str, pnl: float, plan: float | None = None) -> str:
         return f"🎉💵 {p}: ținta a fost atinsă! Rezultat ≈ {signed(pnl)}. Poziția e închisă."
     if kind == "SL":
         return f"😕🛡️ {p}: s-a activat plasa de siguranță. Rezultat ≈ {signed(pnl)}. Poziția e închisă."
+    if kind == "TIME":
+        return f"⏱️ {p}: era pe plus după limita de timp, am încasat profitul. Rezultat ≈ {signed(pnl)}. Poziția e închisă."
     if kind == "BASKET":
         return f"🎯 {p}: închisă împreună cu celelalte. Rezultat {signed(pnl)}."
     if kind == "YOU":
@@ -188,8 +190,38 @@ def _closed(name: str, kind: str, pnl: float, plan: float | None = None) -> str:
             f"Dacă nu ai închis-o tu din eToro, spune-mi ca să verific.")
 
 
-def basket(n: int, total: float) -> str:
-    return f"🎯💵 Țintă comună atinsă! Cele {n} poziții împreună fac ≈ {signed(total)}. Le închid acum."
+def basket(n: int, total: float, left_red: int = 0) -> str:
+    rest = f" Cele {left_red} aflate pe minus rămân deschise (nu închid niciodată pe minus), până la țintă sau plasă." if left_red else ""
+    return f"🎯💵 Țintă comună atinsă! Cele {n} poziții pe plus fac ≈ {signed(total)}. Le închid acum.{rest}"
+
+
+def gate_reason(code: str, detail: str, g: dict) -> str:
+    """De ce un semnal NU e socotit semnal (apare la «Caută semnale», la instrumentul respectiv)."""
+    lo, hi = g.get("hours_utc", [0, 24])
+    if code == "regula":
+        return f"semnal respins: regula {detail} pierde cel mai des"
+    if code == "ora":
+        return f"semnal respins: în afara orelor bune ({ro_hm(_utc_today(lo))}–{ro_hm(_utc_today(hi))} ora României)"
+    if code == "adx":
+        return f"semnal respins: piața n-are direcție clară (ADX {detail}, minim {g.get('adx_min', 0)})"
+    return f"semnal respins: piață prea liniștită ({detail}% din mișcările obișnuite)"
+
+
+def _utc_today(hour: int) -> datetime:
+    n = datetime.now(timezone.utc)
+    return n.replace(hour=hour % 24, minute=0, second=0, microsecond=0)
+
+
+def gate_ok(s: dict) -> str:
+    """O linie care spune clar ca semnalul a trecut verificarile."""
+    bits = []
+    if s.get("bar_hour") is not None:
+        bits.append("în orele bune")
+    if s.get("adx") is not None:
+        bits.append(f"mișcare clară (ADX {s['adx']:.0f})")
+    if s.get("vol_rank") is not None:
+        bits.append("piață activă")
+    return "✅ Semnal verificat: " + ", ".join(bits)
 
 
 def reminder(name: str, side: int, n: int, left_min: int) -> str:
@@ -405,5 +437,8 @@ def autotrade_limit(daily_loss: float) -> str:
 
 
 def hold_alert(name: str, hours: int, pnl: float, adv: dict | None = None) -> str:
+    if pnl < 0:
+        return (f"⏱️ {pair(name)} e deschisă de ≈{hours} ore, acum pe minus ({signed(pnl)}).{advice_block(adv)}\n"
+                f"Nu o închid pe minus (regula mea). Rămâne până la țintă sau plasa de siguranță; dacă vrei, o închizi tu cu butonul.")
     return (f"⏱️ {pair(name)} e deschisă de ≈{hours} ore și nu și-a atins încă ținta (acum {signed(pnl)}).{advice_block(adv)}\n"
             f"Vrei s-o închizi tu, sau o las să-și vadă de țintă?")
