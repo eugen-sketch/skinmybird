@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import advisor
+import decisions
 import channel
 import chart as chart_mod
 import messages as msg
@@ -72,6 +73,9 @@ class Assistant:
         self.plans: dict[str, dict] = {}          # pentru fiecare pozitie: planul (pret, tinta, plasa) si ce a pus de fapt eToro, salvat in stare
         self.lev_learned: dict[str, int] = {}     # limita de levier aflata dintr-o respingere eToro (ex. AUD/USD: 20), folosita la urmatoarele ordine
         self.counter_pids: set[str] = set()       # pozitiile deschise pe revenire (contra trendului orar), planificat: sfatul le judeca dupa plan
+        self.ledger: list[dict] = []              # registrul deciziilor: fiecare pozitie inchisa (cine a deschis-o, cine a inchis-o) si semnalele refuzate
+        self.origin: dict[str, str] = {}          # cine a deschis pozitia: auto (autotrading) / ok (butonul tau) / manual (comanda ta) / preluat
+        self.ledger_since = ""                    # de cand tine botul registrul (pozitiile tale din eToro se numara doar de atunci)
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.sleep = sleep
@@ -222,7 +226,7 @@ class Assistant:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
                         "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
-                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
+                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
@@ -386,6 +390,8 @@ class Assistant:
         if final:
             self.report_day = today
             self.save_state()
+            if now.weekday() == 4:                        # vineri seara: socoteala deciziilor tale pe saptamana
+                self.decisions_report()
 
     ALIASES = {"AUR": "GOLD", "PETROL": "OIL", "SP500": "SPX500", "SP": "SPX500", "SPX": "SPX500", "NASDAQ": "NSDQ100", "NSDQ": "NSDQ100",
                "NDX": "NSDQ100", "DOW": "DJ30", "DJ": "DJ30", "DAX": "GER40", "GER": "GER40"}
@@ -427,7 +433,7 @@ class Assistant:
         except Exception as e:  # noqa: BLE001
             self.tg.send(f"⚠️ Nu pot citi prețul pentru {msg.pair(name)}: {str(e)[:120]}")
             return
-        self.propose(name, {**info, "side": side, "why": "la cererea ta", "price": px, "atr_pct": atr})
+        self.propose(name, {**info, "side": side, "why": "la cererea ta", "price": px, "atr_pct": atr, "origin": "manual"})
 
     def adopt_existing(self, name: str) -> None:
         """«preia nzdusd»: pozitiile deschise pe eToro pe acest instrument incep sa fie urmarite de asistent (TP/SL ramase ale eToro)."""
@@ -441,6 +447,7 @@ class Assistant:
             return
         for p in found:
             self.bot_pids.add(str(p["id"]))
+            self.origin[str(p["id"])] = "preluat"
             self.track(p)
         self.save_state()
         self.tg.send(f"✅ Am preluat {len(found)} poziții {msg.pair(name)}. De acum le urmăresc, le văd la 📊 Status și le pot închide de aici.")
@@ -481,9 +488,10 @@ class Assistant:
             self.autotrade = False
             self.save_state()
             self.tg.send(msg.autotrade_limit(self.cfg["autotrade_daily_loss_usd"] * self.scale()))
+        plan = {"origin": s.get("origin") or ("auto" if self.autotrade else "ok"), "px": px, "tp_px": tp_px, "sl_px": sl_px, "notional": notional}
         if self.autotrade:
             self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": None, "amount": amount,
-                                 "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost, "counter": counter}
+                                 "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost, "counter": counter, **plan}
             self.send_chart(name, s, side, px, tp_px, sl_px, f"{msg.pair(name)}: autotrading, intrare, țintă și plasă")
             self.tg.send((tag + " " if tag else "") + msg.auto_signal(name, side, why_full, px, d))
             self.open_pending(sid)
@@ -496,7 +504,7 @@ class Assistant:
             buttons.append([(f"✅ OK la toate ({len(ok)})", f"openall:{ids}"), ("❌ NU la toate", f"skipall:{ids}")])
         mid = self.tg.send(text, buttons)
         self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": mid, "amount": amount,
-                             "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost, "counter": counter}
+                             "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost, "counter": counter, **plan}
         return True
 
     def is_boost(self, name: str, s: dict) -> bool:
@@ -603,6 +611,7 @@ class Assistant:
             self.tg.send(f"⚠️ Ordinul pe {msg.pair(name)} n-a mers (respins): {str(e)[:250]}\nNu am deschis nimic.")
             return
         self.bot_pids.add(str(pid))
+        self.origin[str(pid)] = p.get("origin", "ok")
         if p.get("counter"):
             self.counter_pids.add(str(pid))
         fill = getattr(self.broker, "last", None) or {}
@@ -781,6 +790,7 @@ class Assistant:
                 kind, pnl = self.classify_vanished(old, pnl)
             self.bot_pids.discard(str(pid))
             self.counter_pids.discard(str(pid))
+            self.record_close(old, kind, pnl, self.origin.pop(str(pid), "?"))
             hrs = (self.now_fn() - old["opened_at"]).total_seconds() / 3600 if old.get("opened_at") else 0.0
             self.log_event(f"inchis {old['name']} ({kind}): net {pnl:+.2f}$, durata {hrs:.1f}h, plan/real: {plan}")
             self.add_realized(pnl)
@@ -963,6 +973,52 @@ class Assistant:
                 self.sleep(4)
         return None
 
+    def record_close(self, old: dict, kind: str, pnl: float, origin: str) -> None:
+        """Randul din registru pentru o pozitie inchisa: cine a deschis-o, cum s-a inchis, nivelurile ei (pentru «ce-ar fi fost»)."""
+        try:
+            real = self.history_of(old) if kind in decisions.YOURS and self.real else None
+            close_rate = (real or {}).get("close_rate") or old.get("px_now") or 0.0
+            ct = parse_time((real or {}).get("close_time")) or self.now_fn()
+            self.ledger.append(decisions.entry(kind, old["name"], old["side"], origin=origin, net=float(pnl), open_rate=float(old.get("open_rate") or 0),
+                                               close_rate=float(close_rate), tp=float(old.get("tp") or 0), sl=float(old.get("sl") or 0),
+                                               notional=float(old.get("amount", 0) * old.get("leverage", 1)), open_t=old.get("opened_at"), close_t=ct))
+            self.ledger = self.ledger[-300:]
+        except Exception as e:  # noqa: BLE001 - registrul nu trebuie sa opreasca urmarirea pozitiilor
+            print(f"[!] registru: {type(e).__name__}")
+
+    def record_skip(self, p: dict, kind: str) -> None:
+        """Semnal refuzat de tine (NU) sau lasat sa expire: il tin minte, ca sa vedem ce ar fi adus."""
+        if not p.get("px"):
+            return
+        self.ledger.append(decisions.entry(kind, p["name"], p["side"], px=float(p["px"]), tp=float(p.get("tp_px") or 0), sl=float(p.get("sl_px") or 0),
+                                           notional=float(p.get("notional") or 0), at=p.get("created") or self.now_fn()))
+        self.ledger = self.ledger[-300:]
+        self.save_state()
+
+    def decisions_report(self, days: int = 7) -> None:
+        """Socoteala deciziilor tale pe ultimele `days` zile, fata de botul lasat singur (vineri seara si la comanda «decizii»)."""
+        now = self.now_fn()
+        since = max(now - timedelta(days=days), parse_time(self.ledger_since) or now - timedelta(days=days))
+        foreign = []
+        if self.real and hasattr(self.broker, "closed_trades"):        # deschise si inchise de tine direct in eToro (botul nu le-a urmarit)
+            try:
+                seen = [(r["name"], parse_time(r.get("close_t"))) for r in self.ledger if r.get("close_t")]
+                for t in self.broker.closed_trades((since - timedelta(days=1)).strftime("%Y-%m-%d")):
+                    ot, ct = parse_time(t.get("open_time")), parse_time(t.get("close_time"))
+                    if t.get("name") not in self.inst or not ot or not ct or ot < since or str(t["id"]) in self.bot_pids:
+                        continue
+                    if any(n == t["name"] and c and abs((c - ct).total_seconds()) < 180 for n, c in seen):
+                        continue                                       # e o pozitie a botului, deja in registru
+                    foreign.append(t)
+            except Exception:  # noqa: BLE001
+                foreign = []
+        try:
+            o = decisions.summarize(self.ledger, since, self.fetch, self.inst, self.cfg, foreign, now)
+        except Exception as e:  # noqa: BLE001
+            self.tg.send(f"⚠️ Nu am putut face socoteala deciziilor ({type(e).__name__}). Încerc din nou vinerea viitoare sau când scrii «decizii».")
+            return
+        self.tg.send(msg.decisions_report(o, max(1, round((now - since).total_seconds() / 86400))))
+
     def hold_alert(self) -> None:
         """O pozitie care nu si-a atins ținta in ~2 ore: te intreb daca vrei sa o inchizi tu."""
         now = self.now_fn()
@@ -1071,6 +1127,7 @@ class Assistant:
                 p = self.pending.pop(int(d[5:]), None)
                 if p:
                     self.tg.clear_buttons(p["msg_id"])
+                    self.record_skip(p, "SKIP")
                 self.tg.send(msg.skipped())
             elif d.startswith("openall:"):
                 for k in [int(x) for x in d[8:].split(",")]:
@@ -1081,6 +1138,7 @@ class Assistant:
                     p = self.pending.pop(k, None)
                     if p:
                         self.tg.clear_buttons(p["msg_id"])
+                        self.record_skip(p, "SKIP")
                 self.tg.clear_buttons(ev["msg_id"])
                 self.tg.send(msg.skipped())
             elif d.startswith("close:"):
@@ -1145,6 +1203,8 @@ class Assistant:
             self.tg.send(f"♻️ Am resetat câștigul realizat. Bugetul de lucru e din nou {msg.usd(self.cfg['budget_usd'])}.")
         elif "porne" in t:
             self.tg.send("✅ Sunt deja pornit și scanez. Spune-mi dacă vrei Status sau Caută semnale.")
+        elif t.strip() in ("decizii", "/decizii", "deciziile mele"):
+            self.decisions_report()
         elif t.startswith("/raport") or t.strip() == "raport":
             self.daily_report(final=False)
         elif t.startswith("/status") or "status" in t:
@@ -1194,6 +1254,7 @@ class Assistant:
         for sid in [k for k, p in self.pending.items() if (now - p["created"]).total_seconds() / 60 > self.cfg["signal_valid_min"]]:
             p = self.pending.pop(sid)
             self.tg.clear_buttons(p["msg_id"])
+            self.record_skip(p, "EXPIRED")
 
     def report_error(self, txt: str) -> None:
         last, ts = self.last_err
@@ -1224,6 +1285,10 @@ class Assistant:
         self.bot_pids = set(st.get("bot_pids", [])) if self.real else set()
         self.counter_pids = set(st.get("counter_pids", []))
         self.plans = st.get("plans", {})
+        cutoff = (self.now_fn() - timedelta(days=35)).isoformat(timespec="seconds")
+        self.ledger = [r for r in st.get("ledger", []) if (r.get("close_t") or r.get("at") or "") >= cutoff]
+        self.origin = st.get("origin", {})
+        self.ledger_since = st.get("ledger_since") or self.now_fn().isoformat(timespec="seconds")
         self.oil_pnl, self.oil_paused = float(st.get("oil_pnl", 0.0)), bool(st.get("oil_paused", False))
         for r in st.get("adopt", []) if self.real else []:
             t = parse_time(r.get("at"))
