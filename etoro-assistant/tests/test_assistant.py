@@ -942,7 +942,8 @@ def test_daily_report_and_total_since_start():
     assert a.report_due(late) and not a.report_due(T0.replace(hour=19, minute=10))
     a.now_fn = lambda: late
     a.daily_report()
-    t = tg.texts[-1]
+    t = tg.texts[-2]
     assert "Raportul zilei" in t and "+$2.50" in t and "3" in t and "TOTAL de la început" in t
+    assert tg.texts[-1].startswith("🧭 Deciziile tale")                    # vinerea: urmeaza socoteala deciziilor tale pe saptamana
     assert not a.report_due(late)                                 # o singura data pe zi
     assert not a.report_due(late + timedelta(days=1))             # sambata nu

@@ -61,6 +61,7 @@ HELP = ("🤖 Ce pot face (butoanele din meniul de jos fac același lucru):\n"
         "• /status – pozițiile deschise și cât câștigi/pierzi acum\n"
         "• /inchide tot – închid toate pozițiile\n"
         "• /raport – raportul zilei (câștig azi + total de la început); vine singur cu ~30 min înainte de închiderea pieței\n"
+        "• decizii – socoteala deciziilor tale pe ultimele 7 zile (ce ai închis/deschis/refuzat tu, față de botul lăsat singur); vine singur vineri seara\n"
         "• /inchide EURUSD – închid o singură poziție (poți scrie și OIL)\n"
         "• /scan – caut semnale chiar acum\n"
         "• /stop – mă opresc (pozițiile rămân pe eToro, cu Stop Loss și Take Profit)\n"
@@ -460,3 +461,26 @@ def hold_alert(name: str, hours: int, pnl: float, adv: dict | None = None) -> st
                 f"Nu o închid pe minus (regula mea). Rămâne până la țintă sau plasa de siguranță; dacă vrei, o închizi tu cu butonul.")
     return (f"⏱️ {pair(name)} e deschisă de ≈{hours} ore și nu și-a atins încă ținta (acum {signed(pnl)}).{advice_block(adv)}\n"
             f"Vrei s-o închizi tu, sau o las să-și vadă de țintă?")
+
+
+def decisions_report(o: dict, days: int) -> str:
+    """Socoteala deciziilor tale pe ultimele zile: ce ai luat tu fata de ce ar fi facut botul singur."""
+    lines = [f"🧭 Deciziile tale, ultimele {days} zile (față de ce ar fi făcut botul singur)"]
+    lines.append(f"🤖 Lăsate botului: {o['bot_n']} poziții, {signed(o['bot_net'])}")
+    if o["you_n"]:
+        d = o["you_net"] - o["you_alt"]
+        note = f" ({o['you_open']} ar fi încă deschise, socotite la prețul de acum)" if o["you_open"] else ""
+        miss = f" Pentru {o['you_miss']} nu am avut prețuri, le-am socotit egal." if o["you_miss"] else ""
+        lines.append(f"✋ Închise de tine înainte de țintă sau plasă: {o['you_n']}. Ai luat {signed(o['you_net'])}; "
+                     f"dacă le lăsai, ar fi fost {signed(o['you_alt'])}{note}. Diferența: {signed(d)}.{miss}")
+    else:
+        lines.append("✋ Închise de tine: niciuna.")
+    lines.append(f"👆 Deschise de tine: {o['mine_n']} poziții, {signed(o['mine_net'])}" if o["mine_n"] else "👆 Deschise de tine: niciuna.")
+    if o["skip_n"]:
+        miss = f", {o['skip_miss']} fără prețuri" if o["skip_miss"] else ""
+        lines.append(f"🙅 Semnale refuzate sau lăsate să expire: {o['skip_n']}; dacă le deschideai: {signed(o['skip_alt'])}{miss}.")
+    e = o["effect"]
+    verdict = "te-au ajutat" if e > 0.5 else "te-au costat" if e < -0.5 else "n-au schimbat mare lucru"
+    lines.append(f"📌 Pe scurt: deciziile tale {verdict}: {signed(e)} față de botul lăsat singur.")
+    lines.append("ℹ️ „Ce-ar fi fost” e calculat din prețurile de 5 minute de după decizia ta, cu ținta, plasa și limita de timp ale poziției.")
+    return NL.join(lines)

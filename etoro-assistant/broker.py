@@ -88,7 +88,8 @@ class EToroBroker:
             pid = x.get("positionId") or x.get("positionID")
             if pid:
                 out.append({"id": str(pid), "net": float(x.get("netProfit") or 0.0), "close_time": x.get("closeTimestamp", ""),
-                            "close_rate": float(x.get("closeRate") or 0.0)})
+                            "close_rate": float(x.get("closeRate") or 0.0), "open_time": x.get("openTimestamp", ""),
+                            "name": self.rev.get(int(x.get("instrumentId") or x.get("instrumentID") or 0)), "side": 1 if x.get("isBuy") else -1})
         return out
 
     def closed_trade(self, position_id: str, min_date: str) -> dict | None:
