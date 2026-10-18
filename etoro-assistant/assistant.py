@@ -83,6 +83,8 @@ class Assistant:
         self.watch_slot = None                    # ultimul sfert de ora in care paznicul de petrol s-a uitat
         self.watch_last: datetime | None = None   # ultimul avertisment al paznicului de petrol
         self.eia_done: dict = {}                  # proba de miercuri: ce s-a facut deja azi {date, heads, entry}
+        self.oil4h_seen = ""                      # ultima lumanare de 4 ore pe petrol deja folosita
+        self.oil4h_slot = None
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.sleep = sleep
@@ -248,7 +250,7 @@ class Assistant:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
                         "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
-                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eq_peak": self.eq_peak, "eia_done": self.eia_done, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
+                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eq_peak": self.eq_peak, "eia_done": self.eia_done, "oil4h_seen": self.oil4h_seen, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
@@ -512,7 +514,7 @@ class Assistant:
             self.tg.send(msg.autotrade_limit(self.cfg["autotrade_daily_loss_usd"] * self.scale()))
         plan = {"origin": s.get("origin") or ("auto" if self.autotrade else "ok"), "px": px, "tp_px": tp_px, "sl_px": sl_px, "notional": notional,
                 "min_size": bool(s.get("min_size")), "fixed": s.get("fixed"), "special": s.get("special")}
-        if self.autotrade:
+        if self.autotrade and not s.get("manual_only"):              # «manual_only»: propunere cu butoane chiar si pe autotrading
             self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": None, "amount": amount,
                                  "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost, "counter": counter, **plan}
             self.send_chart(name, s, side, px, tp_px, sl_px, f"{msg.pair(name)}: autotrading, intrare, țintă și plasă")
@@ -832,10 +834,11 @@ class Assistant:
         self.hold_alert()
         self.check_money(allp)
         self.account_alarm()
+        rows = [r for r in rows if not self.held_long(str(r.get("id")))]       # pozitiile de petrol pe 4 ore nu intra in cosul comun
         total = sum(r["last_pnl"] for r in rows)
         c = self.cfg
         if check_basket and len(rows) >= c["basket_min_positions"] and total >= c["basket_target_usd"]:
-            green = [pid for pid, p in self.known.items() if p.get("last_pnl", 0.0) > 0]       # Regula 1: nu inchid niciodata pe rosu
+            green = [pid for pid, p in self.known.items() if p.get("last_pnl", 0.0) > 0 and not self.held_long(pid)]   # Regula 1: nu inchid niciodata pe rosu
             if green:
                 self.tg.send(msg.basket(len(green), sum(self.known[p]["last_pnl"] for p in green), len(rows) - len(green)))
                 for pid in green:
@@ -851,7 +854,7 @@ class Assistant:
         now = self.now_fn()
         for pid, p in list(self.known.items()):
             opened = p.get("opened_at")
-            if not opened or pid in self.expecting or (now - opened).total_seconds() < limit * 3600:
+            if not opened or pid in self.expecting or (now - opened).total_seconds() < limit * 3600 or self.held_long(pid):
                 continue
             if self.time_stop_tried.get(pid) and (now - self.time_stop_tried[pid]).total_seconds() < 600:
                 continue                                  # o incercare esuata nu se repeta mai des de 10 minute
@@ -1104,6 +1107,40 @@ class Assistant:
                    f"în primele 15 minute; intru în aceeași direcție, cu plasa dincolo de {'fundul' if e['side'] == 1 else 'vârful'} acelor 15 minute")
             self.propose("OIL", {"side": e["side"], "why": why, "price": px, "atr_pct": e["sl_pct"], "min_size": True, "special": "eia",
                                  "fixed": {"sl_pct": e["sl_pct"], "tp_pct": e["tp_pct"]}})
+
+    def held_long(self, pid: str) -> bool:
+        """Pozitie de petrol pe 4 ore: se tine pana la tinta sau plasa (fara limita de 5 ore si fara cosul comun), ca in simulare."""
+        return (self.special.get(str(pid)) or {}).get("tag") == "petrol4h"
+
+    def oil4h_tick(self, now: datetime) -> None:
+        """Petrol pe 4 ore (proba de o luna, aprobata de Eugen): la o spargere a maximului ultimelor ~5 zile, in trendul zilnic in sus, avertisment
+        + propunere de CUMPARARE cu butoane (nu deschide singur nici pe autotrading), pozitia minima, plasa de cel mult `max_sl_usd`."""
+        o = self.cfg.get("oil_4h") or {}
+        if not o.get("enabled") or now.date().isoformat() > o.get("until", "") or not self.market_open(now) or "OIL" not in self.inst:
+            return
+        slot = (now.date(), now.hour, now.minute // 15)
+        if slot == self.oil4h_slot:
+            return
+        self.oil4h_slot = slot
+        try:
+            sig = oilwatch.oil4h_signal(self.fetch(self.inst["OIL"]["yahoo"], "1h", "180d"), now, o)
+        except Exception as e:  # noqa: BLE001
+            print(f"[!] petrol 4 ore: {type(e).__name__}")
+            return
+        if not sig or sig["bar_end"].isoformat() == self.oil4h_seen:
+            return
+        self.oil4h_seen = sig["bar_end"].isoformat()
+        self.save_state()
+        notional = self.min_size(self.inst["OIL"])[2]
+        sl_pct = min(o.get("sl_atr", 1.5) * sig["atr4"] / sig["px"], o.get("max_sl_usd", 10) / notional)
+        tp_pct = o.get("tp_atr", 2.0) * sig["atr4"] / sig["px"]
+        why_not = ("pauză de știri" if self.news.blocking("OIL", now) else None) or self.oil_room()
+        self.tg.send(msg.oil4h(sig, sl_pct * notional, tp_pct * notional, why_not))
+        if why_not:
+            return
+        why = "petrol pe 4 ore: a trecut peste maximul ultimelor ~5 zile, iar trendul pe zile e în sus (proba de o lună)"
+        self.propose("OIL", {"side": 1, "why": why, "price": sig["px"], "atr_pct": sig["atr4"] / sig["px"], "min_size": True, "manual_only": True,
+                             "special": "petrol4h", "fixed": {"sl_pct": sl_pct, "tp_pct": tp_pct}})
 
     @staticmethod
     def ny_weekday(now: datetime) -> int:
@@ -1429,6 +1466,7 @@ class Assistant:
         self.alarm_on = bool(st.get("alarm_on", False))
         self.eq_peak = st.get("eq_peak")
         self.eia_done = st.get("eia_done", {})
+        self.oil4h_seen = st.get("oil4h_seen", "")
         self.oil_pnl, self.oil_paused = float(st.get("oil_pnl", 0.0)), bool(st.get("oil_paused", False))
         for r in st.get("adopt", []) if self.real else []:
             t = parse_time(r.get("at"))
@@ -1501,6 +1539,7 @@ class Assistant:
                     self.tg.send(msg.heartbeat(msg.ro_hm(n), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
                 self.oil_watch(utc)
                 self.eia_tick(utc)
+                self.oil4h_tick(utc)
                 if self.unlocked and self.report_due(utc):
                     self.daily_report()
                 self.remind_pending()

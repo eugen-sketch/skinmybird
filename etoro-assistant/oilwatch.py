@@ -87,3 +87,31 @@ def eia_entry(d5: pd.DataFrame, t_rel: datetime, px: float, spread_pct: float, o
         return {"skip": "prețul a revenit deja lângă vârful/fundul primelor 15 minute; plasa ar fi prea aproape"}
     tp_pct = o.get("tp_mult", 1.5) * sl_pct + spread_pct / 100
     return {"side": side, "sl_pct": sl_pct, "tp_pct": tp_pct, "move_pct": mv, "ext": ext}
+
+
+def oil4h_signal(h1: pd.DataFrame, now: datetime, o: dict) -> dict | None:
+    """Petrol pe 4 ore (proba aprobata de Eugen pe 18 oct): lumanarea de 4 ore abia incheiata a inchis peste maximul celor `lookback_bars`
+    lumanari de 4 ore dinainte (~5 zile), pentru prima oara, iar trendul pe zile e in sus (inchiderea zilei peste media ei pe `ema_daily` zile).
+    Doar cumparare. {px, atr4, bar_end, hh} sau None. Se folosesc doar ore incheiate."""
+    if h1 is None or len(h1) < 200:
+        return None
+    done = h1[(h1.index.minute == 0) & (h1.index + timedelta(hours=1) <= now)]
+    agg = {"open": "first", "high": "max", "low": "min", "close": "last"}
+    b4 = done.resample("4h", label="left", closed="left").agg(agg).dropna()
+    b4 = b4[b4.index + timedelta(hours=4) <= now]
+    d1 = done.resample("1D", label="left", closed="left").agg(agg).dropna()
+    d1 = d1[(d1.index.weekday < 5) & (d1.index + timedelta(days=1) <= now)]
+    n = int(o.get("lookback_bars", 30))
+    if len(b4) < n + 20 or len(d1) < int(o.get("ema_daily", 50)) + 5:
+        return None
+    bar_end = b4.index[-1] + timedelta(hours=4)
+    if (now - bar_end).total_seconds() > o.get("max_age_min", 90) * 60:            # lumanare veche (pornire dupa o pauza): nu o mai folosim
+        return None
+    hh = b4["high"].rolling(n).max().shift()
+    above = b4["close"] > hh
+    ema = ta.ema(d1["close"], int(o.get("ema_daily", 50)))
+    up = bool(d1["close"].iloc[-1] > ema.iloc[-1])
+    if not (above.iloc[-1] and not above.iloc[-2] and up):
+        return None
+    return {"px": float(b4["close"].iloc[-1]), "atr4": float(ta.atr(b4).iloc[-1]), "bar_end": bar_end, "hh": float(hh.iloc[-1])}
+

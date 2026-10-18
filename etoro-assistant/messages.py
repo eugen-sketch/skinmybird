@@ -517,3 +517,12 @@ def eia_skip(reason: str) -> str:
 def eia_hour(pnl: float) -> str:
     return (f"🛢️⏱️ Poziția de probă pe petrol (raportul de stocuri) e deschisă de o oră: acum {signed(pnl)}.\n"
             f"Decizi tu dacă o închizi. Eu nu o închid pe minus; ținta și plasa ei rămân pe eToro.")
+
+
+def oil4h(sig: dict, sl_usd: float, tp_usd: float, why_not: str | None) -> str:
+    head = (f"🛢️📈 PETROL PE 4 ORE (proba de o lună): petrolul a trecut peste maximul ultimelor ~5 zile, iar trendul pe zile e în sus. "
+            f"Preț ≈ {sig['px']:.2f}.")
+    if why_not:
+        return head + f"\nNu propun intrare acum: {why_not}. Doar te anunț."
+    return (head + f"\nÎți propun o CUMPĂRARE pe poziția minimă: țintă ≈ +{usd(tp_usd)}, plasă de siguranță ≈ −{usd(sl_usd)}. "
+            f"Poziția se ține de obicei ~1 zi (fără limita de 5 ore). Nu deschid singur, nici pe autotrading: decizi tu din butoane.")
