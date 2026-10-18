@@ -1108,6 +1108,17 @@ class Assistant:
             self.propose("OIL", {"side": e["side"], "why": why, "price": px, "atr_pct": e["sl_pct"], "min_size": True, "special": "eia",
                                  "fixed": {"sl_pct": e["sl_pct"], "tp_pct": e["tp_pct"]}})
 
+    def weekend_due(self, now: datetime) -> bool:
+        """Oprire de weekend (decizia lui Eugen, 18 oct): vineri dupa `stop_utc` (dupa raportul zilei si inchiderea pietei), doar pentru o sesiune
+        pornita inainte de ora asta (daca o pornesti tu vineri noaptea, ramane pornita). Pozitiile raman pe eToro cu tinta si plasa."""
+        w = self.cfg.get("weekend_pause") or {}
+        if not w.get("enabled") or now.weekday() != 4:
+            return False
+        hh, mm = (int(x) for x in w.get("stop_utc", "20:10").split(":"))
+        cut = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        started = getattr(self, "session_start", None) or now
+        return now >= cut and started < cut
+
     def held_long(self, pid: str) -> bool:
         """Pozitie de petrol pe 4 ore: se tine pana la tinta sau plasa (fara limita de 5 ore si fara cosul comun), ca in simulare."""
         return (self.special.get(str(pid)) or {}).get("tag") == "petrol4h"
@@ -1454,6 +1465,8 @@ class Assistant:
             if str(v).startswith("wave"):
                 self.wave_n[(k, v)] = self.cfg.get("wave_max_proposals", 1)
         cont = os.getenv("CONTINUED") == "1"
+        sched = os.getenv("SCHEDULED") == "1"                                              # pornire programata duminica seara: pe manual
+        self.session_start = self.now_fn()
         self.autotrade = bool(st.get("autotrade")) and cont                               # sesiune noua pornita de tine: autotrading oprit
         self.bot_pids = set(st.get("bot_pids", [])) if self.real else set()
         self.counter_pids = set(st.get("counter_pids", []))
@@ -1472,7 +1485,8 @@ class Assistant:
             t = parse_time(r.get("at"))
             if t:
                 self.adopt.append({**r, "before": set(r.get("before", [])), "at": t})
-        self.unlocked = (bool(st.get("unlocked")) and cont) if self.real else True        # pe real: confirmare la fiecare pornire noua
+        self.unlocked = (bool(st.get("unlocked")) and cont) or sched if self.real else True   # pe real: confirmare la fiecare pornire noua
+        # (pornirea programata nu cere confirmare: e pe manual, nimic nu se deschide fara OK-ul tau)
         self.refresh_real()
         if self.reconcile():
             self.tg.send("🧮 Am recalculat profitul din istoricul real de la eToro (nu din estimări):\n" + self.profit_text())
@@ -1487,6 +1501,8 @@ class Assistant:
             self.tg.send(msg.continued(hours), menu=msg.MENU)
         else:
             self.tg.send(msg.started(hours, self.equity(), c["scan_every_min"], c["basket_target_usd"], real=self.real), menu=msg.MENU)
+        if sched:
+            self.tg.send(msg.scheduled_start())
         if self.aggr:
             self.tg.send("⚡ AGGRESSIVE_MODE activ: mai multe semnale, expunere mai mare. Siguranțele rămân (SL+TP pe fiecare ordin, oprire la pierdere zilnică).")
         if c.get("_mode_note"):
@@ -1547,6 +1563,8 @@ class Assistant:
                 if not warned and remaining <= 0 and end - now < 20 * 60:
                     warned = True
                     self.tg.send(msg.ending_soon(int((end - now) / 60)))
+                if self.weekend_due(utc):
+                    self.stop_reason = msg.weekend_reason(self.cfg["weekend_pause"])
                 if now >= end:
                     self.stop_reason = "handover" if remaining > 0.01 else "s-a terminat sesiunea"
             except Exception as e:  # noqa: BLE001 - nu lasam asistentul sa cada pentru o eroare trecatoare

@@ -7,6 +7,7 @@
   "entry_gate": {"enabled": true, "exclude_prefix": ["pullback"], "per_instrument": {"OIL": {"exclude_prefix": ["rsi_rev"]}}, "hours_utc": [7, 16], "adx_min": 25, "vol_min": 0.33},
   "oil_loss_stop_usd": 30,
   "account_alarm_drop_pct": 17,
+  "weekend_pause": {"enabled": true, "stop_utc": "20:10", "start_utc": "20:00", "window_min": 90},
   "oil_4h": {"enabled": true, "until": "2026-11-18", "lookback_bars": 30, "ema_daily": 50, "tp_atr": 2.0, "sl_atr": 1.5, "max_sl_usd": 10, "max_age_min": 90},
   "oil_watch": {"enabled": true, "every_min": 15, "alert_gap_min": 60, "move_atr": 1.5, "break_atr": 0.75},
   "eia_trial": {"enabled": true, "until": "2026-11-11", "ny_time": "10:30", "heads_up_min": 15, "first_min": 15, "tp_mult": 1.5, "min_move_pct": 0.0005},

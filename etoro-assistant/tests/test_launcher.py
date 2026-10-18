@@ -34,6 +34,7 @@ def setup(monkeypatch, running, texts, chat="42", age=60):
         return R()
 
     monkeypatch.setenv("TELEGRAM_CHAT_ID", chat)
+    monkeypatch.setattr(launcher, "NOW", lambda: __import__("datetime").datetime(2026, 10, 20, 10, 0, tzinfo=__import__("datetime").timezone.utc))   # marti: fara pornirea programata
     monkeypatch.setattr(launcher.requests, "get", get)
     monkeypatch.setattr(launcher.requests, "post", post)
     return sent, dispatched
