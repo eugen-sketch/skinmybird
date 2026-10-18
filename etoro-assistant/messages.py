@@ -181,6 +181,9 @@ def _closed(name: str, kind: str, pnl: float, plan: float | None = None) -> str:
         return f"🎉💵 {p}: ținta a fost atinsă! Rezultat ≈ {signed(pnl)}. Poziția e închisă."
     if kind == "SL":
         return f"😕🛡️ {p}: s-a activat plasa de siguranță. Rezultat ≈ {signed(pnl)}. Poziția e închisă."
+    if kind == "SL_GAP":
+        return (f"😕🛡️ {p}: s-a activat plasa de siguranță, dar prețul a sărit peste ea (de obicei la redeschiderea pieței după weekend "
+                f"sau la o știre), așa că eToro a închis la primul preț disponibil. Rezultat ≈ {signed(pnl)}. Poziția e închisă.")
     if kind == "TIME":
         return f"⏱️ {p}: era pe plus după limita de timp, am încasat profitul. Rezultat ≈ {signed(pnl)}. Poziția e închisă."
     if kind == "BASKET":
