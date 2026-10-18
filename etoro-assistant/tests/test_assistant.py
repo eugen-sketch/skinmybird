@@ -797,6 +797,17 @@ def test_manual_close_in_etoro_is_booked_at_current_profit_not_at_target():
     assert a.classify_vanished(old, 1.8) == ("TP", 2.75)
 
 
+def test_stop_hit_through_a_weekend_gap_is_named_as_stop():
+    """USD/CAD 18.10: piata s-a redeschis sub plasa, eToro a inchis la primul pret (dincolo de plasa). Nu e «inchisa de altcineva»."""
+    a, tg, br = make()
+    old = {"id": "9", "name": "USDCAD", "side": 1, "tp": 1.42069, "sl": 1.41238, "open_rate": 1.41857}
+    a.history_of = lambda o: {"close_rate": 1.41153, "tp": 1.42069, "sl": 1.41238, "open_rate": 1.41857, "net": -8.25, "side": 1}
+    a.real = True
+    assert a.classify_vanished(old, -7.0) == ("SL_GAP", -8.25)
+    import messages as m
+    assert "a sărit peste ea" in m._closed("USDCAD", "SL_GAP", -8.25)
+
+
 def test_order_sanity_blocks_wrong_side_levels():
     a, _, _ = make()
     assert a.order_problem(1, 1.1, 1.09, 1.11) is None

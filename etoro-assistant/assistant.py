@@ -967,6 +967,11 @@ class Assistant:
                 return "TP", real["net"]
             if real["sl"] and abs(real["close_rate"] - real["sl"]) <= tol:
                 return "SL", real["net"]
+            side = real.get("side") or old.get("side", 1)
+            if real["sl"] and side * (real["close_rate"] - real["sl"]) < 0:          # inchisa DINCOLO de plasa: pretul a sarit peste ea
+                return "SL_GAP", real["net"]                                       # (redeschiderea pietei dupa weekend, o stire)
+            if real["tp"] and side * (real["close_rate"] - real["tp"]) > 0:
+                return "TP", real["net"]
             return "OTHER", real["net"]
         tp_usd, sl_usd = old.get("tp_usd", self.cfg["tp_usd"]), old.get("sl_usd", self.cfg["sl_usd"])
         px = None
