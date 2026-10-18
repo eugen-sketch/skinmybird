@@ -150,10 +150,20 @@ class Assistant:
             return c["budget_usd"]
         return max(c["budget_usd"] * c.get("min_budget_frac", 0.5), c["budget_usd"] + self.realized)
 
+    def simple(self) -> dict | None:
+        """Modul simplu (decizia lui Eugen, 19 oct): 50 $ pe pozitie, plasa mica (~0,5 $), tinta mare, fara petrol, fara limita de 5 h,
+        fara cos, fara blocaj de profit. Strategia de dinainte e salvata in config_prudent_2026-10-18.json."""
+        s = self.cfg.get("simple_mode") or {}
+        return s if s.get("enabled") and os.getenv("BOT_SIMPLE_OFF") != "1" else None
+
+    def simple_skip(self, name: str) -> bool:
+        sm = self.simple()
+        return bool(sm and name in sm.get("exclude", []))
+
     def oil_reserve(self) -> float:
         """Banii rezervati DOAR pentru petrol (doar pe real si doar cand bugetul ajunge pentru rezerva + 2 pozitii de forex): forexul nu-i poate folosi."""
         r = self.cfg.get("oil_reserve_usd", 0)
-        if not (self.real and r) or self.oil_paused:                              # petrol oprit: rezerva se elibereaza pentru forex
+        if not (self.real and r) or self.oil_paused or self.simple_skip("OIL"):                              # petrol oprit: rezerva se elibereaza pentru forex
             return 0.0
         return float(r) if self.equity() >= r + 2 * self.cfg["min_margin_usd"] else 0.0
 
@@ -171,6 +181,14 @@ class Assistant:
         return c["max_positions"] if self.equity() >= c["small_account_usd"] else c["max_positions_small"]
 
     def sizing(self, inst: dict, boost: bool = False) -> tuple[float, int, float]:
+        sm = self.simple()
+        if sm:                                                                    # modul simplu: suma fixa pe pozitie
+            lev = min(inst["lev_cap"], self.cfg["max_leverage"], self.lev_learned.get(inst.get("name"), 999))
+            margin = max(float(sm.get("margin_usd", 50)), math.ceil(self.cfg["min_notional"] * 1.01 / lev * 100) / 100)
+            return margin, lev, margin * lev
+        return self._sizing(inst, boost)
+
+    def _sizing(self, inst: dict, boost: bool = False) -> tuple[float, int, float]:
         """(marja $, levier, expunere $). Impart bugetul la nr. de pozitii posibile (minim 50$ pe pozitie, expunere minima 1.000$);
         daca felia nu mai incape din banii liberi, folosesc tot ce e liber, cat timp ramane peste minimele eToro."""
         c = self.cfg
@@ -207,18 +225,25 @@ class Assistant:
         margin = max(math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100, c["min_margin_usd"])
         return margin, lev, margin * lev
 
-    def plan_levels(self, side: int, px: float, notional: float, atr_pct: float | None, fixed: dict | None) -> tuple[float, float, float, float]:
+    def plan_levels(self, side: int, px: float, notional: float, atr_pct: float | None, fixed: dict | None,
+                    name: str | None = None) -> tuple[float, float, float, float]:
         """Ca levels(), dar cu distante fixe (fractie din pret) cand vin din proba de miercuri; plasa tot nu depaseste plasa maxima in $."""
         if not fixed:
-            return self.levels(side, px, notional, atr_pct)
+            return self.levels(side, px, notional, atr_pct, name)
         sl_pct = min(fixed["sl_pct"], self.scale() * self.cfg["max_sl_usd"] / notional)
         tp_pct = fixed["tp_pct"]
         return px * (1 - side * sl_pct), px * (1 + side * tp_pct), tp_pct * notional, sl_pct * notional
 
-    def pcts(self, notional: float, atr_pct: float | None = None) -> tuple[float, float]:
+    def pcts(self, notional: float, atr_pct: float | None = None, name: str | None = None) -> tuple[float, float]:
         """(distanta TP, distanta SL) ca fractie din pret. TP mic din volatilitatea orara (atins in 1-2 ore),
         SL larg (de cateva ori volatilitatea orara), ambele limitate in $."""
         c = self.cfg
+        sm = self.simple()
+        if sm and atr_pct:                    # modul simplu: plasa mica (~sl_usd, dar peste spread), tinta mare (tp_atr, cel putin min_rr x plasa)
+            cost = self.inst.get(name, {}).get("cost", 0.02) if name else 0.02
+            sl = max(sm.get("sl_usd", 0.5) / notional, sm.get("min_sl_pct", 0.04) / 100, sm.get("sl_spread_mult", 2) * cost / 100)
+            tp = min(max(sm.get("tp_atr", 3.0) * atr_pct, sm.get("min_rr", 3) * sl), self.scale() * c["max_tp_usd"] / notional)
+            return tp, sl
         if not atr_pct:
             return c["tp_usd"] / notional, c["sl_usd"] / notional
         k = self.scale()
@@ -226,9 +251,9 @@ class Assistant:
         sl = min(max(c["sl_atr"] * atr_pct, c["min_sl_pct"] / 100), k * c["max_sl_usd"] / notional)
         return tp, sl
 
-    def levels(self, side: int, px: float, notional: float, atr_pct: float | None = None) -> tuple[float, float, float, float]:
+    def levels(self, side: int, px: float, notional: float, atr_pct: float | None = None, name: str | None = None) -> tuple[float, float, float, float]:
         """(pret SL, pret TP, TP in $, SL in $)"""
-        tp, sl = self.pcts(notional, atr_pct)
+        tp, sl = self.pcts(notional, atr_pct, name)
         return px * (1 - side * sl), px * (1 + side * tp), tp * notional, sl * notional
 
     def add_realized(self, pnl: float) -> None:
@@ -273,6 +298,8 @@ class Assistant:
         self.refresh_blocked(now)
         self.news_heads_up(now, open_names)
         for name, inst in self.inst.items():
+            if self.simple_skip(name):                                            # modul simplu: fara petrol
+                continue
             if name in open_names or any(p["name"] == name for p in self.pending.values()):
                 continue
             ev = self.news.blocking(name, now)
@@ -486,7 +513,7 @@ class Assistant:
         boost = self.is_boost(name, s)
         amount, lev, notional = self.min_size(inst) if s.get("min_size") else self.sizing(inst, boost)
         atr_pct = s.get("atr_pct")
-        sl_px, tp_px, tp_usd, sl_usd = self.plan_levels(side, px, notional, atr_pct, s.get("fixed"))
+        sl_px, tp_px, tp_usd, sl_usd = self.plan_levels(side, px, notional, atr_pct, s.get("fixed"), name)
         d = digits_for(name, px)
         free = self.free_margin(name)
         can = amount <= free + 0.001
@@ -572,7 +599,7 @@ class Assistant:
     def profit_locked(self) -> bool:
         """Blocaj de profit: cand profitul REALIZAT de azi atinge `daily_profit_lock_usd` (scalat cu bugetul), nu mai propunem si nu mai
         deschidem nimic pana maine. Pozitiile deschise isi pastreaza tinta si plasa. 0 = oprit. Te anunta o singura data pe zi."""
-        lock = self.cfg.get("daily_profit_lock_usd", 0) * self.scale()
+        lock = 0 if self.simple() else self.cfg.get("daily_profit_lock_usd", 0) * self.scale()
         if not lock or self.day_pnl_today() < lock:
             return False
         today = self.now_fn().strftime("%Y-%m-%d")
@@ -615,7 +642,7 @@ class Assistant:
                 self.seen_bar.pop(name, None)                         # semnalul se poate relua la urmatoarea scanare, cu un pret bun
                 self.tg.send(bad)
                 return
-            sl, tp, _, _ = self.plan_levels(side, px, notional, p.get("atr_pct"), p.get("fixed"))
+            sl, tp, _, _ = self.plan_levels(side, px, notional, p.get("atr_pct"), p.get("fixed"), name)
             d = digits_for(name, px)
             problem = self.order_problem(side, px, round(sl, d), round(tp, d))
             if problem:
@@ -649,7 +676,7 @@ class Assistant:
         if self.real and self.real_balance is not None:
             self.real_balance = max(0.0, self.real_balance - amount)         # banii liberi scad imediat (citirea de la eToro vine la urmatoarea verificare)
         notional = amount * lev
-        sl, tp, tp_usd, sl_usd = self.plan_levels(side, px, notional, p.get("atr_pct"), p.get("fixed"))
+        sl, tp, tp_usd, sl_usd = self.plan_levels(side, px, notional, p.get("atr_pct"), p.get("fixed"), name)
         self.known[pid] = {"id": pid, "name": name, "side": side, "open_rate": px, "units": notional / (px * self.fx(name)) if name in USD_QUOTE_FACTOR_ONE else notional,
                            "amount": amount, "leverage": lev, "sl": sl, "tp": tp, "last_pnl": 0.0,
                            "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": self.now_fn(), "counter": bool(p.get("counter"))}
@@ -725,7 +752,7 @@ class Assistant:
         """Incep sa urmaresc o pozitie: tinta/plasa in $ vin din ATR (pozitii deschise de mine) sau din nivelurile puse pe eToro."""
         notional = p["amount"] * p["leverage"]
         if atr_pct:
-            _, _, tp_usd, sl_usd = self.levels(p["side"], p["open_rate"] or 1.0, notional, atr_pct)
+            _, _, tp_usd, sl_usd = self.levels(p["side"], p["open_rate"] or 1.0, notional, atr_pct, p.get("name"))
         else:
             op = p["open_rate"]
             tp_usd = abs(p["tp"] - op) / op * notional if p.get("tp") and op else self.cfg["tp_usd"]
@@ -837,7 +864,7 @@ class Assistant:
         rows = [r for r in rows if not self.held_long(str(r.get("id")))]       # pozitiile de petrol pe 4 ore nu intra in cosul comun
         total = sum(r["last_pnl"] for r in rows)
         c = self.cfg
-        if check_basket and len(rows) >= c["basket_min_positions"] and total >= c["basket_target_usd"]:
+        if check_basket and not self.simple() and len(rows) >= c["basket_min_positions"] and total >= c["basket_target_usd"]:
             green = [pid for pid, p in self.known.items() if p.get("last_pnl", 0.0) > 0 and not self.held_long(pid)]   # Regula 1: nu inchid niciodata pe rosu
             if green:
                 self.tg.send(msg.basket(len(green), sum(self.known[p]["last_pnl"] for p in green), len(rows) - len(green)))
@@ -848,7 +875,7 @@ class Assistant:
     def time_stop(self) -> None:
         """Limita de timp, DOAR pe plus (Regula 1): o pozitie deschisa de `max_hold_hours` ore sau mai mult si aflata pe profit (peste
         `time_stop_min_profit_usd`) se inchide, ca sa nu mai astepti ore pentru cativa dolari. Cele pe minus raman pana la tinta sau plasa."""
-        limit = self.cfg.get("max_hold_hours", 0)
+        limit = 0 if self.simple() else self.cfg.get("max_hold_hours", 0)
         if not limit:
             return
         now = self.now_fn()
@@ -1045,7 +1072,7 @@ class Assistant:
     def oil_watch(self, now: datetime) -> None:
         """Paznicul de petrol: la fiecare 15 minute; avertisment clar + propunere pe pozitia minima (pe autotrading o deschide singur)."""
         o = self.cfg.get("oil_watch") or {}
-        if not o.get("enabled") or not self.market_open(now):
+        if not o.get("enabled") or not self.market_open(now) or self.simple_skip("OIL"):
             return
         slot = (now.date(), now.hour, now.minute // int(o.get("every_min", 15)))
         if slot == self.watch_slot:
@@ -1076,7 +1103,7 @@ class Assistant:
         """Proba de miercuri (pana la `until`): anunt cu 15 min inainte de raportul de stocuri; la 15 min dupa, propunere in directia
         primelor 15 minute, pozitia minima; dupa o ora, daca pozitia e inca deschisa, te anunt sa decizi tu (nu inchid pe minus)."""
         o = self.cfg.get("eia_trial") or {}
-        if not o.get("enabled"):
+        if not o.get("enabled") or self.simple_skip("OIL"):
             return
         for pid, sp in list(self.special.items()):                     # verificarea de dupa o ora, pentru pozitiile de proba
             at = parse_time(sp.get("at"))
@@ -1132,7 +1159,7 @@ class Assistant:
         """Petrol pe 4 ore (proba de o luna, aprobata de Eugen): la o spargere a maximului ultimelor ~5 zile, in trendul zilnic in sus, avertisment
         + propunere de CUMPARARE cu butoane (nu deschide singur nici pe autotrading), pozitia minima, plasa de cel mult `max_sl_usd`."""
         o = self.cfg.get("oil_4h") or {}
-        if not o.get("enabled") or now.date().isoformat() > o.get("until", "") or not self.market_open(now) or "OIL" not in self.inst:
+        if not o.get("enabled") or self.simple_skip("OIL") or now.date().isoformat() > o.get("until", "") or not self.market_open(now) or "OIL" not in self.inst:
             return
         slot = (now.date(), now.hour, now.minute // 15)
         if slot == self.oil4h_slot:
@@ -1508,6 +1535,8 @@ class Assistant:
             self.tg.send(msg.started(hours, self.equity(), c["scan_every_min"], c["basket_target_usd"], real=self.real), menu=msg.MENU)
         if sched:
             self.tg.send(msg.scheduled_start())
+        if self.simple():
+            self.tg.send(msg.simple_mode(self.simple()))
         if self.aggr:
             self.tg.send("⚡ AGGRESSIVE_MODE activ: mai multe semnale, expunere mai mare. Siguranțele rămân (SL+TP pe fiecare ordin, oprire la pierdere zilnică).")
         if c.get("_mode_note"):
