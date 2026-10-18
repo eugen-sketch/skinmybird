@@ -13,8 +13,8 @@ on:
         description: "demo (implicit) sau real (bani adevărați, doar la cererea ta)"
         default: "demo"
       aggressive:
-        description: "true = AGGRESSIVE_MODE (mai multe semnale, expunere mai mare); implicit false."
-        default: "false"
+        description: "true = setul de reguli folosit si testat pe contul real (blocul «aggressive» din config.json). Lasa true."
+        default: "true"
       scheduled:
         description: "1 = pornire programata (duminica seara), pe manual; o pune automat pornirea de pe Telegram"
         default: "0"

@@ -32,7 +32,7 @@ def make(auto=False, df=None):
     tg, br = FakeTG(), FakeBroker()
     d = df if df is not None else hourly()
     br.prices["OIL"] = float(d["close"].iloc[-1])
-    a = A.Assistant({**CFG, "max_positions": 4}, tg, br, fetch=lambda *x, **k: d, now_fn=lambda: NOW, sleep=lambda s: None)
+    a = A.Assistant({**CFG, "max_positions": 4, "oil_4h": {**CFG["oil_4h"], "enabled": True}}, tg, br, fetch=lambda *x, **k: d, now_fn=lambda: NOW, sleep=lambda s: None)
     a.unlocked, a.autotrade = True, auto
     return a, tg, br
 

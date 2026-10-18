@@ -30,7 +30,7 @@ def m5(end, path):
 
 
 def make(now, d5, hh, auto=False):
-    cfg = {**CFG, "max_positions": 4}
+    cfg = {**CFG, "max_positions": 4, "oil_watch": {**CFG["oil_watch"], "enabled": True}, "eia_trial": {**CFG["eia_trial"], "enabled": True}}   # functii oprite acum in config
     tg, br = FakeTG(), FakeBroker()
     br.prices["OIL"] = float(d5["close"].iloc[-1])
     fetch = lambda sym, interval="1h", rng="": d5 if interval == "5m" else hh  # noqa: E731
