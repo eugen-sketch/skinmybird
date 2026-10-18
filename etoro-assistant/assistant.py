@@ -23,6 +23,7 @@ import channel
 import chart as chart_mod
 import messages as msg
 import news as news_mod
+import oilwatch
 import pandas as pd
 import signals
 import state as state_mod
@@ -76,6 +77,12 @@ class Assistant:
         self.ledger: list[dict] = []              # registrul deciziilor: fiecare pozitie inchisa (cine a deschis-o, cine a inchis-o) si semnalele refuzate
         self.origin: dict[str, str] = {}          # cine a deschis pozitia: auto (autotrading) / ok (butonul tau) / manual (comanda ta) / preluat
         self.ledger_since = ""                    # de cand tine botul registrul (pozitiile tale din eToro se numara doar de atunci)
+        self.special: dict[str, dict] = {}        # pozitii deschise de paznicul de petrol / proba de miercuri: {pid: {tag, at, told}}
+        self.alarm_on = False                     # alarma «contul sub limita» a fost trimisa (se rearmeaza cand contul revine peste limita + 10 $)
+        self.eq_peak: float | None = None         # cel mai mare nivel al contului vazut de bot (pentru alarma)
+        self.watch_slot = None                    # ultimul sfert de ora in care paznicul de petrol s-a uitat
+        self.watch_last: datetime | None = None   # ultimul avertisment al paznicului de petrol
+        self.eia_done: dict = {}                  # proba de miercuri: ce s-a facut deja azi {date, heads, entry}
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.sleep = sleep
@@ -191,6 +198,21 @@ class Assistant:
                 margin = fit
         return margin, lev, margin * lev
 
+    def min_size(self, inst: dict) -> tuple[float, int, float]:
+        """Pozitia minima pe care o accepta eToro: expunere de ~1.010 $ (la petrol, levier 10: ~101 $ din buget)."""
+        c = self.cfg
+        lev = min(inst["lev_cap"], c["max_leverage"], self.lev_learned.get(inst.get("name"), 999))
+        margin = max(math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100, c["min_margin_usd"])
+        return margin, lev, margin * lev
+
+    def plan_levels(self, side: int, px: float, notional: float, atr_pct: float | None, fixed: dict | None) -> tuple[float, float, float, float]:
+        """Ca levels(), dar cu distante fixe (fractie din pret) cand vin din proba de miercuri; plasa tot nu depaseste plasa maxima in $."""
+        if not fixed:
+            return self.levels(side, px, notional, atr_pct)
+        sl_pct = min(fixed["sl_pct"], self.scale() * self.cfg["max_sl_usd"] / notional)
+        tp_pct = fixed["tp_pct"]
+        return px * (1 - side * sl_pct), px * (1 + side * tp_pct), tp_pct * notional, sl_pct * notional
+
     def pcts(self, notional: float, atr_pct: float | None = None) -> tuple[float, float]:
         """(distanta TP, distanta SL) ca fractie din pret. TP mic din volatilitatea orara (atins in 1-2 ore),
         SL larg (de cateva ori volatilitatea orara), ambele limitate in $."""
@@ -226,7 +248,7 @@ class Assistant:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
                         "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
-                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
+                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eq_peak": self.eq_peak, "eia_done": self.eia_done, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
@@ -460,9 +482,9 @@ class Assistant:
             px = s["price"]
         side = s["side"]
         boost = self.is_boost(name, s)
-        amount, lev, notional = self.sizing(inst, boost)
+        amount, lev, notional = self.min_size(inst) if s.get("min_size") else self.sizing(inst, boost)
         atr_pct = s.get("atr_pct")
-        sl_px, tp_px, tp_usd, sl_usd = self.levels(side, px, notional, atr_pct)
+        sl_px, tp_px, tp_usd, sl_usd = self.plan_levels(side, px, notional, atr_pct, s.get("fixed"))
         d = digits_for(name, px)
         free = self.free_margin(name)
         can = amount <= free + 0.001
@@ -488,7 +510,8 @@ class Assistant:
             self.autotrade = False
             self.save_state()
             self.tg.send(msg.autotrade_limit(self.cfg["autotrade_daily_loss_usd"] * self.scale()))
-        plan = {"origin": s.get("origin") or ("auto" if self.autotrade else "ok"), "px": px, "tp_px": tp_px, "sl_px": sl_px, "notional": notional}
+        plan = {"origin": s.get("origin") or ("auto" if self.autotrade else "ok"), "px": px, "tp_px": tp_px, "sl_px": sl_px, "notional": notional,
+                "min_size": bool(s.get("min_size")), "fixed": s.get("fixed"), "special": s.get("special")}
         if self.autotrade:
             self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": None, "amount": amount,
                                  "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost, "counter": counter, **plan}
@@ -575,7 +598,7 @@ class Assistant:
         if any(k["name"] == name for k in self.known.values()):
             self.tg.send(f"ℹ️ Ai deja o poziție deschisă pe {msg.pair(name)}, nu deschid încă una.")
             return
-        amount, lev, notional = self.sizing(inst, bool(p.get("boost")))
+        amount, lev, notional = self.min_size(inst) if p.get("min_size") else self.sizing(inst, bool(p.get("boost")))
         free = self.free_margin(name)
         if amount > free + 0.001 or amount < self.cfg["min_margin_usd"] - 0.001:
             self.tg.send(f"🚫 Nu pot deschide {msg.pair(name)}: " + (
@@ -590,7 +613,7 @@ class Assistant:
                 self.seen_bar.pop(name, None)                         # semnalul se poate relua la urmatoarea scanare, cu un pret bun
                 self.tg.send(bad)
                 return
-            sl, tp, _, _ = self.levels(side, px, notional, p.get("atr_pct"))
+            sl, tp, _, _ = self.plan_levels(side, px, notional, p.get("atr_pct"), p.get("fixed"))
             d = digits_for(name, px)
             problem = self.order_problem(side, px, round(sl, d), round(tp, d))
             if problem:
@@ -612,6 +635,8 @@ class Assistant:
             return
         self.bot_pids.add(str(pid))
         self.origin[str(pid)] = p.get("origin", "ok")
+        if p.get("special"):
+            self.special[str(pid)] = {"tag": p["special"], "at": self.now_fn().isoformat(timespec="seconds"), "told": False}
         if p.get("counter"):
             self.counter_pids.add(str(pid))
         fill = getattr(self.broker, "last", None) or {}
@@ -622,7 +647,7 @@ class Assistant:
         if self.real and self.real_balance is not None:
             self.real_balance = max(0.0, self.real_balance - amount)         # banii liberi scad imediat (citirea de la eToro vine la urmatoarea verificare)
         notional = amount * lev
-        sl, tp, tp_usd, sl_usd = self.levels(side, px, notional, p.get("atr_pct"))
+        sl, tp, tp_usd, sl_usd = self.plan_levels(side, px, notional, p.get("atr_pct"), p.get("fixed"))
         self.known[pid] = {"id": pid, "name": name, "side": side, "open_rate": px, "units": notional / (px * self.fx(name)) if name in USD_QUOTE_FACTOR_ONE else notional,
                            "amount": amount, "leverage": lev, "sl": sl, "tp": tp, "last_pnl": 0.0,
                            "tp_usd": tp_usd, "sl_usd": sl_usd, "opened_at": self.now_fn(), "counter": bool(p.get("counter"))}
@@ -791,6 +816,7 @@ class Assistant:
             self.bot_pids.discard(str(pid))
             self.counter_pids.discard(str(pid))
             self.record_close(old, kind, pnl, self.origin.pop(str(pid), "?"))
+            self.special.pop(str(pid), None)
             hrs = (self.now_fn() - old["opened_at"]).total_seconds() / 3600 if old.get("opened_at") else 0.0
             self.log_event(f"inchis {old['name']} ({kind}): net {pnl:+.2f}$, durata {hrs:.1f}h, plan/real: {plan}")
             self.add_realized(pnl)
@@ -805,6 +831,7 @@ class Assistant:
             self.sync_targets(self.known[pid])
         self.hold_alert()
         self.check_money(allp)
+        self.account_alarm()
         total = sum(r["last_pnl"] for r in rows)
         c = self.cfg
         if check_basket and len(rows) >= c["basket_min_positions"] and total >= c["basket_target_usd"]:
@@ -972,6 +999,115 @@ class Assistant:
             if i < 2:
                 self.sleep(4)
         return None
+
+    def account_alarm(self) -> None:
+        """Alarma provizorie ceruta de Eugen: contul scade cu `account_alarm_drop_pct`% sub cel mai mare nivel atins => un singur mesaj
+        (discutam varianta B, marimea dupa risc). Se rearmeaza cand contul revine cu 10 $ peste limita. In procente, nu in $:
+        setarile sunt publice."""
+        drop = self.cfg.get("account_alarm_drop_pct", 0)
+        if not (drop and self.real and self.real_balance is not None):
+            return
+        eq = self.equity()
+        self.eq_peak = max(self.eq_peak or 0.0, eq)
+        lim = self.eq_peak * (1 - drop / 100)
+        if eq < lim and not self.alarm_on:
+            self.alarm_on = True
+            self.save_state()
+            self.tg.send(msg.account_alarm(eq, lim))
+        elif eq >= lim + 10 and self.alarm_on:
+            self.alarm_on = False
+            self.save_state()
+
+    def oil_room(self) -> str | None:
+        """De ce NU pot propune acum o pozitie pe petrol (None = pot)."""
+        if "OIL" not in self.inst:
+            return "petrolul nu e în listă"
+        if any(p["name"] == "OIL" for p in self.known.values()) or any(p["name"] == "OIL" for p in self.pending.values()):
+            return "ai deja o poziție sau o propunere pe petrol"
+        if self.oil_paused:
+            return "petrolul e oprit (pierderea din experiment a atins limita; scrie «porneste petrol»)"
+        if not self.unlocked:
+            return "contul real nu e confirmat în sesiunea asta"
+        if self.profit_locked():
+            return "blocajul de profit de azi e atins"
+        if len(self.known) + len(self.pending) >= self.max_pos():
+            return f"sunt deja {self.max_pos()} poziții deschise"
+        return None
+
+    def oil_watch(self, now: datetime) -> None:
+        """Paznicul de petrol: la fiecare 15 minute; avertisment clar + propunere pe pozitia minima (pe autotrading o deschide singur)."""
+        o = self.cfg.get("oil_watch") or {}
+        if not o.get("enabled") or not self.market_open(now):
+            return
+        slot = (now.date(), now.hour, now.minute // int(o.get("every_min", 15)))
+        if slot == self.watch_slot:
+            return
+        self.watch_slot = slot
+        if self.watch_last and (now - self.watch_last).total_seconds() < o.get("alert_gap_min", 60) * 60:
+            return
+        if self.news.blocking("OIL", now) or "OIL" not in self.inst:
+            return
+        try:
+            y = self.inst["OIL"]["yahoo"]
+            sig = oilwatch.watch_signal(self.fetch(y, "5m", "5d"), self.fetch(y, "1h", "30d"), now, o)
+        except Exception as e:  # noqa: BLE001
+            print(f"[!] paznic petrol: {type(e).__name__}")
+            return
+        if not sig:
+            return
+        self.watch_last = now
+        why_not = self.oil_room()
+        self.tg.send(msg.oil_watch(sig, self.autotrade, why_not))
+        if why_not:
+            return
+        why = (f"paznicul de petrol: în ultima oră petrolul a {'urcat' if sig['side'] == 1 else 'coborât'} de {abs(sig['move']):.1f} ori mai mult decât "
+               f"de obicei" + (", ieșind din " + ("maximul" if sig["side"] == 1 else "minimul") + " zilei" if sig["brk"] else ""))
+        self.propose("OIL", {"side": sig["side"], "why": why, "price": sig["px"], "atr_pct": sig["atr"] / sig["px"], "min_size": True, "special": "paznic"})
+
+    def eia_tick(self, now: datetime) -> None:
+        """Proba de miercuri (pana la `until`): anunt cu 15 min inainte de raportul de stocuri; la 15 min dupa, propunere in directia
+        primelor 15 minute, pozitia minima; dupa o ora, daca pozitia e inca deschisa, te anunt sa decizi tu (nu inchid pe minus)."""
+        o = self.cfg.get("eia_trial") or {}
+        if not o.get("enabled"):
+            return
+        for pid, sp in list(self.special.items()):                     # verificarea de dupa o ora, pentru pozitiile de proba
+            at = parse_time(sp.get("at"))
+            if sp.get("tag") == "eia" and not sp.get("told") and at and (now - at).total_seconds() >= 3600 and pid in self.known:
+                sp["told"] = True
+                self.save_state()
+                self.tg.send(msg.eia_hour(self.known[pid].get("last_pnl", 0.0)))
+        if now.date().isoformat() > o.get("until", "") or self.ny_weekday(now) != 2:
+            return
+        hh, mm = (int(x) for x in o.get("ny_time", "10:30").split(":"))
+        t_rel = oilwatch.ny_to_utc(now.astimezone(oilwatch.NY).date() if oilwatch.NY else now.date(), hh, mm)
+        day = t_rel.date().isoformat()
+        if self.eia_done.get("date") != day:
+            self.eia_done = {"date": day, "heads": False, "entry": False}
+        if not self.eia_done["heads"] and t_rel - timedelta(minutes=o.get("heads_up_min", 15)) <= now < t_rel:
+            self.eia_done["heads"] = True
+            self.save_state()
+            self.tg.send(msg.eia_heads_up(t_rel, o.get("first_min", 15)))
+        first = timedelta(minutes=o.get("first_min", 15))
+        if not self.eia_done["entry"] and t_rel + first <= now < t_rel + first + timedelta(minutes=15):
+            self.eia_done["entry"] = True
+            self.save_state()
+            try:
+                px = self.live_price("OIL", 1)
+                e = oilwatch.eia_entry(self.fetch(self.inst["OIL"]["yahoo"], "5m", "1d"), t_rel, px, self.inst["OIL"]["cost"], o)
+            except Exception as ex:  # noqa: BLE001
+                e = {"skip": f"nu am putut citi prețurile ({type(ex).__name__})"}
+            why_not = e.get("skip") or self.oil_room()
+            if why_not:
+                self.tg.send(msg.eia_skip(why_not))
+                return
+            why = (f"proba de miercuri: după raportul de stocuri, petrolul a {'urcat' if e['side'] == 1 else 'coborât'} {abs(e['move_pct']) * 100:.2f}% "
+                   f"în primele 15 minute; intru în aceeași direcție, cu plasa dincolo de {'fundul' if e['side'] == 1 else 'vârful'} acelor 15 minute")
+            self.propose("OIL", {"side": e["side"], "why": why, "price": px, "atr_pct": e["sl_pct"], "min_size": True, "special": "eia",
+                                 "fixed": {"sl_pct": e["sl_pct"], "tp_pct": e["tp_pct"]}})
+
+    @staticmethod
+    def ny_weekday(now: datetime) -> int:
+        return now.astimezone(oilwatch.NY).weekday() if oilwatch.NY else now.weekday()
 
     def record_close(self, old: dict, kind: str, pnl: float, origin: str) -> None:
         """Randul din registru pentru o pozitie inchisa: cine a deschis-o, cum s-a inchis, nivelurile ei (pentru «ce-ar fi fost»)."""
@@ -1289,6 +1425,10 @@ class Assistant:
         self.ledger = [r for r in st.get("ledger", []) if (r.get("close_t") or r.get("at") or "") >= cutoff]
         self.origin = st.get("origin", {})
         self.ledger_since = st.get("ledger_since") or self.now_fn().isoformat(timespec="seconds")
+        self.special = st.get("special", {})
+        self.alarm_on = bool(st.get("alarm_on", False))
+        self.eq_peak = st.get("eq_peak")
+        self.eia_done = st.get("eia_done", {})
         self.oil_pnl, self.oil_paused = float(st.get("oil_pnl", 0.0)), bool(st.get("oil_paused", False))
         for r in st.get("adopt", []) if self.real else []:
             t = parse_time(r.get("at"))
@@ -1359,6 +1499,8 @@ class Assistant:
                     t_hb = now
                     n = self.now_fn()
                     self.tg.send(msg.heartbeat(msg.ro_hm(n), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
+                self.oil_watch(utc)
+                self.eia_tick(utc)
                 if self.unlocked and self.report_due(utc):
                     self.daily_report()
                 self.remind_pending()
