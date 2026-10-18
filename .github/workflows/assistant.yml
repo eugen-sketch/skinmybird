@@ -15,6 +15,9 @@ on:
       aggressive:
         description: "true = AGGRESSIVE_MODE (mai multe semnale, expunere mai mare); implicit false."
         default: "false"
+      scheduled:
+        description: "1 = pornire programata (duminica seara), pe manual; o pune automat pornirea de pe Telegram"
+        default: "0"
 
 permissions:
   contents: read
@@ -59,6 +62,7 @@ jobs:
           QUIET_LOGS: "1"
           SESSION_HOURS: ${{ inputs.hours }}
           CONTINUED: ${{ inputs.continued }}
+          SCHEDULED: ${{ inputs.scheduled }}
         run: python assistant.py
       - name: Save state
         if: always()
