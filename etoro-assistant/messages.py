@@ -484,3 +484,36 @@ def decisions_report(o: dict, days: int) -> str:
     lines.append(f"📌 Pe scurt: deciziile tale {verdict}: {signed(e)} față de botul lăsat singur.")
     lines.append("ℹ️ „Ce-ar fi fost” e calculat din prețurile de 5 minute de după decizia ta, cu ținta, plasa și limita de timp ale poziției.")
     return NL.join(lines)
+
+
+def account_alarm(eq: float, lim: float) -> str:
+    return (f"⚠️ Contul a coborât sub {usd(lim)}: acum {usd(eq)}.\nAm convenit să ne oprim aici și să ne gândim la varianta B "
+            f"(poziții făcute astfel încât la plasă să pierzi doar ~2% din cont: mai puțin câștig, mai puțin risc). Nu schimb nimic singur; spune-i lui Helga ce alegi.")
+
+
+def oil_watch(sig: dict, auto: bool, why_not: str | None) -> str:
+    """Avertismentul paznicului de petrol: clar, cu ce s-a intamplat si ce urmeaza."""
+    dirw = "URCĂ" if sig["side"] == 1 else "COBOARĂ"
+    brk = (f" și a ieșit {'peste maximul' if sig['side'] == 1 else 'sub minimul'} zilei" if sig.get("brk") else "")
+    head = (f"🛢️👀 URMĂREȘTE GRAFICUL PETROLULUI!\nPetrolul {dirw} tare: în ultima oră s-a mișcat de {abs(sig['move']):.1f} ori mai mult decât de obicei{brk}. "
+            f"Preț acum ≈ {sig['px']:.2f}.")
+    if why_not:
+        return head + f"\nNu propun intrare acum: {why_not}. Doar te anunț, ca să te uiți la grafic."
+    act = ("Autotradingul e pornit: deschid singur, pe poziția minimă (cea mai mică pe care o acceptă eToro), cu plasă de siguranță."
+           if auto else "Îți trimit imediat propunerea cu butoane, pe poziția minimă, cu plasă de siguranță. Decizi tu.")
+    return head + "\n" + act
+
+
+def eia_heads_up(t_rel, first_min: int) -> str:
+    return (f"🛢️⏰ La {ro_hm(t_rel)} (ora României) apare raportul american de stocuri de petrol. În minutele acelea petrolul poate sări brusc.\n"
+            f"Uită-te la graficul petrolului. Proba noastră: la {ro_hm(t_rel + timedelta(minutes=first_min))} îți propun intrarea în direcția în care a fugit "
+            f"prețul în primele {first_min} minute, pe poziția minimă, cu plasă de siguranță.")
+
+
+def eia_skip(reason: str) -> str:
+    return f"🛢️ Proba de miercuri: azi nu intru. Motiv: {reason}."
+
+
+def eia_hour(pnl: float) -> str:
+    return (f"🛢️⏱️ Poziția de probă pe petrol (raportul de stocuri) e deschisă de o oră: acum {signed(pnl)}.\n"
+            f"Decizi tu dacă o închizi. Eu nu o închid pe minus; ținta și plasa ei rămân pe eToro.")
