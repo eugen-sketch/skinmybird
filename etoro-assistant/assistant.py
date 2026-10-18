@@ -84,6 +84,7 @@ class Assistant:
         self.watch_last: datetime | None = None   # ultimul avertisment al paznicului de petrol
         self.eia_done: dict = {}                  # proba de miercuri: ce s-a facut deja azi {date, heads, entry}
         self.oil4h_seen = ""                      # ultima lumanare de 4 ore pe petrol deja folosita
+        self.weekend_alert_day = ""               # ziua (vineri) in care am trimis lista pozitiilor de peste weekend
         self.oil4h_slot = None
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
@@ -256,8 +257,12 @@ class Assistant:
         tp, sl = self.pcts(notional, atr_pct, name)
         return px * (1 - side * sl), px * (1 + side * tp), tp * notional, sl * notional
 
+    def ro_day(self) -> str:
+        """Ziua dupa ora Romaniei (aceeasi ca in raportul zilei); limita de pierdere si blocajul de profit se numara pe ea."""
+        return msg.ro_dt(self.now_fn()).strftime("%Y-%m-%d")
+
     def add_realized(self, pnl: float) -> None:
-        today = self.now_fn().strftime("%Y-%m-%d")
+        today = self.ro_day()
         if self.day != today:
             self.day, self.day_pnl = today, 0.0
         self.realized += pnl
@@ -333,6 +338,10 @@ class Assistant:
                 continue
             if name == "OIL" and self.oil_paused:        # experimentul cu petrol s-a oprit singur la pierderea maxima
                 report[-1].update(note="petrol oprit: pierderea din test a atins limita; scrie «porneste petrol» ca să reiau", skip=True)
+                continue
+            fri = self.friday_cut(now)
+            if fri and not is_wave:                       # vineri seara: nimic nou (risc de salt de pret peste weekend, ca la USD/CAD)
+                report[-1].update(note=fri, skip=True)
                 continue
             rej = signals.gate(s, self.cfg.get("entry_gate"), name)
             if rej:                                      # nu e „semnal”, e doar o părere: nu propunem nimic
@@ -583,7 +592,7 @@ class Assistant:
         return "[AGGRESSIVE] " + (" + ".join(parts) if parts else "reguli clasice") + (" · alocare mărită" if boost else "")
 
     def day_pnl_today(self) -> float:
-        return self.day_pnl if self.day == self.now_fn().strftime("%Y-%m-%d") else 0.0
+        return self.day_pnl if self.day == self.ro_day() else 0.0
 
     def news_heads_up(self, now: datetime, open_names: set[str]) -> None:
         """Cu ~1 ora inainte de o stire importanta pentru instrumentele urmarite: un singur mesaj pe eveniment."""
@@ -602,7 +611,7 @@ class Assistant:
         lock = 0 if self.simple() else self.cfg.get("daily_profit_lock_usd", 0) * self.scale()
         if not lock or self.day_pnl_today() < lock:
             return False
-        today = self.now_fn().strftime("%Y-%m-%d")
+        today = self.ro_day()
         if self.profit_lock_day != today:
             self.profit_lock_day = today
             self.tg.send(msg.profit_lock(self.day_pnl_today(), lock))
@@ -648,6 +657,11 @@ class Assistant:
             if problem:
                 self.tg.send(f"🛑 Nu trimit ordinul pe {msg.pair(name)}: {problem}")
                 return
+            try:
+                before_ids = {str(q["id"]) for q in self.broker.positions(fresh=True)}
+            except Exception:  # noqa: BLE001
+                before_ids = None
+            sent_at = self.now_fn()
             pid = self.broker.open(name, side, amount, lev, round(sl, d), round(tp, d), max_amount=free)
         except OrderUnconfirmed as e:
             self.adopt.append({"name": name, "side": side, "before": set(e.before), "at": e.sent_at or self.now_fn(),
@@ -659,8 +673,17 @@ class Assistant:
             self.tg.send(f"⏳ Ordinul pe {msg.pair(name)} a fost trimis, dar nu apare încă în portofoliu. NU repet ordinul.\n{cause}\n"
                          f"Dacă poziția apare, o preiau automat în următoarele 15 minute și o urmăresc.")
             return
-        except (OrderRejected, EToroError, Exception) as e:  # noqa: BLE001
+        except OrderRejected as e:
             self.tg.send(f"⚠️ Ordinul pe {msg.pair(name)} n-a mers (respins): {str(e)[:250]}\nNu am deschis nimic.")
+            return
+        except Exception as e:  # noqa: BLE001 - eroare neasteptata: poate dupa trimiterea ordinului => rezultat NECLAR, nu «nimic»
+            if px is None or "before_ids" not in locals() or before_ids is None:
+                self.tg.send(f"⚠️ Ordinul pe {msg.pair(name)} n-a plecat (eroare înainte de trimitere: {type(e).__name__}). Nu am deschis nimic.")
+                return
+            self.adopt.append({"name": name, "side": side, "before": set(before_ids), "at": sent_at, "atr_pct": p.get("atr_pct"), "px": px})
+            self.save_state()
+            self.tg.send(f"⏳ Ordinul pe {msg.pair(name)}: eroare neașteptată după trimitere ({type(e).__name__}). NU repet ordinul. "
+                         f"Dacă poziția apare în eToro în următoarele 15 minute, o preiau și o urmăresc.")
             return
         self.bot_pids.add(str(pid))
         self.origin[str(pid)] = p.get("origin", "ok")
@@ -869,6 +892,8 @@ class Assistant:
             if green:
                 self.tg.send(msg.basket(len(green), sum(self.known[p]["last_pnl"] for p in green), len(rows) - len(green)))
                 for pid in green:
+                    if self.fresh_pnl(self.known[pid]) <= 0:                     # Regula 1: chiar inainte de inchidere, tot pe plus?
+                        continue
                     self.close_one(pid, "BASKET")
         self.time_stop()
 
@@ -1150,6 +1175,32 @@ class Assistant:
         cut = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
         started = getattr(self, "session_start", None) or now
         return now >= cut and started < cut
+
+    def friday_cut(self, now: datetime) -> str | None:
+        """Vineri dupa `friday_last_entry_ro` (ora Romaniei) botul nu mai deschide pozitii noi. Ales pe simulare (1 mai - 16 oct, costuri eToro):
+        acelasi castig total, scaderea maxima 72 $ in loc de 87 $, jumatate din pozitiile tinute peste weekend."""
+        h = self.cfg.get("friday_last_entry_ro")
+        ro = msg.ro_dt(now)
+        if h is None or ro.weekday() != 4 or ro.hour < h:
+            return None
+        return f"vineri după {h}:00 nu deschid nimic nou (risc de salt de preț peste weekend)"
+
+    def weekend_alert(self, now: datetime) -> None:
+        """Vineri la `weekend_alert_ro` (ora Romaniei): lista pozitiilor care raman deschise peste weekend, cu butoane de inchidere.
+        Botul nu le inchide singur (Regula 1); decizi tu."""
+        h = self.cfg.get("weekend_alert_ro")
+        ro = msg.ro_dt(now)
+        if h is None or ro.weekday() != 4 or ro.hour < h or not self.known:
+            return
+        day = ro.strftime("%Y-%m-%d")
+        if self.weekend_alert_day == day:
+            return
+        self.weekend_alert_day = day
+        rows = list(self.known.items())
+        lines = [f"• {msg.pair(p['name'])}: acum {msg.signed(p.get('last_pnl', 0.0))}" for _, p in rows]
+        buttons = [[(f"🔒 Închide {msg.pair(p['name']).split(' ')[0]}", f"close:{pid}")] for pid, p in rows] + [[("👍 Le las", "cancel")]]
+        self.tg.send("🗓️ Vine weekendul. Pozițiile de mai jos rămân deschise până luni; la redeschidere prețul poate sări peste plasa de "
+                     "siguranță (cum a pățit USD/CAD). Eu nu le închid singur; decizi tu:\n" + "\n".join(lines), buttons)
 
     def held_long(self, pid: str) -> bool:
         """Pozitie de petrol pe 4 ore: se tine pana la tinta sau plasa (fara limita de 5 ore si fara cosul comun), ca in simulare."""
@@ -1538,7 +1589,10 @@ class Assistant:
         if self.simple():
             self.tg.send(msg.simple_mode(self.simple()))
         if self.aggr:
-            self.tg.send("⚡ AGGRESSIVE_MODE activ: mai multe semnale, expunere mai mare. Siguranțele rămân (SL+TP pe fiecare ordin, oprire la pierdere zilnică).")
+            k = self.scale()
+            self.tg.send(f"⚙️ Setările de lucru: țintă {c['tp_atr']:g}× și plasă {c['sl_atr']:g}× mișcarea obișnuită pe o oră, plasă de cel mult "
+                         f"{msg.usd(c['max_sl_usd'] * k)}, maxim {self.max_pos()} poziții, oprire la pierdere de {msg.usd(c['autotrade_daily_loss_usd'] * k)} pe zi. "
+                         f"Țintă și plasă pe fiecare ordin.")
         if c.get("_mode_note"):
             self.tg.send(c["_mode_note"])
         if self.real and not self.unlocked:
@@ -1587,6 +1641,7 @@ class Assistant:
                     t_hb = now
                     n = self.now_fn()
                     self.tg.send(msg.heartbeat(msg.ro_hm(n), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
+                self.weekend_alert(utc)
                 self.oil_watch(utc)
                 self.eia_tick(utc)
                 self.oil4h_tick(utc)

@@ -7,12 +7,13 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from test_assistant import make, press  # noqa: E402
+from test_assistant import CFG, make, press  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def simple_on(monkeypatch):
     monkeypatch.delenv("BOT_SIMPLE_OFF", raising=False)
+    monkeypatch.setitem(CFG["simple_mode"], "enabled", True)                 # modul e oprit acum in config; testele il pornesc
 
 
 def test_fixed_50_usd_per_position():
