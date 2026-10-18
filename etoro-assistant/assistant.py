@@ -280,7 +280,7 @@ class Assistant:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
                         "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
-                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eq_peak": self.eq_peak, "eia_done": self.eia_done, "oil4h_seen": self.oil4h_seen, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
+                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eq_peak": self.eq_peak, "eia_done": self.eia_done, "oil4h_seen": self.oil4h_seen, "weekend_alert_day": self.weekend_alert_day, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
@@ -892,7 +892,8 @@ class Assistant:
             if green:
                 self.tg.send(msg.basket(len(green), sum(self.known[p]["last_pnl"] for p in green), len(rows) - len(green)))
                 for pid in green:
-                    if self.fresh_pnl(self.known[pid]) <= 0:                     # Regula 1: chiar inainte de inchidere, tot pe plus?
+                    p = self.known.get(pid)                                     # poate tocmai s-a inchis singura la tinta pe eToro
+                    if not p or self.fresh_pnl(p) <= 0:                         # Regula 1: chiar inainte de inchidere, tot pe plus?
                         continue
                     self.close_one(pid, "BASKET")
         self.time_stop()
@@ -1179,23 +1180,22 @@ class Assistant:
     def friday_cut(self, now: datetime) -> str | None:
         """Vineri dupa `friday_last_entry_ro` (ora Romaniei) botul nu mai deschide pozitii noi. Ales pe simulare (1 mai - 16 oct, costuri eToro):
         acelasi castig total, scaderea maxima 72 $ in loc de 87 $, jumatate din pozitiile tinute peste weekend."""
-        h = self.cfg.get("friday_last_entry_ro")
-        ro = msg.ro_dt(now)
-        if h is None or ro.weekday() != 4 or ro.hour < h:
+        h = self.cfg.get("friday_last_entry_utc")
+        if h is None or now.weekday() != 4 or now.hour < h:
             return None
-        return f"vineri după {h}:00 nu deschid nimic nou (risc de salt de preț peste weekend)"
+        return f"vineri după {msg.ro_hm(now.replace(hour=h, minute=0))} nu deschid nimic nou (risc de salt de preț peste weekend)"
 
     def weekend_alert(self, now: datetime) -> None:
         """Vineri la `weekend_alert_ro` (ora Romaniei): lista pozitiilor care raman deschise peste weekend, cu butoane de inchidere.
         Botul nu le inchide singur (Regula 1); decizi tu."""
-        h = self.cfg.get("weekend_alert_ro")
-        ro = msg.ro_dt(now)
-        if h is None or ro.weekday() != 4 or ro.hour < h or not self.known:
+        h = self.cfg.get("weekend_alert_utc")
+        if h is None or now.weekday() != 4 or now.hour < h or not self.known:
             return
-        day = ro.strftime("%Y-%m-%d")
+        day = now.strftime("%Y-%m-%d")
         if self.weekend_alert_day == day:
             return
         self.weekend_alert_day = day
+        self.save_state()
         rows = list(self.known.items())
         lines = [f"• {msg.pair(p['name'])}: acum {msg.signed(p.get('last_pnl', 0.0))}" for _, p in rows]
         buttons = [[(f"🔒 Închide {msg.pair(p['name']).split(' ')[0]}", f"close:{pid}")] for pid, p in rows] + [[("👍 Le las", "cancel")]]
@@ -1243,7 +1243,7 @@ class Assistant:
     def record_close(self, old: dict, kind: str, pnl: float, origin: str) -> None:
         """Randul din registru pentru o pozitie inchisa: cine a deschis-o, cum s-a inchis, nivelurile ei (pentru «ce-ar fi fost»)."""
         try:
-            real = self.history_of(old) if kind in decisions.YOURS and self.real else None
+            real = None                                                         # fara asteptare: pretul de acum e destul pentru socoteala deciziilor
             close_rate = (real or {}).get("close_rate") or old.get("px_now") or 0.0
             ct = parse_time((real or {}).get("close_time")) or self.now_fn()
             self.ledger.append(decisions.entry(kind, old["name"], old["side"], origin=origin, net=float(pnl), open_rate=float(old.get("open_rate") or 0),
@@ -1563,6 +1563,7 @@ class Assistant:
         self.eq_peak = st.get("eq_peak")
         self.eia_done = st.get("eia_done", {})
         self.oil4h_seen = st.get("oil4h_seen", "")
+        self.weekend_alert_day = st.get("weekend_alert_day", "")
         self.oil_pnl, self.oil_paused = float(st.get("oil_pnl", 0.0)), bool(st.get("oil_paused", False))
         for r in st.get("adopt", []) if self.real else []:
             t = parse_time(r.get("at"))
@@ -1585,7 +1586,7 @@ class Assistant:
         else:
             self.tg.send(msg.started(hours, self.equity(), c["scan_every_min"], c["basket_target_usd"], real=self.real), menu=msg.MENU)
         if sched:
-            self.tg.send(msg.scheduled_start())
+            self.tg.send(msg.scheduled_start(any((c.get(k) or {}).get("enabled") for k in ("oil_watch", "eia_trial", "oil_4h"))))
         if self.simple():
             self.tg.send(msg.simple_mode(self.simple()))
         if self.aggr:
