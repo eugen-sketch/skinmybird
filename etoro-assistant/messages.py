@@ -539,3 +539,9 @@ def scheduled_start() -> str:
 def weekend_reason(w: dict) -> str:
     return (f"s-a închis piața pentru weekend; repornesc singur duminică seara (pe la 22–23, ora României), pe manual. "
             f"Dacă vrei mai devreme, apasă ▶️ Pornește")
+
+
+def simple_mode(sm: dict) -> str:
+    return (f"🎯 Mod simplu: {usd(sm.get('margin_usd', 50))} pe poziție, plasa de siguranță mică (~{usd(sm.get('sl_usd', 0.5))} plus costul de intrare), "
+            f"ținta mare ({sm.get('tp_atr', 3):g}× mișcarea obișnuită pe o oră, cel puțin de {sm.get('min_rr', 3):g} ori plasa). "
+            f"Fără petrol, fără limita de 5 ore, fără coș comun, fără blocaj de profit. Ținta și plasa stau pe eToro de la deschidere.")

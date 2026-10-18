@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -8,6 +9,8 @@ import state  # noqa: E402
 
 
 import news  # noqa: E402
+
+os.environ["BOT_SIMPLE_OFF"] = "1"        # testele vechi verifica strategia de dinainte; modul simplu are testele lui (test_simple_mode.py)
 
 
 @pytest.fixture(autouse=True)
