@@ -44,3 +44,24 @@ def test_day_is_counted_in_romanian_time():
     a, tg, br = make(late)
     a.add_realized(-4.0)
     assert a.day == "2026-10-21" and a.day_pnl_today() == -4.0
+
+
+def test_basket_survives_position_vanishing_mid_close():
+    """A doua verificare: o pozitie atinsa de tinta pe eToro dispare din lista chiar in timp ce cosul le inchide pe celelalte => fara eroare."""
+    a, tg, br = make()
+    a.unlocked = True
+    for k, n in enumerate(("EURUSD", "GBPUSD", "USDJPY"), 1):
+        a.propose(n, {"side": 1, "why": "test", "price": br.prices[n], "atr_pct": 0.001})
+        press(a, f"open:{k}")
+    ids = list(br.pos)
+    a.quote_pnl = lambda pos, q: None
+    a.pnl = lambda pos, price: 3.0
+    a.fresh_pnl = lambda p: 2.0
+    real_close = a.close_one
+
+    def close_and_vanish(pid, kind):
+        real_close(pid, kind)
+        a.known.pop(ids[2], None)                                      # a treia s-a inchis singura la tinta intre timp
+    a.close_one = close_and_vanish
+    a.monitor()
+    assert ids[0] in br.closed and not any("KeyError" in t for t in tg.texts)

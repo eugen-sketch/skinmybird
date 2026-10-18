@@ -531,13 +531,13 @@ def oil4h(sig: dict, sl_usd: float, tp_usd: float, why_not: str | None) -> str:
             f"Poziția se ține de obicei ~1 zi (fără limita de 5 ore). Nu deschid singur, nici pe autotrading: decizi tu din butoane.")
 
 
-def scheduled_start() -> str:
+def scheduled_start(oil_tools: bool = False) -> str:
     return ("⏰ Pornire programată pentru săptămâna care vine: sunt PE MANUAL (autotradingul e oprit; îl pornești doar tu, din 🤖 Autotrading). "
-            "Nu deschid nimic fără OK-ul tău. Paznicul de petrol, proba de miercuri și petrolul pe 4 ore îți trimit propuneri cu butoane.")
+            "Nu deschid nimic fără OK-ul tău." + (" Uneltele de petrol pornite îți trimit propuneri cu butoane." if oil_tools else ""))
 
 
 def weekend_reason(w: dict) -> str:
-    return (f"s-a închis piața pentru weekend; repornesc singur duminică seara (pe la 22–23, ora României), pe manual. "
+    return (f"se apropie închiderea pieței pentru weekend; repornesc singur duminică seara (pe la 22–23, ora României), pe manual. "
             f"Dacă vrei mai devreme, apasă ▶️ Pornește")
 
 
