@@ -79,6 +79,7 @@ class Assistant:
         self.ledger_since = ""                    # de cand tine botul registrul (pozitiile tale din eToro se numara doar de atunci)
         self.special: dict[str, dict] = {}        # pozitii deschise de paznicul de petrol / proba de miercuri: {pid: {tag, at, told}}
         self.alarm_on = False                     # alarma «contul sub limita» a fost trimisa (se rearmeaza cand contul revine peste limita + 10 $)
+        self.eq_peak: float | None = None         # cel mai mare nivel al contului vazut de bot (pentru alarma)
         self.watch_slot = None                    # ultimul sfert de ora in care paznicul de petrol s-a uitat
         self.watch_last: datetime | None = None   # ultimul avertisment al paznicului de petrol
         self.eia_done: dict = {}                  # proba de miercuri: ce s-a facut deja azi {date, heads, entry}
@@ -247,7 +248,7 @@ class Assistant:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
                         "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
-                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eia_done": self.eia_done, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
+                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eq_peak": self.eq_peak, "eia_done": self.eia_done, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
@@ -1000,12 +1001,15 @@ class Assistant:
         return None
 
     def account_alarm(self) -> None:
-        """Alarma provizorie ceruta de Eugen: contul sub `account_alarm_usd` => un singur mesaj (discutam varianta B, marimea dupa risc).
-        Se rearmeaza cand contul revine cu 10 $ peste limita."""
-        lim = self.cfg.get("account_alarm_usd", 0)
-        if not (lim and self.real and self.real_balance is not None):
+        """Alarma provizorie ceruta de Eugen: contul scade cu `account_alarm_drop_pct`% sub cel mai mare nivel atins => un singur mesaj
+        (discutam varianta B, marimea dupa risc). Se rearmeaza cand contul revine cu 10 $ peste limita. In procente, nu in $:
+        setarile sunt publice."""
+        drop = self.cfg.get("account_alarm_drop_pct", 0)
+        if not (drop and self.real and self.real_balance is not None):
             return
         eq = self.equity()
+        self.eq_peak = max(self.eq_peak or 0.0, eq)
+        lim = self.eq_peak * (1 - drop / 100)
         if eq < lim and not self.alarm_on:
             self.alarm_on = True
             self.save_state()
@@ -1423,6 +1427,7 @@ class Assistant:
         self.ledger_since = st.get("ledger_since") or self.now_fn().isoformat(timespec="seconds")
         self.special = st.get("special", {})
         self.alarm_on = bool(st.get("alarm_on", False))
+        self.eq_peak = st.get("eq_peak")
         self.eia_done = st.get("eia_done", {})
         self.oil_pnl, self.oil_paused = float(st.get("oil_pnl", 0.0)), bool(st.get("oil_paused", False))
         for r in st.get("adopt", []) if self.real else []:

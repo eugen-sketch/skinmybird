@@ -121,12 +121,12 @@ def test_eia_trial_only_on_wednesday_and_until_end_date():
 def test_account_alarm_once_and_rearms():
     now = datetime(2026, 10, 20, 15, 0, tzinfo=timezone.utc)
     a, tg, br = make(now, m5(now, [80.0] * 30), h1(now))
-    a.real, a.real_balance = True, 220.0
+    a.real, a.real_balance, a.eq_peak = True, 240.0, 300.0          # limita: 17% sub varf = 249 $
     a.account_alarm()
     a.account_alarm()
-    assert sum("Contul a coborât sub $230.00" in t for t in tg.texts) == 1
+    assert sum("Contul a coborât sub $249.00" in t for t in tg.texts) == 1
+    a.real_balance = 270.0
+    a.account_alarm()
     a.real_balance = 245.0
-    a.account_alarm()
-    a.real_balance = 225.0
     a.account_alarm()
     assert sum("Contul a coborât" in t for t in tg.texts) == 2
