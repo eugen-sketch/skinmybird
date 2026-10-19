@@ -14,7 +14,7 @@
   "oil_4h": {"enabled": false, "until": "2026-11-18", "lookback_bars": 30, "ema_daily": 50, "tp_atr": 2.0, "sl_atr": 1.5, "max_sl_usd": 10, "max_age_min": 90},
   "oil_watch": {"enabled": false, "every_min": 15, "alert_gap_min": 60, "move_atr": 1.5, "break_atr": 0.75},
   "eia_trial": {"enabled": false, "until": "2026-11-11", "ny_time": "10:30", "heads_up_min": 15, "first_min": 15, "tp_mult": 1.5, "min_move_pct": 0.0005},
-  "news": {"enabled": true, "impacts": ["High"], "before_min": 30, "after_min": 30, "heads_up_min": 60, "cache_min": 60},
+  "news": {"enabled": true, "impacts": ["High"], "before_min": 120, "after_min": 30, "heads_up_min": 150, "cache_min": 60},
   "scan_every_min": 15,
   "pl_check_every_sec": 30,
   "signal_valid_min": 30,
