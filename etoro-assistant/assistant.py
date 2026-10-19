@@ -87,6 +87,7 @@ class Assistant:
         self.weekend_alert_day = ""               # ziua (vineri) in care am trimis lista pozitiilor de peste weekend
         self.stocks_month = ""                    # luna (AAAA-LL) pentru care am trimis verdictul fondului Nasdaq
         self.stocks_try = 0.0                     # ultima incercare (esuata) de a citi preturile pentru verdict
+        self.outside = 0.0                        # bani pusi in afara forexului (fondul Nasdaq): nu intra in bugetul botului
         self.oil4h_slot = None
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
@@ -134,6 +135,8 @@ class Assistant:
             if c is not None:
                 self.real_balance = c
                 self.last_ok = time.time()
+            if hasattr(self.broker, "outside_invested"):
+                self.outside = self.broker.outside_invested()
         except Exception as e:  # noqa: BLE001
             self.report_error(f"nu pot citi soldul real ({type(e).__name__}{' ' + str(e.status) if getattr(e, 'status', None) else ''})")
 
@@ -414,6 +417,8 @@ class Assistant:
             d = msg.ro_dt(t["close_time"])
             day = d.strftime("%Y-%m-%d") if d else None
             if day is None or day < since:
+                continue
+            if "name" in t and t["name"] is None:            # instrument pe care botul nu-l tranzactioneaza (ex. fondul Nasdaq)
                 continue
             h = hist.setdefault(day, {"pnl": 0.0, "n": 0})
             h["pnl"] = round(h["pnl"] + t["net"], 2)
@@ -1070,7 +1075,7 @@ class Assistant:
         drop = self.cfg.get("account_alarm_drop_pct", 0)
         if not (drop and self.real and self.real_balance is not None):
             return
-        eq = self.equity()
+        eq = self.equity() + self.outside           # banii mutati in fondul Nasdaq nu sunt o pierdere
         self.eq_peak = max(self.eq_peak or 0.0, eq)
         lim = self.eq_peak * (1 - drop / 100)
         if eq < lim and not self.alarm_on:

@@ -90,3 +90,55 @@ def test_disabled_in_config_sends_nothing():
     a.cfg = {**a.cfg, "stocks_monthly": {**a.cfg["stocks_monthly"], "enabled": False}}
     a.stocks_monthly(MON_NOV2)
     assert not tg.texts
+
+
+# ---- fondul Nasdaq cumparat pe acelasi cont: botul de forex nu-l socoteste pierdere si nu-l amesteca in profit
+from test_assistant import RealBroker, T0  # noqa: E402
+import broker as broker_mod  # noqa: E402
+
+
+class FundBroker(RealBroker):
+    def __init__(self, balance, fund=0.0):
+        super().__init__(balance)
+        self.fund = fund
+
+    def credit(self):
+        return super().credit() - self.fund
+
+    def outside_invested(self):
+        return self.fund
+
+
+def test_moving_half_into_the_fund_does_not_trigger_the_account_alarm():
+    tg, br = FakeTG(), FundBroker(274.0)
+    a = A.Assistant(CFG, tg, br, fetch=lambda *x, **k: None, now_fn=lambda: T0, sleep=lambda s: None, real=True)
+    a.refresh_real()
+    a.account_alarm()
+    br.fund = 137.0                                                    # Eugen pune jumatate in fond
+    a.refresh_real()
+    a.account_alarm()
+    assert not any("Contul a coborât" in t for t in tg.texts)
+    assert a.equity() == 137.0 and a.max_pos() == CFG["max_positions_small"]   # forexul lucreaza doar cu jumatatea lui
+    br.fund, br.balance = 0.0, 274.0 - 60.0                             # pierdere reala de 60 $ pe forex (fondul vandut, bani inapoi)
+    a.refresh_real()
+    a.account_alarm()
+    assert any("Contul a coborât" in t for t in tg.texts)               # alarma ramane pentru pierderi adevarate
+
+
+def test_fund_sale_is_not_counted_as_forex_profit():
+    class TB(FakeBroker):
+        def closed_trades(self, d):
+            return [{"id": "1", "net": 3.0, "close_time": "2026-10-09T10:00:00Z", "name": "EURUSD"},
+                    {"id": "2", "net": -12.0, "close_time": "2026-10-09T11:00:00Z", "name": None}]   # fondul Nasdaq vandut
+    a = A.Assistant(CFG, FakeTG(), TB(), fetch=lambda *x, **k: None, now_fn=lambda: T0, sleep=lambda s: None, real=True)
+    a.since = "2026-10-09"
+    assert a.reconcile()
+    assert a.total_pnl == 3.0 and a.n_total == 1
+
+
+def test_broker_counts_only_positions_outside_the_bot_list():
+    class Api:
+        def positions(self, fresh=False):
+            return [{"instrumentID": 1, "amount": 55.0}, {"instrumentID": 8015, "amount": 137.0}]
+    b = broker_mod.EToroBroker(Api(), {"EURUSD": 1})
+    assert b.outside_invested() == 137.0 and [p["name"] for p in b.positions()] == []   # pozitia EURUSD fara id e ignorata oricum
