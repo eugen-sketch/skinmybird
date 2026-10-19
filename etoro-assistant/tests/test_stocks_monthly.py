@@ -23,6 +23,9 @@ def daily(last_close, n=260, end="2026-11-02", base=100.0):
     return pd.DataFrame({"open": s, "high": s, "low": s, "close": s})
 
 
+ON = {**CFG, "stocks_monthly": {**CFG["stocks_monthly"], "enabled": True}}    # oprit in config (Eugen, 19 oct); testele il pornesc local
+
+
 def make(now, df, calls=None):
     tg, br = FakeTG(), FakeBroker()
 
@@ -32,7 +35,7 @@ def make(now, df, calls=None):
         if isinstance(df, Exception):
             raise df
         return df
-    return A.Assistant(CFG, tg, br, fetch=fetch, now_fn=lambda: now, sleep=lambda s: None), tg
+    return A.Assistant(ON, tg, br, fetch=fetch, now_fn=lambda: now, sleep=lambda s: None), tg
 
 
 def test_above_average_says_hold_once_per_month_no_orders():
@@ -87,7 +90,7 @@ def test_too_little_history_is_an_error_not_a_verdict():
 
 def test_disabled_in_config_sends_nothing():
     a, tg = make(MON_NOV2, daily(130.0))
-    a.cfg = {**a.cfg, "stocks_monthly": {**a.cfg["stocks_monthly"], "enabled": False}}
+    a.cfg = CFG                                                      # configul real: oprit
     a.stocks_monthly(MON_NOV2)
     assert not tg.texts
 
