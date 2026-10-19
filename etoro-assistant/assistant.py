@@ -85,6 +85,8 @@ class Assistant:
         self.eia_done: dict = {}                  # proba de miercuri: ce s-a facut deja azi {date, heads, entry}
         self.oil4h_seen = ""                      # ultima lumanare de 4 ore pe petrol deja folosita
         self.weekend_alert_day = ""               # ziua (vineri) in care am trimis lista pozitiilor de peste weekend
+        self.stocks_month = ""                    # luna (AAAA-LL) pentru care am trimis verdictul fondului Nasdaq
+        self.stocks_try = 0.0                     # ultima incercare (esuata) de a citi preturile pentru verdict
         self.oil4h_slot = None
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
@@ -280,7 +282,7 @@ class Assistant:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
                         "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
-                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eq_peak": self.eq_peak, "eia_done": self.eia_done, "oil4h_seen": self.oil4h_seen, "weekend_alert_day": self.weekend_alert_day, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
+                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eq_peak": self.eq_peak, "eia_done": self.eia_done, "oil4h_seen": self.oil4h_seen, "weekend_alert_day": self.weekend_alert_day, "stocks_month": self.stocks_month, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
@@ -1202,6 +1204,30 @@ class Assistant:
         self.tg.send("🗓️ Vine weekendul. Pozițiile de mai jos rămân deschise până luni; la redeschidere prețul poate sări peste plasa de "
                      "siguranță (cum a pățit USD/CAD). Eu nu le închid singur; decizi tu:\n" + "\n".join(lines), buttons)
 
+    def stocks_monthly(self, now: datetime) -> None:
+        """Planul pe actiuni (aprobat de Eugen pe 19 oct): in prima zi lucratoare a lunii, dupa `after_utc`, verdictul regulii lunare pe fondul
+        Nasdaq-100: inchiderea din ultima zi de bursa a lunii trecute fata de media pe `ma_days` zile. Doar mesaj, fara niciun ordin."""
+        o = self.cfg.get("stocks_monthly") or {}
+        month = now.strftime("%Y-%m")
+        if not o.get("enabled") or now.weekday() >= 5 or now.hour < o.get("after_utc", 7) or self.stocks_month == month:
+            return
+        if time.time() - self.stocks_try < 1800:                          # dupa o citire esuata, reincerc peste 30 de minute
+            return
+        n = int(o.get("ma_days", 200))
+        try:
+            df = self.fetch(o.get("symbol", "QQQ"), "1d", "2y")
+            closes = df["close"][df.index < pd.Timestamp(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0))].dropna()
+            if len(closes) < n:
+                raise ValueError(f"doar {len(closes)} zile de pret")
+        except Exception as e:  # noqa: BLE001
+            self.stocks_try = time.time()
+            self.report_error(f"nu pot citi prețurile pentru verdictul lunar Nasdaq ({type(e).__name__})")
+            return
+        close, ma = float(closes.iloc[-1]), float(closes.iloc[-n:].mean())
+        self.stocks_month = month
+        self.save_state()
+        self.tg.send(msg.stocks_monthly(closes.index[-1], close, ma, n, o.get("fund", "fondul Nasdaq-100")))
+
     def held_long(self, pid: str) -> bool:
         """Pozitie de petrol pe 4 ore: se tine pana la tinta sau plasa (fara limita de 5 ore si fara cosul comun), ca in simulare."""
         return (self.special.get(str(pid)) or {}).get("tag") == "petrol4h"
@@ -1564,6 +1590,7 @@ class Assistant:
         self.eia_done = st.get("eia_done", {})
         self.oil4h_seen = st.get("oil4h_seen", "")
         self.weekend_alert_day = st.get("weekend_alert_day", "")
+        self.stocks_month = st.get("stocks_month", "")
         self.oil_pnl, self.oil_paused = float(st.get("oil_pnl", 0.0)), bool(st.get("oil_paused", False))
         for r in st.get("adopt", []) if self.real else []:
             t = parse_time(r.get("at"))
@@ -1643,6 +1670,7 @@ class Assistant:
                     n = self.now_fn()
                     self.tg.send(msg.heartbeat(msg.ro_hm(n), self.scans, self.last_scan, len(self.known), self.market_open(n)), silent=True)
                 self.weekend_alert(utc)
+                self.stocks_monthly(utc)
                 self.oil_watch(utc)
                 self.eia_tick(utc)
                 self.oil4h_tick(utc)

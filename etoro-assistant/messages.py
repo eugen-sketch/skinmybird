@@ -382,6 +382,18 @@ def heartbeat(hhmm: str, scans: int, last_scan: str, open_n: int, market_open: b
             f"niciun semnal nou.{pos}")
 
 
+def stocks_monthly(day, close: float, ma: float, n: int, fund: str) -> str:
+    """Verdictul lunar pentru planul pe actiuni: doar informatie, ordinele le pune Eugen."""
+    d = day.strftime("%d.%m.%Y")
+    head = (f"📈 Fondul Nasdaq, verificarea lunară (eu nu pun niciun ordin).\nLa închiderea din {d}, Nasdaq-100 (prețul fondului QQQ) a fost {usd(close)}, "
+            f"iar media pe {n} de zile {usd(ma)}: ")
+    if close > ma:
+        return (head + f"PESTE medie ({(close / ma - 1) * 100:+.1f}%).\n✅ Regula zice: ȚII fondul. Dacă ești pe bani, CUMPERI.\n"
+                f"Fondul pe eToro: {fund}, în orele bursei din Londra.")
+    return (head + f"SUB medie ({(close / ma - 1) * 100:+.1f}%).\n🔻 Regula zice: VINZI tot fondul, chiar dacă e pe minus (cum ai hotărât), "
+            f"și stai pe bani până la prima lună în care revine peste medie.\nFondul pe eToro: {fund}, în orele bursei din Londra.")
+
+
 def ro_dt(x):
     """Ora Romaniei (Europe/Bucharest, cu ora de vara/iarna) dintr-un datetime sau text ISO in UTC; None daca nu pot citi."""
     try:
