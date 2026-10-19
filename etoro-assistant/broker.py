@@ -44,6 +44,15 @@ class EToroBroker:
     def credit(self) -> float | None:
         return self.api.credit()
 
+    def outside_invested(self) -> float:
+        """Banii pusi in pozitii pe instrumente pe care botul nu le tranzactioneaza (ex. fondul Nasdaq din planul pe actiuni)."""
+        total = 0.0
+        for p in self.api.positions():                     # acelasi portofoliu citit recent ca soldul (fara apel in plus)
+            iid = int(p.get("instrumentID") or p.get("InstrumentID") or p.get("instrumentId") or 0)
+            if iid and iid not in self.rev:
+                total += float(p.get("amount") or p.get("Amount") or 0)
+        return total
+
     def price(self, name: str) -> float:
         """Pret orientativ (ultima lumanare de 1 ora); pentru profit/pierdere si ordine folosim quotes() (bid/ask live)."""
         return self.api.last_price(self.ids[name])
