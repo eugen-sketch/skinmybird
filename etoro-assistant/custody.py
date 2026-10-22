@@ -27,13 +27,15 @@ def signature(targets: list[dict]) -> str:
     return json.dumps(sorted(targets, key=lambda t: t["pid"]), sort_keys=True)
 
 
-def check(t: dict, side: int, bid: float, ask: float) -> str | None:
+def check(t: dict, side: int, bid: float, ask: float, margin: float = 0.0) -> str | None:
     """De ce NU aplicam (None = e in regula). La cumparare iesirea e la «vanzare» (bid): tinta peste, plasa sub.
-    La vanzare iesirea e la «cumparare» (ask): tinta sub, plasa peste."""
+    La vanzare iesirea e la «cumparare» (ask): tinta sub, plasa peste.
+    margin = distanta minima ceruta (fractie din pret) cand pretul e doar aproximativ (lumanarea orara)."""
     px = bid if side > 0 else ask
-    if t.get("tp") is not None and (t["tp"] - px) * side <= 0:
+    gap = px * margin
+    if t.get("tp") is not None and (t["tp"] - px) * side <= gap:
         return f"ținta {t['tp']:g} e de partea greșită a prețului ({px:g})"
-    if t.get("sl") is not None and (px - t["sl"]) * side <= 0:
+    if t.get("sl") is not None and (px - t["sl"]) * side <= gap:
         return f"plasa {t['sl']:g} e de partea greșită a prețului ({px:g})"
     return None
 

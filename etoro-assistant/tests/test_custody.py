@@ -117,6 +117,16 @@ def test_refused_and_closed_positions_are_reported(monkeypatch):
     assert br.pos["11"]["tp"] == 95.0                                                     # cea buna s-a aplicat
 
 
+def test_stale_quotes_fall_back_to_hourly_price(monkeypatch):
+    """22 oct seara: cotatia eToro venea cu ~44 min intarziere si botul refuza («nu am pret proaspat»)."""
+    br = Br()
+    br.quotes = lambda names: {}
+    a, tg, br = make(monkeypatch, br)
+    a.apply_custody()
+    assert br.pos["11"]["tp"] == 95.0 and br.pos["13"]["tp"] == 0.826 and "verificat pe eToro" in tg.texts[-1]
+    assert C.check({"tp": 99.3}, -1, 99.52, 99.52, margin=0.005)                         # prea aproape de un pret aproximativ: nu
+
+
 def test_already_done_is_not_asked_again(monkeypatch):
     a, tg, br = make(monkeypatch)
     a.custody_done = C.signature(a.custody)
