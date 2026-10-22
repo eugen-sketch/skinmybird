@@ -57,6 +57,7 @@ jobs:
           ETORO_REAL_API_KEY: ${{ secrets.ETORO_REAL_API_KEY }}
           ETORO_REAL_USER_KEY: ${{ secrets.ETORO_REAL_USER_KEY }}
           HELGA_KEY: ${{ secrets.HELGA_KEY }}
+          CUSTODY_JSON: ${{ secrets.CUSTODY_JSON }}
           TRADING_MODE: ${{ inputs.mode }}
           AGGRESSIVE_MODE: ${{ inputs.aggressive }}
           QUIET_LOGS: "1"

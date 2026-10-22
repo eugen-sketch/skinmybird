@@ -185,6 +185,16 @@ class EToroDemo:
         return self._req("POST", self.tp(f"/api/v1/trading/execution/demo/market-close-orders/positions/{position_id}"),
                          body=body, trading=True)
 
+    def edit_position(self, position_id: int, sl: float | None = None, tp: float | None = None) -> dict:
+        """Schimba plasa si/sau tinta unei pozitii deschise (PATCH; 202 = cerere acceptata, eToro o aplica asincron)."""
+        body = {}
+        if sl is not None:
+            body["stopLossRate"] = sl
+        if tp is not None:
+            body["takeProfitRate"] = tp
+        self._pf = None
+        return self._req("PATCH", self.tp(f"/api/v2/trading/demo/positions/{position_id}"), body=body, trading=True)
+
     def last_price(self, instrument_id: int) -> float:
         """Ultimul pret eToro (inchiderea ultimei lumanari de 1 ora)."""
         data = self._req("GET", f"/api/v1/market-data/instruments/{instrument_id}/history/candles/desc/OneHour/2")
