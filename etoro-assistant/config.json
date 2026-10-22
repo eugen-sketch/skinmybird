@@ -1,5 +1,6 @@
 {
   "budget_usd": 150,
+  "demo_budget_usd": 300,
   "daily_profit_lock_usd": 15,
   "oil_reserve_usd": 105,
   "max_hold_hours": 5,
