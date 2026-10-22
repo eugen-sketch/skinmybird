@@ -30,6 +30,7 @@ def setup(monkeypatch, now, runs):
 
 def test_sunday_evening_starts_once_on_manual(monkeypatch):
     sent, disp = setup(monkeypatch, SUN, [{"status": "completed", "created_at": "2026-10-23T10:00:00Z"}])
+    monkeypatch.setattr(launcher, "weekend_cfg", lambda: {"enabled": True, "start_utc": "20:00", "window_min": 90})   # fara proba pe demo
     launcher.main()
     assert disp == [{"ref": "master", "inputs": {"hours": "0", "continued": "0", "mode": "real", "aggressive": "true", "scheduled": "1"}}]
     assert "PE MANUAL" in sent[0]
@@ -60,3 +61,18 @@ def test_friday_evening_stop_only_for_sessions_started_before():
     assert not a.weekend_due(fri.replace(hour=21, minute=30))
     a.session_start = fri.replace(day=22)
     assert not a.weekend_due(fri.replace(day=22))                         # joi: nimic
+
+
+def test_sunday_start_goes_to_demo_during_the_demo_trial(monkeypatch):
+    sent, disp = setup(monkeypatch, SUN, [{"status": "completed", "created_at": "2026-10-23T10:00:00Z"}])
+    monkeypatch.setattr(launcher, "weekend_cfg", lambda: {"enabled": True, "start_utc": "20:00", "window_min": 90, "demo_until": "2026-11-05"})
+    launcher.main()
+    assert disp and disp[0]["inputs"]["mode"] == "demo" and "DEMO" in sent[0]
+
+
+def test_sunday_start_back_to_real_after_the_trial(monkeypatch):
+    late = SUN.replace(month=11, day=8)
+    sent, disp = setup(monkeypatch, late, [{"status": "completed", "created_at": "2026-11-06T10:00:00Z"}])
+    monkeypatch.setattr(launcher, "weekend_cfg", lambda: {"enabled": True, "start_utc": "20:00", "window_min": 90, "demo_until": "2026-11-05"})
+    launcher.main()
+    assert disp and disp[0]["inputs"]["mode"] == "real" and "PE MANUAL" in sent[0]
