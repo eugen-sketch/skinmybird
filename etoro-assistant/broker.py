@@ -188,5 +188,8 @@ class EToroBroker:
                 return new[0]["id"]
         raise OrderUnconfirmed("Ordinul a fost trimis, dar nu l-am văzut încă în portofoliu", before, r, sent)
 
+    def edit_levels(self, pid: str, sl: float | None, tp: float | None) -> None:
+        self.api.edit_position(int(pid), sl=sl, tp=tp)
+
     def close(self, pid: str, name: str) -> None:
         self.api.close_position(int(pid), self.ids[name])
