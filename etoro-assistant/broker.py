@@ -23,6 +23,12 @@ def parse_time(txt) -> datetime | None:
         return None
 
 
+def net_after_fees(x: dict) -> float:
+    """Rezultatul real al unei pozitii inchise: eToro raporteaza taxele de noapte separat de «netProfit» (verificat pe 20 oct pe contul real:
+    netProfit = diferenta de pret, iar «fees» e taxa de noapte; negativ = credit primit)."""
+    return round(float(x.get("netProfit") or 0.0) - float(x.get("fees") or 0.0), 2)
+
+
 class OrderRejected(EToroError):
     """Ordin respins CLAR de eToro (nu s-a deschis nimic)."""
 
@@ -96,7 +102,7 @@ class EToroBroker:
         for x in self.api.trade_history(min_date):
             pid = x.get("positionId") or x.get("positionID")
             if pid:
-                out.append({"id": str(pid), "net": float(x.get("netProfit") or 0.0), "close_time": x.get("closeTimestamp", ""),
+                out.append({"id": str(pid), "net": net_after_fees(x), "close_time": x.get("closeTimestamp", ""),
                             "close_rate": float(x.get("closeRate") or 0.0), "open_time": x.get("openTimestamp", ""),
                             "name": self.rev.get(int(x.get("instrumentId") or x.get("instrumentID") or 0)), "side": 1 if x.get("isBuy") else -1})
         return out
@@ -105,7 +111,7 @@ class EToroBroker:
         """Pozitia inchisa din istoricul eToro: {net, close_rate, close_time, open_rate, sl, tp, side, fees} sau None daca nu e (inca) acolo."""
         for x in self.api.trade_history(min_date):
             if str(x.get("positionId") or x.get("positionID") or "") == str(position_id):
-                return {"net": float(x.get("netProfit") or 0.0), "close_rate": float(x.get("closeRate") or 0.0),
+                return {"net": net_after_fees(x), "close_rate": float(x.get("closeRate") or 0.0),
                         "close_time": x.get("closeTimestamp", ""), "open_rate": float(x.get("openRate") or 0.0),
                         "sl": float(x.get("stopLossRate") or 0.0), "tp": float(x.get("takeProfitRate") or 0.0),
                         "side": 1 if x.get("isBuy") else -1, "fees": float(x.get("fees") or 0.0)}
