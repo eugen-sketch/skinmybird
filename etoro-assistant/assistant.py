@@ -1271,7 +1271,18 @@ class Assistant:
         """Toate pozitiile de pe cont, dupa id: {id: {name, side, open_rate, sl, tp, bid, ask}}."""
         pos = {str(p["id"]): p for p in self.broker.positions(fresh=True)}
         qs = self.broker.quotes(sorted({p["name"] for p in pos.values()})) if pos else {}
-        return {pid: {**p, "bid": (qs.get(p["name"]) or {}).get("bid"), "ask": (qs.get(p["name"]) or {}).get("ask")} for pid, p in pos.items()}
+        out = {}
+        for pid, p in pos.items():
+            q = qs.get(p["name"]) or {}
+            bid, ask, approx = q.get("bid"), q.get("ask"), False
+            if not (bid and ask):                          # cotatia eToro vine uneori cu ~40 min intarziere: iau lumanarea orara
+                try:
+                    bid = ask = self.broker.price(p["name"])
+                    approx = True
+                except Exception:  # noqa: BLE001
+                    pass
+            out[pid] = {**p, "bid": bid, "ask": ask, "approx": approx}
+        return out
 
     def custody_prompt(self) -> None:
         """La pornire: ce tinte si plase pun, cu butoane de confirmare. O singura data pentru acelasi set de tinte."""
@@ -1305,7 +1316,7 @@ class Assistant:
             if not (p.get("bid") and p.get("ask")):
                 notes.append(f"⚠️ {msg.pair(p['name'])}: nu am preț proaspăt, nu schimb nimic")
                 continue
-            why = custody_mod.check(t, p["side"], p["bid"], p["ask"])
+            why = custody_mod.check(t, p["side"], p["bid"], p["ask"], margin=0.005 if p.get("approx") else 0.0)
             if why:
                 notes.append(f"⚠️ {msg.pair(p['name'])}: {why}; nu schimb nimic")
                 continue
