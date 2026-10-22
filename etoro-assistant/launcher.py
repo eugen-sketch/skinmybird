@@ -66,11 +66,17 @@ def scheduled_start(chat: str) -> bool:
         made = x.get("created_at")
         if x.get("status") != "completed" or (made and datetime.fromisoformat(made.replace("Z", "+00:00")) >= start):
             return False                                       # ruleaza deja sau a fost pornit/oprit de la ora programata: nu ma bag
+    demo = bool(w.get("demo_until")) and now.date().isoformat() <= w["demo_until"]      # proba pe demo (Eugen, 22 oct): 2 saptamani
     d = requests.post(f"{GH}/actions/workflows/assistant.yml/dispatches", headers=GH_HEAD, timeout=30,
-                      json={"ref": "master", "inputs": {"hours": "0", "continued": "0", "mode": "real", "aggressive": "true", "scheduled": "1"}})
+                      json={"ref": "master", "inputs": {"hours": "0", "continued": "0", "mode": "demo" if demo else "real", "aggressive": "true",
+                                                        "scheduled": "1"}})
     if d.status_code == 204:
-        send(chat, "⏰ Pornire programată: pornesc asistentul pentru săptămâna care vine, PE MANUAL (autotradingul îl pornești doar tu). "
-                   "În 1–2 minute vezi mesajul de pornire.")
+        if demo:
+            send(chat, f"⏰ Pornire programată: pornesc asistentul pe contul DEMO (bani virtuali), pentru proba de până pe {w['demo_until']}. "
+                       "Autotradingul rămâne cum l-ai lăsat pe demo. În 1–2 minute vezi mesajul de pornire.")
+        else:
+            send(chat, "⏰ Pornire programată: pornesc asistentul pentru săptămâna care vine, PE MANUAL (autotradingul îl pornești doar tu). "
+                       "În 1–2 minute vezi mesajul de pornire.")
         return True
     return False
 

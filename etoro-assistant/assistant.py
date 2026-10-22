@@ -32,6 +32,7 @@ from broker import OrderRejected, OrderUnconfirmed, parse_time
 from etoro import EToroError
 
 HERE = Path(__file__).parent
+FX_PAIRS = {"EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"}   # toate cu dolarul: se misca impreuna
 EUR_QUOTE = {"GER40"}          # cotat in EUR: castigul/pierderea in $ = valoarea in EUR x EURUSD
 USD_QUOTE_FACTOR_ONE = {"EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "OIL", "GOLD", "SPX500", "NSDQ100", "DJ30", "GER40"}   # P&L deja in USD; la USDJPY/USDCAD/USDCHF se imparte la pret
 
@@ -224,11 +225,31 @@ class Assistant:
                 margin = fit
         return margin, lev, margin * lev
 
+    def risk_rule(self, key: str) -> bool:
+        """Regulile de risc din studii (config «risk_rules»); testele vechi le opresc cu BOT_RISK_RULES_OFF=1."""
+        return bool((self.cfg.get("risk_rules") or {}).get(key)) and os.getenv("BOT_RISK_RULES_OFF") != "1"
+
+    def usd_bet_taken(self, name: str) -> str | None:
+        """Regula din studii (tema d): perechile cu dolarul se misca impreuna, deci tinem cel mult o pozitie (sau propunere) pe ele odata.
+        Intoarce perechea care ocupa deja locul, sau None."""
+        if not self.risk_rule("one_usd_bet") or name not in FX_PAIRS:
+            return None
+        for p in list(self.known.values()) + list(self.pending.values()):
+            if p["name"] in FX_PAIRS and p["name"] != name:
+                return p["name"]
+        return None
+
     def min_size(self, inst: dict) -> tuple[float, int, float]:
         """Pozitia minima pe care o accepta eToro: expunere de ~1.010 $ (la petrol, levier 10: ~101 $ din buget)."""
         c = self.cfg
-        lev = min(inst["lev_cap"], c["max_leverage"], self.lev_learned.get(inst.get("name"), 999))
-        margin = max(math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100, c["min_margin_usd"])
+        top = min(inst["lev_cap"], c["max_leverage"], self.lev_learned.get(inst.get("name"), 999))
+        best = None
+        for lev in [x for x in (1, 2, 5, 10, 20, 30) if x <= top] or [top]:          # levierele pe care le ofera eToro
+            margin = max(math.ceil(c["min_notional"] * 1.01 / lev * 100) / 100, c["min_margin_usd"])
+            key = (margin * lev, margin)                                             # cea mai mica expunere, apoi cea mai mica marja
+            if best is None or key < best[0]:
+                best = (key, margin, lev)
+        _, margin, lev = best
         return margin, lev, margin * lev
 
     def plan_levels(self, side: int, px: float, notional: float, atr_pct: float | None, fixed: dict | None,
@@ -311,6 +332,10 @@ class Assistant:
             if self.simple_skip(name):                                            # modul simplu: fara petrol
                 continue
             if name in open_names or any(p["name"] == name for p in self.pending.values()):
+                continue
+            usd = self.usd_bet_taken(name)
+            if usd:                                                       # un singur pariu pe dolar deodata (studiile, tema d)
+                report.append({"name": name, "rsi": 50.0, "thr": 25, "bar": "?", "note": f"am deja un pariu pe dolar ({msg.pair(usd)})", "skip": True})
                 continue
             ev = self.news.blocking(name, now)
             if ev:                                                        # stire importanta chiar acum: nu propunem pe aceasta moneda
@@ -527,7 +552,8 @@ class Assistant:
             px = s["price"]
         side = s["side"]
         boost = self.is_boost(name, s)
-        amount, lev, notional = self.min_size(inst) if s.get("min_size") else self.sizing(inst, boost)
+        mini = bool(s.get("min_size") or self.risk_rule("min_size_all"))
+        amount, lev, notional = self.min_size(inst) if mini else self.sizing(inst, boost)
         atr_pct = s.get("atr_pct")
         sl_px, tp_px, tp_usd, sl_usd = self.plan_levels(side, px, notional, atr_pct, s.get("fixed"), name)
         d = digits_for(name, px)
@@ -556,7 +582,7 @@ class Assistant:
             self.save_state()
             self.tg.send(msg.autotrade_limit(self.cfg["autotrade_daily_loss_usd"] * self.scale()))
         plan = {"origin": s.get("origin") or ("auto" if self.autotrade else "ok"), "px": px, "tp_px": tp_px, "sl_px": sl_px, "notional": notional,
-                "min_size": bool(s.get("min_size")), "fixed": s.get("fixed"), "special": s.get("special")}
+                "min_size": mini, "fixed": s.get("fixed"), "special": s.get("special")}
         if self.autotrade and not s.get("manual_only"):              # «manual_only»: propunere cu butoane chiar si pe autotrading
             self.pending[sid] = {"name": name, "side": side, "created": self.now_fn(), "msg_id": None, "amount": amount,
                                  "last_msg": self.now_fn(), "reminders": 0, "atr_pct": atr_pct, "boost": boost, "counter": counter, **plan}
@@ -1581,7 +1607,8 @@ class Assistant:
         cont = os.getenv("CONTINUED") == "1"
         sched = os.getenv("SCHEDULED") == "1"                                              # pornire programata duminica seara: pe manual
         self.session_start = self.now_fn()
-        self.autotrade = bool(st.get("autotrade")) and cont                               # sesiune noua pornita de tine: autotrading oprit
+        self.autotrade = bool(st.get("autotrade")) and (cont or (sched and not self.real))   # sesiune noua pornita de tine: autotrading oprit
+        # (pe demo, pornirea programata de duminica pastreaza autotradingul: bani virtuali, proba de 2 saptamani)
         self.bot_pids = set(st.get("bot_pids", [])) if self.real else set()
         self.counter_pids = set(st.get("counter_pids", []))
         self.plans = st.get("plans", {})
