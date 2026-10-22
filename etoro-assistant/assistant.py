@@ -153,9 +153,12 @@ class Assistant:
         c = self.cfg
         if self.real:                               # fara plafon: tot ce e disponibil pe cont (poti adauga bani oricand)
             return (self.real_balance or 0.0) + self.used_margin()
+        b = c["budget_usd"]
+        if c.get("demo_budget_usd") and os.getenv("BOT_RISK_RULES_OFF") != "1":   # pe demo: bugetul virtual ales de Eugen (22 oct: 300 $)
+            b = c["demo_budget_usd"]                                              # (limitele se scaleaza tot fata de budget_usd = 150 $)
         if not c.get("progressive"):
-            return c["budget_usd"]
-        return max(c["budget_usd"] * c.get("min_budget_frac", 0.5), c["budget_usd"] + self.realized)
+            return b
+        return max(b * c.get("min_budget_frac", 0.5), b + self.realized)
 
     def simple(self) -> dict | None:
         """Modul simplu (decizia lui Eugen, 19 oct): 50 $ pe pozitie, plasa mica (~0,5 $), tinta mare, fara petrol, fara limita de 5 h,

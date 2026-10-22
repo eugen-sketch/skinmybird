@@ -39,3 +39,12 @@ def test_rules_can_be_turned_off():
     a, tg, br = make()
     a.cfg = {**CFG, "risk_rules": {"min_size_all": False, "one_usd_bet": False}}
     assert a.usd_bet_taken("EURUSD") is None
+
+
+def test_demo_uses_the_virtual_budget_of_300_and_real_is_unchanged():
+    a, tg, br = make()
+    assert a.equity() == 300.0 and a.max_pos() == CFG["max_positions"]
+    assert abs(a.scale() - 2.0) < 1e-9                       # limitele pe zi: de 2 ori cele de la 150 $
+    b, _, _ = make()
+    b.cfg = {k: v for k, v in CFG.items() if k != "demo_budget_usd"}
+    assert b.equity() == CFG["budget_usd"]                   # fara setare: ca inainte
