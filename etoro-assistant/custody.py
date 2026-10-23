@@ -23,6 +23,28 @@ def load_targets(raw: str | None) -> list[dict]:
     return out
 
 
+def load_opens(raw: str | None) -> list[dict]:
+    """Pozitii NOI cerute de Eugen (23 oct): {"open": [{"symbol": "BTC", "amount": 32, "tp_pct": 5, "lev": 1}]}.
+    Doar cumparari, levier 1 sau 2, suma 10-100 $, tinta 1-50 %; restul se ignora."""
+    try:
+        data = json.loads(raw) if raw and raw.strip() else {}
+    except ValueError:
+        return []
+    out = []
+    for o in data.get("open", []) if isinstance(data, dict) else []:
+        try:
+            sym, amt, tp, lev = str(o["symbol"]).strip().upper(), float(o["amount"]), float(o["tp_pct"]), int(o.get("lev", 1))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if sym and 10 <= amt <= 100 and 1 <= tp <= 50 and lev in (1, 2):
+            out.append({"symbol": sym, "amount": amt, "tp_pct": tp, "lev": lev})
+    return out
+
+
+def open_key(o: dict) -> str:
+    return f"{o['symbol']}:{o['amount']:g}:{o['tp_pct']:g}:{o['lev']}"
+
+
 def signature(targets: list[dict]) -> str:
     return json.dumps(sorted(targets, key=lambda t: t["pid"]), sort_keys=True)
 

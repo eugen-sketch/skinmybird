@@ -127,11 +127,59 @@ def test_stale_quotes_fall_back_to_hourly_price(monkeypatch):
     assert C.check({"tp": 99.3}, -1, 99.52, 99.52, margin=0.005)                         # prea aproape de un pret aproximativ: nu
 
 
+class Api:
+    def find_instrument_id(self, s):
+        return {"BTC": 100000, "BNB": 100030}[s]
+
+
+def make_open(monkeypatch, opens, br=None):
+    raw = json.dumps({"open": opens})
+    monkeypatch.setenv("CUSTODY_JSON", raw)
+    tg, br = FakeTG(), br or Br()
+    br.api, br.ids, br.rev = Api(), {}, {}
+    br.q.update({"BTC": {"bid": 81000.0, "ask": 81050.0}, "BNB": {"bid": 747.0, "ask": 747.5}})
+    br.opened_args = []
+    br.open = lambda *a, **k: (br.opened_args.append(a), f"9{len(br.opened_args)}")[1]
+    a = A.Assistant(CFG, tg, br, fetch=lambda *x, **k: None, now_fn=lambda: T0, sleep=lambda s: None, real=True)
+    a.custody, a.custody_open = [], C.load_opens(raw)
+    return a, tg, br
+
+
+def test_load_opens_only_small_buys():
+    raw = json.dumps({"open": [{"symbol": "btc", "amount": 32, "tp_pct": 5}, {"symbol": "X", "amount": 500, "tp_pct": 5},
+                               {"symbol": "Y", "amount": 20, "tp_pct": 5, "lev": 10}, {"symbol": "Z"}]})
+    assert C.load_opens(raw) == [{"symbol": "BTC", "amount": 32.0, "tp_pct": 5.0, "lev": 1}]
+    assert C.load_opens(json.dumps(TARGETS)) == [] and C.load_targets(raw) == []
+
+
+def test_opens_after_ok_once_with_tp_and_wide_net(monkeypatch):
+    a, tg, br = make_open(monkeypatch, [{"symbol": "BTC", "amount": 32, "tp_pct": 5}, {"symbol": "BNB", "amount": 32, "tp_pct": 5}])
+    a.custody_prompt()
+    assert "deschid BTC" in tg.sent[-1][0] and tg.sent[-1][1][0][0][1] == "custody:ok"
+    press(a, "custody:ok")
+    assert br.opened_args == [("BTC", 1, 32.0, 1, 40525.0, 85102.5), ("BNB", 1, 32.0, 1, 373.75, 784.88)]
+    assert tg.texts[-1].count("✅") == 2
+    a.apply_custody()                                                                   # a doua oara: nimic nou
+    assert len(br.opened_args) == 2
+    a.custody_prompt()
+    assert "deja pus" in tg.texts[-1]
+
+
+def test_unconfirmed_open_is_never_resent(monkeypatch):
+    a, tg, br = make_open(monkeypatch, [{"symbol": "BTC", "amount": 32, "tp_pct": 5}])
+
+    def boom(*a_, **k):
+        raise A.OrderUnconfirmed("neclar", set(), None, None)
+    br.open = boom
+    a.apply_custody()
+    assert "NU îl trimit a doua oară" in tg.texts[-1] and a.custody_opened == ["BTC:32:5:1"]
+
+
 def test_already_done_is_not_asked_again(monkeypatch):
     a, tg, br = make(monkeypatch)
     a.custody_done = C.signature(a.custody)
     a.custody_prompt()
-    assert "deja puse" in tg.texts[-1] and not tg.sent[-1][1]
+    assert "deja pus" in tg.texts[-1] and not tg.sent[-1][1]
 
 
 def test_demo_never_reads_custody(monkeypatch):
