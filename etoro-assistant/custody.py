@@ -23,6 +23,9 @@ def load_targets(raw: str | None) -> list[dict]:
     return out
 
 
+CRYPTO = {100000: "BTC", 100001: "ETH", 100005: "LTC", 100030: "BNB", 100040: "LINK", 100063: "SOL"}   # id eToro -> nume
+
+
 def load_opens(raw: str | None) -> list[dict]:
     """Pozitii NOI cerute de Eugen (23 oct): {"open": [{"symbol": "BTC", "amount": 32, "tp_pct": 5, "lev": 1}]}.
     Doar cumparari, levier 1 sau 2, suma 10-100 $, tinta 1-50 %; restul se ignora."""

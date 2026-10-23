@@ -1271,6 +1271,16 @@ class Assistant:
 
     def custody_view(self) -> dict:
         """Toate pozitiile de pe cont, dupa id: {id: {name, side, open_rate, sl, tp, bid, ask}}."""
+        want = {t["pid"] for t in self.custody}
+        try:                                               # pozitii din afara listei botului (ex. crypto deschise la cerere): le inregistrez
+            for p in self.broker.api.positions(fresh=True):
+                pid = str(p.get("positionID") or p.get("PositionID") or p.get("positionId") or "")
+                iid = int(p.get("instrumentID") or p.get("InstrumentID") or p.get("instrumentId") or 0)
+                if pid in want and iid and iid not in self.broker.rev:
+                    name = custody_mod.CRYPTO.get(iid, f"ID{iid}")
+                    self.broker.ids[name], self.broker.rev[iid] = iid, name
+        except Exception:  # noqa: BLE001
+            pass
         pos = {str(p["id"]): p for p in self.broker.positions(fresh=True)}
         qs = self.broker.quotes(sorted({p["name"] for p in pos.values()})) if pos else {}
         out = {}
