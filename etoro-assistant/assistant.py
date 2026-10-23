@@ -92,6 +92,8 @@ class Assistant:
         self.outside = 0.0                        # bani pusi in afara forexului (fondul Nasdaq): nu intra in bugetul botului
         self.custody: list[dict] = []             # custodie / WTI1 (Eugen, 22 oct): tinte si plase pe pozitiile lui; botul nu deschide nimic
         self.custody_done = ""                    # semnatura tintelor deja aplicate (nu le mai cer a doua oara)
+        self.custody_open: list[dict] = []        # pozitii noi cerute explicit de Eugen (23 oct): levier 1-2, doar cumparari
+        self.custody_opened: list[str] = []       # cheile celor deja trimise (nu se trimit niciodata a doua oara)
         self.oil4h_slot = None
         self.real_balance: float | None = None    # bani disponibili pe contul real, cititi de la eToro
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
@@ -312,7 +314,7 @@ class Assistant:
         state_mod.save({"realized": self.realized, "n_closed": self.n_closed, "autotrade": self.autotrade,
                         "day": self.day, "day_pnl": self.day_pnl, "seen": self.seen_bar,
                         "total_pnl": self.total_pnl, "n_total": self.n_total, "history": self.history, "since": self.since, "report_day": self.report_day,
-                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eq_peak": self.eq_peak, "eia_done": self.eia_done, "oil4h_seen": self.oil4h_seen, "weekend_alert_day": self.weekend_alert_day, "stocks_month": self.stocks_month, "custody_done": self.custody_done, "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
+                        "bot_pids": sorted(self.bot_pids), "counter_pids": sorted(self.counter_pids), "plans": self.plans, "ledger": self.ledger[-300:], "origin": self.origin, "ledger_since": self.ledger_since, "special": self.special, "alarm_on": self.alarm_on, "eq_peak": self.eq_peak, "eia_done": self.eia_done, "oil4h_seen": self.oil4h_seen, "weekend_alert_day": self.weekend_alert_day, "stocks_month": self.stocks_month, "custody_done": self.custody_done, "custody_opened": self.custody_opened[-50:], "oil_pnl": round(self.oil_pnl, 2), "oil_paused": self.oil_paused, "unlocked": self.unlocked and self.real,
                         "adopt": [{"name": r["name"], "side": r["side"], "before": sorted(r["before"]), "at": r["at"].isoformat(),
                                    "atr_pct": r.get("atr_pct"), "px": r.get("px")} for r in self.adopt]})
 
@@ -321,7 +323,7 @@ class Assistant:
 
     # ------------------------------------------------------------------ scanare
     def scan(self, manual: bool = False) -> None:
-        if self.custody:                                   # custodie: pe contul real nu deschid nimic nou
+        if self.custody or self.custody_open:              # custodie: botul nu deschide nimic din proprie initiativa
             return
         now = self.now_fn()
         self.scans += 1
@@ -1286,12 +1288,14 @@ class Assistant:
 
     def custody_prompt(self) -> None:
         """La pornire: ce tinte si plase pun, cu butoane de confirmare. O singura data pentru acelasi set de tinte."""
-        if custody_mod.signature(self.custody) == self.custody_done:
-            self.tg.send("🛡️ Custodie: țintele și plasele sunt deja puse pe pozițiile tale. Nu deschid nimic nou.")
+        todo = [o for o in self.custody_open if custody_mod.open_key(o) not in self.custody_opened]
+        if (not self.custody or custody_mod.signature(self.custody) == self.custody_done) and not todo:
+            self.tg.send("🛡️ Custodie: tot ce mi-ai cerut e deja pus pe eToro. Nu deschid nimic nou.")
             return
-        view = self.custody_view()
-        lines = []
-        for t in self.custody:
+        view = self.custody_view() if self.custody else {}
+        lines = [f"• deschid {o['symbol']}: cumpărare de {o['amount']:g}$, levier {o['lev']}, ținta +{o['tp_pct']:g}% (plasa la −50% din preț)"
+                 for o in todo]
+        for t in self.custody if custody_mod.signature(self.custody) != self.custody_done else []:
             p = view.get(t["pid"])
             if not p:
                 lines.append(f"• poziția {t['pid']}: nu mai e deschisă, o sar")
@@ -1300,15 +1304,18 @@ class Assistant:
                                           f"plasa {t['sl']:g}" if t.get("sl") is not None else "") if x)
             lines.append(f"• {msg.pair(p['name'])} {'cumpărare' if p['side'] > 0 else 'vânzare'} de la {p['open_rate']:g}: {what} "
                          f"(acum: ținta {p.get('tp') or 0:g}, plasa {p.get('sl') or 0:g})")
-        self.tg.send("🛡️ CONT REAL, mod custodie (WTI1): nu deschid nimic nou. Pun pe eToro ținta și plasa pentru pozițiile tale:\n"
-                     + "\n".join(lines) + "\neToro le execută singur, și cu botul oprit.",
+        head = ("🛡️ CONT REAL, mod custodie: deschid DOAR ce mi-ai cerut și pun ținta și plasa:\n" if todo else
+                "🛡️ CONT REAL, mod custodie (WTI1): nu deschid nimic nou. Pun pe eToro ținta și plasa pentru pozițiile tale:\n")
+        self.tg.send(head + "\n".join(lines) + "\neToro le execută singur, și cu botul oprit.",
                      [[("✅ Setează", "custody:ok"), ("❌ Nu", "custody:no")]])
 
     def apply_custody(self) -> None:
-        """Pune nivelurile pe eToro, apoi le citeste inapoi si spune exact ce s-a aplicat. Nu inchide si nu deschide nimic."""
-        view = self.custody_view()
+        """Deschide pozitiile cerute de Eugen (daca sunt), pune nivelurile pe eToro, apoi le citeste inapoi si spune exact ce s-a aplicat.
+        Nu inchide nimic."""
+        opened = self.apply_custody_opens()
+        view = self.custody_view() if self.custody else {}
         sent, notes = [], []
-        for t in self.custody:
+        for t in self.custody if custody_mod.signature(self.custody) != self.custody_done else []:
             p = view.get(t["pid"])
             if not p:
                 notes.append(f"⚠️ poziția {t['pid']} nu mai e deschisă")
@@ -1344,7 +1351,43 @@ class Assistant:
         if sent and len(ok) == len(sent) and all(n.startswith("✅") for n in notes):
             self.custody_done = custody_mod.signature(self.custody)
             self.save_state()
-        self.tg.send("🛡️ Custodie:\n" + "\n".join(notes))
+        self.tg.send("🛡️ Custodie:\n" + "\n".join(opened + notes))
+
+    def apply_custody_opens(self) -> list[str]:
+        """Pozitiile noi cerute explicit de Eugen (din secretul CUSTODY_JSON): cumparare la piata, levier mic, tinta +x%, plasa la -50%.
+        Fiecare se deschide O SINGURA DATA: cheia intra in stare imediat dupa trimitere, si cand rezultatul e neclar (fara ordin dublu)."""
+        notes = []
+        for o in self.custody_open:
+            key, name = custody_mod.open_key(o), o["symbol"]
+            if key in self.custody_opened:
+                continue
+            try:
+                iid = self.broker.api.find_instrument_id(name)
+            except Exception as e:  # noqa: BLE001
+                notes.append(f"⚠️ {name}: nu găsesc instrumentul pe eToro ({type(e).__name__}); nu deschid")
+                continue
+            self.broker.ids[name], self.broker.rev[iid] = iid, name
+            try:
+                px = (self.broker.quotes([name]).get(name) or {}).get("ask") or self.broker.price(name)
+            except Exception as e:  # noqa: BLE001
+                notes.append(f"⚠️ {name}: nu am preț ({type(e).__name__}); nu deschid")
+                continue
+            nd = 2 if px >= 10 else 5
+            tp, sl = round(px * (1 + o["tp_pct"] / 100), nd), round(px * 0.5, nd)
+            try:
+                pid = self.broker.open(name, 1, o["amount"], o["lev"], sl, tp)
+            except OrderUnconfirmed as e:
+                self.custody_opened.append(key)               # poate a ajuns: nu reincerc (risc de ordin dublu)
+                self.save_state()
+                notes.append(f"⚠️ {name}: ordinul a plecat, dar nu-l văd încă în portofoliu ({e}); NU îl trimit a doua oară, verifică pe eToro")
+                continue
+            except Exception as e:  # noqa: BLE001
+                notes.append(f"⚠️ {name}: eToro a refuzat ({str(e)[:120]})")
+                continue
+            self.custody_opened.append(key)
+            self.save_state()
+            notes.append(f"✅ {name}: cumpărat {o['amount']:g}$ la ~{px:g}, levier {o['lev']}, ținta {tp:g} (+{o['tp_pct']:g}%), plasa {sl:g} (poziția {pid})")
+        return notes
 
     def held_long(self, pid: str) -> bool:
         """Pozitie de petrol pe 4 ore: se tine pana la tinta sau plasa (fara limita de 5 ore si fara cosul comun), ca in simulare."""
@@ -1718,6 +1761,8 @@ class Assistant:
         self.stocks_month = st.get("stocks_month", "")
         self.custody_done = st.get("custody_done", "")
         self.custody = custody_mod.load_targets(os.getenv("CUSTODY_JSON")) if self.real else []
+        self.custody_open = custody_mod.load_opens(os.getenv("CUSTODY_JSON")) if self.real else []
+        self.custody_opened = list(st.get("custody_opened", []))
         self.oil_pnl, self.oil_paused = float(st.get("oil_pnl", 0.0)), bool(st.get("oil_paused", False))
         for r in st.get("adopt", []) if self.real else []:
             t = parse_time(r.get("at"))
@@ -1750,9 +1795,9 @@ class Assistant:
                          f"Țintă și plasă pe fiecare ordin.")
         if c.get("_mode_note"):
             self.tg.send(c["_mode_note"])
-        if self.custody:
+        if self.custody or self.custody_open:
             self.custody_prompt()
-        if self.real and not self.unlocked and not self.custody:
+        if self.real and not self.unlocked and not (self.custody or self.custody_open):
             bal = "necunoscut (nu pot citi soldul!)" if self.real_balance is None else msg.usd(self.real_balance)
             mm = c["min_margin_usd"]
             can_n = 0 if self.real_balance is None else min(self.max_pos(), int(self.real_balance // mm))
