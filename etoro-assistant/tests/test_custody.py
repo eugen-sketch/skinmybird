@@ -175,6 +175,28 @@ def test_unconfirmed_open_is_never_resent(monkeypatch):
     assert "NU îl trimit a doua oară" in tg.texts[-1] and a.custody_opened == ["BTC:32:5:1"]
 
 
+def test_targets_on_positions_outside_bot_list(monkeypatch):
+    """23 oct: tinta +8% pe crypto deschise la cerere (instrumente care nu sunt in lista botului)."""
+    br = Br()
+
+    class RawApi:
+        def positions(self, fresh=False):
+            return [{"positionID": 21, "instrumentID": 100000}]
+    br.api, br.ids, br.rev = RawApi(), {}, {}
+    br.pos = {}
+    real_positions = br.positions
+
+    def positions(fresh=False):
+        if 100000 in br.rev and "21" not in br.pos:
+            br.pos["21"] = {"id": "21", "name": "BTC", "side": 1, "open_rate": 81522.0, "sl": 40761.0, "tp": 85598.0, "amount": 32.0}
+        return real_positions(fresh)
+    br.positions = positions
+    br.q["BTC"] = {"bid": 81500.0, "ask": 81550.0}
+    a, tg, br = make(monkeypatch, br, {"targets": [{"pid": "21", "tp": 88043.79}]})
+    a.apply_custody()
+    assert br.edits == [("21", None, 88043.79)] and br.pos["21"]["tp"] == 88043.79 and "✅ BTC" in tg.texts[-1]
+
+
 def test_already_done_is_not_asked_again(monkeypatch):
     a, tg, br = make(monkeypatch)
     a.custody_done = C.signature(a.custody)
